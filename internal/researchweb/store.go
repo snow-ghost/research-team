@@ -44,6 +44,17 @@ func OpenStore(dir string) (*Store, error) {
 	} else if !os.IsNotExist(err) {
 		release()
 		return nil, err
+	} else {
+		// Permissions must be private even if initialization is interrupted.
+		file, err := os.OpenFile(databasePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		if err = file.Close(); err != nil {
+			release()
+			return nil, err
+		}
 	}
 	absolutePath, err := filepath.Abs(databasePath)
 	if err != nil {

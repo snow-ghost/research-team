@@ -94,8 +94,8 @@ func TestServerBDD_SQLitePathIsLiteralAndUnknownSchemaFailsClosed(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, err := os.Stat(filepath.Join(dir, "research.db")); err != nil {
-		t.Fatal("database path was interpreted as URI options")
+	if info, err := os.Stat(filepath.Join(dir, "research.db")); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("database path or initial permissions are incorrect")
 	}
 	bad := emptyData()
 	bad.Schema = 99

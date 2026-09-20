@@ -381,6 +381,17 @@ func TestServerBDD_HTTPAuthenticationCSRFAndNoSecretDisclosure(t *testing.T) {
 	if w := request("GET", "/api/bootstrap", nil, nil, "", "", ""); w.Code != 401 {
 		t.Fatalf("%d", w.Code)
 	}
+	for _, value := range []string{key, " \t" + key + "\r\n"} {
+		if w := request("POST", "/api/session", map[string]string{"token": value}, nil, "", "http://127.0.0.1:4187", ""); w.Code != 200 {
+			t.Fatal("key with surrounding whitespace rejected")
+		}
+	}
+	for _, value := range []string{"wrong-key", key[:32] + " " + key[32:]} {
+		w := request("POST", "/api/session", map[string]string{"token": value}, nil, "", "http://127.0.0.1:4187", "")
+		if w.Code != 401 || strings.TrimSpace(w.Body.String()) != "Неверный ключ." || len(w.Result().Cookies()) != 0 {
+			t.Fatal("invalid key accepted or disclosed")
+		}
+	}
 	login := request("POST", "/api/session", map[string]string{"token": key}, nil, "", "http://127.0.0.1:4187", "")
 	if login.Code != 200 {
 		t.Fatal(login.Body.String())

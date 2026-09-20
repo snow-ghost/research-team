@@ -181,7 +181,7 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	if !secureEqual(body.Token, h.key) {
+	if !secureEqual(strings.TrimSpace(body.Token), h.key) {
 		h.mu.Lock()
 		h.loginFailures++
 		h.mu.Unlock()

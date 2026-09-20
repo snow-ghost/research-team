@@ -100,7 +100,7 @@ export function Connected({ App }) {
             try {
               const value = await api("/session", {
                 method: "POST",
-                body: { token: new FormData(form).get("token") },
+                body: { token: new FormData(form).get("token").trim() },
               });
               form.reset();
               setSession(value);

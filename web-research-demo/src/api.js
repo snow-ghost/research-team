@@ -25,9 +25,16 @@ export async function api(path, { method = "GET", body, csrf, signal } = {}) {
   } catch {
     value = null;
   }
+  const message =
+    typeof value?.error === "string"
+      ? value.error
+      : response.headers.get("content-type")?.split(";")[0].trim() ===
+          "text/plain"
+        ? text.trim().slice(0, 500)
+        : "";
   if (!response.ok)
     throw new APIError(
-      value?.error ||
+      message ||
         (response.status === 401
           ? "Нужен вход."
           : "Запрос не выполнен. Обновите состояние."),

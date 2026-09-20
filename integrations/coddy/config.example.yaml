@@ -1,0 +1,30 @@
+bot:
+  name: Coddy Research Bot
+  email: coddy@example.invalid
+  username: your-coddy-account
+  assignment_only: true
+  git_platform: github
+  repository: your-owner/your-research-repository
+  default_branch: main
+  workspace_path: /workspace/repository
+  ai_agent: acp
+github:
+  api_url: https://api.github.com
+  webhook_path: /webhook/github
+acp:
+  command: [opencode, acp]
+  timeout: 600
+  env: {}
+webhook:
+  host: 127.0.0.1
+  port: 8000
+  debug: false
+  enabled: true
+observer:
+  poll_clarifications: true
+  poll_interval_seconds: 15
+  sync_on_startup: false
+worker:
+  poll_interval_seconds: 15
+logging:
+  level: INFO

@@ -1,0 +1,18 @@
+{
+  "id": "claude-proof-reader",
+  "kind": "external",
+  "skills": [],
+  "limits": {
+    "timeout_seconds": 300,
+    "max_output_bytes": 4194304
+  },
+  "external": {
+    "provider": "claude",
+    "executable": "/usr/local/bin/claude",
+    "expected_version": "2.1.274 (Claude Code)",
+    "model": "replace-with-available-model-id",
+    "search_path": "/usr/local/bin:/usr/bin:/bin",
+    "secret_env": {"ANTHROPIC_API_KEY": "RESEARCH_CLAUDE_TOKEN"},
+    "execution_boundary": "operator_managed"
+  }
+}

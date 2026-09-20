@@ -1,0 +1,26 @@
+{
+  "id": "model-proof-reader",
+  "kind": "model",
+  "skills": [
+    {
+      "id": "scope-audit",
+      "version": "1",
+      "instructions": "Проверь область утверждения, предпосылки и переходы. Перечисли незакрытые обязательства. Ответ сохраняется как кандидат для рецензирования."
+    }
+  ],
+  "limits": {
+    "timeout_seconds": 120,
+    "max_steps": 6,
+    "max_tool_calls": 4,
+    "max_output_tokens": 2048,
+    "max_output_bytes": 1048576
+  },
+  "model": {
+    "protocol": "chat_completions",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "token_env": "RESEARCH_MODEL_TOKEN",
+    "model": "replace-with-served-model-id",
+    "allow_loopback_http": true,
+    "tools": ["read_file"]
+  }
+}

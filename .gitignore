@@ -1,0 +1,17 @@
+/.research-coddy/
+/.coddy/
+/obsidian-ai-research-agents/
+/.obsidian/
+/*.canvas
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+*.test
+*.out
+__pycache__/
+*.pyc
+/bin/
+.DS_Store

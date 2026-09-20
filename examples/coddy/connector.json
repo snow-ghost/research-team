@@ -1,0 +1,13 @@
+{
+  "api_url": "https://api.github.com",
+  "api_version": "2026-03-10",
+  "repository": "your-owner/your-research-repository",
+  "bot_login": "your-coddy-account",
+  "requester_login": "your-research-account",
+  "base_branch": "main",
+  "token_env": "RESEARCH_GITHUB_TOKEN",
+  "coddy_revision": "fc3b9491d76d5911aa78e51fc6494ddf3c21bb77",
+  "coddy_patchset": "review-loop-v1",
+  "timeout_seconds": 30,
+  "max_pages": 10
+}

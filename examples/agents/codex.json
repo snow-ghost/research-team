@@ -1,0 +1,18 @@
+{
+  "id": "codex-proof-reader",
+  "kind": "external",
+  "skills": [],
+  "limits": {
+    "timeout_seconds": 300,
+    "max_output_bytes": 4194304
+  },
+  "external": {
+    "provider": "codex",
+    "executable": "/usr/local/bin/codex",
+    "expected_version": "codex-cli 0.155.1",
+    "model": "replace-with-available-model-id",
+    "search_path": "/usr/local/bin:/usr/bin:/bin",
+    "secret_env": {"CODEX_API_KEY": "RESEARCH_CODEX_TOKEN"},
+    "execution_boundary": "operator_managed"
+  }
+}

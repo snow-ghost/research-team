@@ -1,0 +1,42 @@
+providers:
+  - name: research
+    type: openai
+    api_base: https://provider.example/v1
+    api_key: "${RESEARCH_CODDY_AGENT_TOKEN}"
+    proxy: none
+    usage_limits_panel: false
+models:
+  - model: research/replace-model
+    max_tokens: 4096
+    reasoning_levels: []
+agent:
+  model: research/replace-model
+  max_turns: 12
+  llm_retry_max: 0
+  wait_for_limit_reset: false
+tools:
+  permission_mode: ask
+compaction:
+  enable: false
+memory:
+  enable: false
+rules:
+  auto_discover: false
+skills:
+  dirs: [/var/lib/research-coddy-agent/skills]
+  auto_discovery: false
+mcp_servers: []
+mcp:
+  project_trust: deny
+subagents:
+  enable: false
+  project_trust: deny
+hooks:
+  enable: false
+  project_trust: deny
+scheduler:
+  enable: false
+logger:
+  level: error
+  outputs: [stderr]
+  format: json

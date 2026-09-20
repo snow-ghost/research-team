@@ -1,0 +1,27 @@
+{
+  "id": "coddy-agent-proof-reader",
+  "kind": "external",
+  "skills": [
+    {
+      "id": "proof-audit",
+      "version": "1",
+      "instructions": "Check assumptions and inference steps. Separate established results, counterexamples and unresolved obligations. Return a candidate report for independent review."
+    }
+  ],
+  "limits": {
+    "timeout_seconds": 300,
+    "max_steps": 6,
+    "max_output_tokens": 4096,
+    "max_output_bytes": 4194304
+  },
+  "external": {
+    "provider": "coddy-agent",
+    "executable": "/usr/local/bin/coddy-agent",
+    "expected_version": "1.1.64",
+    "model": "replace-model",
+    "base_url": "https://provider.example/v1",
+    "search_path": "/usr/local/bin:/usr/bin:/bin",
+    "secret_env": {"OPENAI_API_KEY": "RESEARCH_CODDY_AGENT_TOKEN"},
+    "execution_boundary": "operator_managed"
+  }
+}

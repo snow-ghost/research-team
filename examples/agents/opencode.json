@@ -1,0 +1,18 @@
+{
+  "id": "opencode-proof-reader",
+  "kind": "external",
+  "skills": [],
+  "limits": {
+    "timeout_seconds": 300,
+    "max_output_bytes": 4194304
+  },
+  "external": {
+    "provider": "opencode",
+    "executable": "/usr/local/bin/opencode",
+    "expected_version": "1.2.27",
+    "model": "replace-provider/replace-model",
+    "search_path": "/usr/local/bin:/usr/bin:/bin",
+    "secret_env": {"ANTHROPIC_API_KEY": "RESEARCH_OPENCODE_TOKEN"},
+    "execution_boundary": "operator_managed"
+  }
+}

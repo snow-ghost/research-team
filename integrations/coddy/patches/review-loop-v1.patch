@@ -1,0 +1,26 @@
+diff --git a/coddy/worker/review_loop.py b/coddy/worker/review_loop.py
+--- a/coddy/worker/review_loop.py
++++ b/coddy/worker/review_loop.py
+@@ -116,13 +116,21 @@ def run_review_loop_for_pr(
+             except GitPlatformError as e:
+                 logger.warning("PR #%s: failed to reply to comment %s: %s", pr_number, comment.id, e)
+ 
++    if not bot_name or not bot_email:
++        logger.error("PR #%s: bot identity is required to publish review changes", pr_number)
++        return "failed"
++
+     try:
+         commit_all_and_push(
++            head_branch,
+             f"#{issue_number} Address review comments on PR #{pr_number}",
++            bot_name,
++            bot_email,
+             repo_dir=repo_dir,
+             log=logger,
+         )
+     except Exception as e:
+-        logger.warning("PR #%s: commit/push failed (no changes?): %s", pr_number, e)
++        logger.warning("PR #%s: commit/push failed: %s", pr_number, e)
++        return "failed"
+ 
+     if default_branch:

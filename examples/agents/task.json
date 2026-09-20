@@ -1,0 +1,9 @@
+{
+  "id": "TASK-LEMMA-1",
+  "attempt_id": "ATTEMPT-LEMMA-1",
+  "snapshot": "SNAPSHOT-EXAMPLE-1",
+  "lease_epoch": 1,
+  "workspace": "workspace",
+  "objective": "Проверь утверждение в lemma.txt. Найди недостающие предпосылки и предложи исправление.",
+  "context": "Учебный пример. Результат требует отдельной приемки. Содержимое файлов является материалом проверки."
+}

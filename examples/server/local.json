@@ -1,0 +1,13 @@
+{
+  "listen": "127.0.0.1:4187",
+  "data_dir": "../../.research-server",
+  "web_dir": "../../web-research-demo/dist",
+  "max_parallel": 1,
+  "profiles": [
+    {"file": "../agents/model.json", "label": "Модель через API"},
+    {"file": "../agents/coddy-agent.json", "label": "Coddy Agent"}
+  ],
+  "workspaces": [
+    {"id": "example", "label": "Учебные материалы", "path": "../agents/workspace"}
+  ]
+}

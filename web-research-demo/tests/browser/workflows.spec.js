@@ -49,7 +49,7 @@ const state = (page) =>
   );
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
-  await page.goto("/");
+  await page.goto("/?demo=1");
   await expect(page.locator('[data-layout="ready"]')).toBeVisible();
 });
 test("desktop: карта, зависимости, стрелки и размеры", async ({ page }) => {

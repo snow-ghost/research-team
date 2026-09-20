@@ -244,6 +244,20 @@ export function effectiveStatus(state, id, trail = []) {
   if (!item || trail.includes(id)) return "blocked";
   if (item.status === "challenged") return "challenged";
   if (
+    Object.entries(item.dependencyRevisions || {}).some(
+      ([dep, revision]) =>
+        state.entities.find((e) => e.id === dep)?.revision !== revision,
+    )
+  )
+    return "blocked";
+  const application = state.applications.find((a) => a.id === id);
+  if (
+    application &&
+    state.entities.find((e) => e.id === application.lemma)?.revision !==
+      application.lemmaRevision
+  )
+    return "blocked";
+  if (
     item.dependencies.some((dep) =>
       ["challenged", "blocked", "refuted"].includes(
         effectiveStatus(state, dep, [...trail, id]),

@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/model.test.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:mvp": "playwright test --config playwright.mvp.config.js"
   },
   "dependencies": {
     "@xyflow/react": "12.11.6",

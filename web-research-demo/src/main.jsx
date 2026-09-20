@@ -53,7 +53,12 @@ import {
   Link2,
   PanelRightClose,
   Menu,
+  Cpu,
+  LogOut,
 } from "lucide-react";
+import { Connected } from "./connected.jsx";
+import { RuntimePanel } from "./runtime.jsx";
+import { CoddyPanel } from "./coddy.jsx";
 import {
   createInitialState,
   effectiveStatus,
@@ -121,7 +126,7 @@ function ResearchNode({ data, selected }) {
           <Icon size={13} />
           {kinds[data.item.kind]}
         </span>
-        <code>{data.item.id}</code>
+        <code title={data.item.id}>{data.item.id}</code>
       </div>
       <div className="node-title">{data.item.title}</div>
       <Badge status={data.status} />
@@ -177,6 +182,7 @@ const edgeTypes = { routed: RoutedEdge };
 
 function graphData(state, studyId, mode, rejected) {
   const study = state.studies.find((s) => s.id === studyId);
+  if (!study) return { nodes: [], edges: [], direction: "DOWN" };
   const byId = Object.fromEntries(state.entities.map((x) => [x.id, x]));
   let links = [];
   if (mode === "branches") {
@@ -507,8 +513,9 @@ function ClaimList({ state, study, rejected, selected, onSelect }) {
   );
 }
 
-function App() {
+function App({ live } = {}) {
   const [state, setState] = useState(() => {
+    if (live) return live.data.state;
     try {
       const value = JSON.parse(localStorage.getItem(STORAGE_KEY));
       return isStoredState(value) ? value : createInitialState();
@@ -516,13 +523,17 @@ function App() {
       return createInitialState();
     }
   });
-  const [study, setStudy] = useState("forest");
+  const [study, setStudy] = useState(() =>
+    live ? live.data.state.studies[0]?.id || "" : "forest",
+  );
   const [section, setSection] = useState("research");
   const [tab, setTab] = useState("map");
   const [mode, setMode] = useState(() =>
     window.innerWidth <= 640 ? "list" : "branches",
   );
-  const [selected, setSelected] = useState("H0");
+  const [selected, setSelected] = useState(() =>
+    live ? live.data.state.studies[0]?.goal || "" : "H0",
+  );
   const [detailTab, setDetailTab] = useState("overview");
   const [rejected, setRejected] = useState(false);
   const [lemmaFilter, setLemmaFilter] = useState("accepted");
@@ -530,6 +541,7 @@ function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
   const [historic, setHistoric] = useState(null);
+  const [historicData, setHistoricData] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(
     () => window.innerWidth > 1100,
@@ -538,23 +550,46 @@ function App() {
   const [questionKind, setQuestionKind] = useState("question");
   const previousFocus = useRef(null);
   const view = historic
-    ? state.history.find((x) => x.id === historic)?.snapshot || state
+    ? historicData ||
+      state.history.find((x) => x.id === historic)?.snapshot ||
+      state
     : state;
-  const currentStudy =
-    view.studies.find((x) => x.id === study) || view.studies[0];
+  const currentStudy = view.studies.find((x) => x.id === study) ||
+    view.studies[0] || {
+      id: "",
+      title: "Исследования",
+      category: "Рабочая область",
+      formula: "",
+    };
   const item = view.entities.find((x) => x.id === selected);
-  const readOnly = historic !== null;
-  const allStudy = view.entities.filter((x) => x.study === study);
+  const readOnly = historic !== null || !!live?.busy;
+  const allStudy = view.entities.filter((x) => x.study === currentStudy.id);
   const tasks = view.tasks.filter(
-    (t) => view.entities.find((e) => e.id === t.target)?.study === study,
+    (t) =>
+      view.entities.find((e) => e.id === t.target)?.study === currentStudy.id,
   );
   useEffect(() => {
+    if (live) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       setToast("Не удалось сохранить данные в браузере. Выгрузите снимок.");
     }
-  }, [state]);
+  }, [state, !!live]);
+  useEffect(() => {
+    if (live) setState(live.data.state);
+  }, [live?.data.state]);
+  useEffect(() => {
+    if (
+      live &&
+      !historic &&
+      state.studies.length &&
+      !state.studies.some((s) => s.id === study)
+    ) {
+      setStudy(state.studies[0].id);
+      setSelected(state.studies[0].goal);
+    }
+  }, [live?.data.state, historic, study, state.studies]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 5000);
@@ -580,15 +615,24 @@ function App() {
     previousFocus.current = document.activeElement;
     setModal({ kind, target });
   }
-  function dispatch(action) {
+  async function dispatch(action) {
     if (readOnly) {
       setToast("Открыт исторический снимок. Вернитесь к текущему состоянию.");
       return false;
     }
     try {
-      const next = transition(state, action);
+      const next = live
+        ? (await live.action(action)).state
+        : transition(state, action);
       setState(next);
       setToast(next.history.at(-1).label);
+      if (action.type === "CREATE_STUDY") {
+        const created = next.studies.at(-1);
+        setStudy(created.id);
+        select(created.goal);
+        setSection("research");
+        setTab("map");
+      }
       if (["SPLIT", "APPLY", "LEMMA", "STEP"].includes(action.type)) {
         const target = next.history.at(-1).target;
         const targetItem = next.entities.find((x) => x.id === target);
@@ -611,7 +655,7 @@ function App() {
     const exported = {
       ...view,
       history: state.history.filter((event) => event.id <= view.revision),
-      demonstration: true,
+      demonstration: !live,
       historical: readOnly,
       exported_at: new Date().toISOString(),
     };
@@ -622,7 +666,8 @@ function App() {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = "research-team-demo-v" + view.revision + ".json";
+    a.download =
+      "research-team-" + (live ? "" : "demo-") + "v" + view.revision + ".json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -631,6 +676,12 @@ function App() {
     ["library", Library, "Библиотека лемм"],
     ["reviews", ClipboardCheck, "Рецензирование"],
     ["history", History, "Журнал действий"],
+    ...(live
+      ? [
+          ["executors", Cpu, "Исполнители"],
+          ["coddy", GitBranch, "Coddy Bot"],
+        ]
+      : []),
   ];
   const sectionTitle =
     section === "research"
@@ -665,12 +716,17 @@ function App() {
         </div>
         <div className="demo-label">
           <span />
-          Демонстрационные данные
+          {live ? "Серверная рабочая область" : "Демонстрационные данные"}
         </div>
         <nav aria-label="Главные разделы">
           {navigation.map(([id, Icon, label]) => (
             <button
               key={id}
+              disabled={
+                !!live &&
+                historic !== null &&
+                ["executors", "coddy"].includes(id)
+              }
               className={"nav-item " + (section === id ? "active" : "")}
               onClick={() => {
                 setSection(id);
@@ -688,6 +744,16 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-heading">ТЕКУЩИЕ ИССЛЕДОВАНИЯ</div>
+        {live && (
+          <button
+            className="button ghost new-study"
+            disabled={readOnly}
+            onClick={() => openModal("study")}
+          >
+            <Plus size={15} />
+            Новое исследование
+          </button>
+        )}
         <div className="study-list">
           {view.studies.map((s) => (
             <button
@@ -712,21 +778,32 @@ function App() {
         <div className="sidebar-bottom">
           <div className="local-state">
             <span className="live-dot" />
-            Локальный снимок v{state.revision}
+            {live ? "Серверный" : "Локальный"} снимок v{state.revision}
           </div>
           <button onClick={exportState}>
             <Download size={16} />
             Выгрузить снимок
           </button>
-          <button disabled={readOnly} onClick={() => openModal("reset")}>
-            <RotateCcw size={16} />
-            Сбросить макет
-          </button>
+          {!live && (
+            <button disabled={readOnly} onClick={() => openModal("reset")}>
+              <RotateCcw size={16} />
+              Сбросить макет
+            </button>
+          )}
+          {live && (
+            <button
+              disabled={live.busy}
+              onClick={() => live.logout().catch((e) => setToast(e.message))}
+            >
+              <LogOut size={16} />
+              Выйти
+            </button>
+          )}
           <div className="workspace-user">
             <span className="avatar">В</span>
             <div>
               <strong>Вы</strong>
-              <span>Демонстрационная среда</span>
+              <span>{live ? "Оператор" : "Демонстрационная среда"}</span>
             </div>
           </div>
         </div>
@@ -747,8 +824,8 @@ function App() {
               className="icon-button mobile-only"
               onClick={() => setMobileNav(true)}
             />
-            <span>Математика</span>
-            <span className="topbar-demo">Макет</span>
+            <span>Исследования</span>
+            {!live && <span className="topbar-demo">Макет</span>}
             <ChevronRight size={13} />
             <strong>
               {section === "research" ? currentStudy.category : sectionTitle}
@@ -792,6 +869,17 @@ function App() {
             )}
           </div>
         </header>
+        {live?.error && (
+          <div className="connection-banner" role="alert">
+            {live.error}
+          </div>
+        )}
+        {live && !live.data.operational && (
+          <div className="connection-banner" role="alert">
+            Исполнение остановлено после ошибки хранения. Нужна проверка
+            сервера.
+          </div>
+        )}
         {readOnly && (
           <div className="history-banner">
             <History size={16} />
@@ -799,6 +887,7 @@ function App() {
             <button
               onClick={() => {
                 setHistoric(null);
+                setHistoricData(null);
                 select(currentStudy.goal);
               }}
             >
@@ -810,17 +899,27 @@ function App() {
           <div>
             <div className="eyebrow">
               {section === "research"
-                ? "ИССЛЕДОВАНИЕ / " + (study === "forest" ? "01" : "02")
+                ? live
+                  ? "ИССЛЕДОВАНИЕ"
+                  : "ИССЛЕДОВАНИЕ / " + (study === "forest" ? "01" : "02")
                 : "РАБОЧАЯ ОБЛАСТЬ"}
             </div>
             <h1>{sectionTitle}</h1>
             {section === "research" && (
               <div className="goal-line">
-                <code>{currentStudy.formula}</code>
-                <span>{study === "forest" ? "n >= 1; c >= 1" : "n > 0"}</span>
+                {!live && <code>{currentStudy.formula}</code>}
+                <span>
+                  {live
+                    ? "Снимок v" + view.revision
+                    : study === "forest"
+                      ? "n >= 1; c >= 1"
+                      : "n > 0"}
+                </span>
                 <span className={"run-state " + (view.paused ? "paused" : "")}>
                   <span />
-                  {view.paused ? "Поиск приостановлен" : "Исследование открыто"}
+                  {view.paused
+                    ? live ? "Новые запуски приостановлены" : "Поиск приостановлен"
+                    : "Исследование открыто"}
                 </span>
               </div>
             )}
@@ -831,22 +930,31 @@ function App() {
                 <button
                   className="button secondary"
                   disabled={readOnly}
+                  title={
+                    live
+                      ? "Приостановка допуска новых запусков; текущие попытки продолжаются"
+                      : undefined
+                  }
                   onClick={() => dispatch({ type: "PAUSE" })}
                 >
                   {view.paused ? <Play size={15} /> : <Pause size={15} />}
                   <span>{view.paused ? "Продолжить" : "Приостановить"}</span>
                 </button>
-                <IconButton
-                  icon={StepForward}
-                  label="Следующее событие сценария"
-                  disabled={readOnly || view.paused || state.scenarioStep >= 3}
-                  onClick={() => dispatch({ type: "STEP" })}
-                />
+                {!live && (
+                  <IconButton
+                    icon={StepForward}
+                    label="Следующее событие сценария"
+                    disabled={
+                      readOnly || view.paused || state.scenarioStep >= 3
+                    }
+                    onClick={() => dispatch({ type: "STEP" })}
+                  />
+                )}
               </>
             )}
             <button
               className="button primary"
-              disabled={readOnly}
+              disabled={readOnly || (live && !currentStudy.goal)}
               onClick={() => openModal("lemma")}
             >
               <Plus size={16} />
@@ -856,6 +964,16 @@ function App() {
         </section>
         <div className="work-area">
           <div className="main-pane">
+            {live && section === "executors" && (
+              <RuntimePanel
+                live={live}
+                study={currentStudy.id}
+                selected={selected}
+                providers
+                onSelect={select}
+              />
+            )}
+            {live && section === "coddy" && <CoddyPanel live={live} onTarget={setSelected} />}
             {section === "research" && (
               <>
                 <div
@@ -889,7 +1007,20 @@ function App() {
                     <BookOpen size={16} />
                   </button>
                 </div>
-                {tab === "map" && (
+                {tab === "map" && live && !currentStudy.goal && (
+                  <div className="workspace-empty">
+                    <Network size={32} />
+                    <h2>Исследований пока нет</h2>
+                    <button
+                      className="button primary"
+                      onClick={() => openModal("study")}
+                    >
+                      <Plus size={16} />
+                      Создать исследование
+                    </button>
+                  </div>
+                )}
+                {tab === "map" && (!live || currentStudy.goal) && (
                   <>
                     <div className="map-toolbar">
                       <div className="segmented">
@@ -924,7 +1055,7 @@ function App() {
                     {mode === "list" ? (
                       <ClaimList
                         state={view}
-                        study={study}
+                        study={currentStudy.id}
                         rejected={rejected}
                         selected={selected}
                         onSelect={select}
@@ -933,7 +1064,7 @@ function App() {
                       <ReactFlowProvider>
                         <Graph
                           state={view}
-                          study={study}
+                          study={currentStudy.id}
                           mode={mode}
                           rejected={rejected}
                           selected={selected}
@@ -969,7 +1100,15 @@ function App() {
                     </div>
                   </>
                 )}
-                {tab === "tasks" && (
+                {tab === "tasks" && live && !historic && (
+                  <RuntimePanel
+                    live={live}
+                    study={currentStudy.id}
+                    selected={selected}
+                    onSelect={select}
+                  />
+                )}
+                {tab === "tasks" && (!live || historic) && (
                   <div className="scroll-content">
                     <div className="section-intro">
                       <h2>Назначения исполнителей</h2>
@@ -1005,7 +1144,7 @@ function App() {
                               </td>
                               <td>
                                 <span className={"task-state " + t.state}>
-                                  {taskStates[t.state]}
+                                  {taskStates[t.state] || t.state}
                                 </span>
                               </td>
                             </tr>
@@ -1190,8 +1329,20 @@ function App() {
                       >
                         {f.state === "open"
                           ? "Запросить перепроверку"
-                          : "Ожидает перепроверки"}
+                          : f.state === "resolved"
+                            ? "Замечание закрыто"
+                            : "Ожидает перепроверки"}
                       </button>
+                      {live && f.state === "verification_pending" && (
+                        <button
+                          className="button secondary"
+                          disabled={readOnly}
+                          onClick={() => openModal("closeFinding", f.id)}
+                        >
+                          <Check size={14} />
+                          Записать результат перепроверки
+                        </button>
+                      )}
                     </article>
                   ))
                 ) : (
@@ -1235,13 +1386,28 @@ function App() {
                         </button>
                         <button
                           className="button ghost"
-                          onClick={() => {
+                          onClick={async () => {
+                            let snapshot = e.snapshot;
+                            if (live) {
+                              try {
+                                snapshot = await live.get("/history/" + e.id);
+                              } catch (error) {
+                                setToast(error.message);
+                                return;
+                              }
+                              setHistoricData(snapshot);
+                            }
                             setHistoric(e.id);
-                            setSelected(e.target);
-                            const t = e.snapshot.entities.find(
-                              (x) => x.id === e.target,
-                            );
+                            const target =
+                              snapshot.tasks.find((x) => x.id === e.target)?.target ||
+                              e.target;
+                            const t = snapshot.entities.find(
+                              (x) => x.id === target,
+                            ) || snapshot.entities.find((x) => x.id === selected) ||
+                              snapshot.entities[0];
+                            setSelected(t?.id || "");
                             if (t) setStudy(t.study);
+                            setDetailTab("overview");
                             setSection("research");
                             setTab("map");
                             setInspectorOpen(true);
@@ -1299,16 +1465,20 @@ function App() {
                     <p className="statement">{item.statement}</p>
                     <div className="field-label">ОБЛАСТЬ И УСЛОВИЯ</div>
                     <p>
-                      {item.domain}. {item.assumptions}.
+                      {[item.domain, item.assumptions].filter(Boolean).join(". ")}
                     </p>
                     <div className="metadata">
                       <span>Версия</span>
                       <strong>{item.revision}</strong>
                       <span>Источник</span>
                       <strong>
-                        {item.author === "user"
-                          ? "Ваше предложение"
-                          : "Учебный сценарий"}
+                        {live
+                          ? item.author === "operator"
+                            ? "Оператор"
+                            : item.author
+                          : item.author === "user"
+                            ? "Ваше предложение"
+                            : "Учебный сценарий"}
                       </strong>
                       <span>Зависимости</span>
                       <strong>{item.dependencies.length}</strong>
@@ -1386,6 +1556,15 @@ function App() {
                   <>
                     <div className="field-label">АРГУМЕНТ</div>
                     <p>{item.proof || "Обоснование еще не представлено."}</p>
+                    {live && item.proofAttempt && (
+                      <p className="muted">Источник: <code>{item.proofAttempt}</code></p>
+                    )}
+                    {live && item.reviewReason && (
+                      <>
+                        <div className="field-label">РЕШЕНИЕ ОПЕРАТОРА</div>
+                        <p>{item.reviewReason}</p>
+                      </>
+                    )}
                     <div className="field-label">ИСПОЛЬЗУЕМЫЕ ОСНОВАНИЯ</div>
                     {item.dependencies.length ? (
                       item.dependencies.map((id) => {
@@ -1415,7 +1594,9 @@ function App() {
                     <div className="review-notice">
                       <ShieldCheck size={16} />
                       <span>
-                        Приемка здесь относится только к данным макета.
+                        {live
+                          ? "Приемка записывает решение оператора с обоснованием; автоматической проверки доказательства нет."
+                          : "Приемка здесь относится только к данным макета."}
                       </span>
                     </div>
                     <div className="inspector-actions">
@@ -1425,8 +1606,11 @@ function App() {
                             className="button primary"
                             disabled={
                               readOnly ||
-                              item.author === "user" ||
-                              item.kind === "application"
+                              (live
+                                ? !item.proofAuthor ||
+                                  item.proofAuthor === "operator"
+                                : item.author === "user" ||
+                                  item.kind === "application")
                             }
                             onClick={() => confirmReview("accept")}
                           >
@@ -1435,7 +1619,9 @@ function App() {
                           </button>
                           <button
                             className="button secondary"
-                            disabled={readOnly || item.author === "user"}
+                            disabled={
+                              readOnly || (!live && item.author === "user")
+                            }
                             onClick={() => confirmReview("reject")}
                           >
                             Запросить исправления
@@ -1480,10 +1666,10 @@ function App() {
                     />
                     <form
                       className="question-form"
-                      onSubmit={(e) => {
+                      onSubmit={async (e) => {
                         e.preventDefault();
                         if (
-                          dispatch({
+                          await dispatch({
                             type: "QUESTION",
                             target: item.id,
                             text: question,
@@ -1554,9 +1740,11 @@ function App() {
           modal={modal}
           state={state}
           study={study}
+          live={!!live}
+          busy={readOnly}
           onClose={closeModal}
-          onSubmit={(action) => {
-            if (action.type === "RESET") {
+          onSubmit={async (action) => {
+            if (action.type === "RESET" && !live) {
               setState(createInitialState());
               setHistoric(null);
               setSelected("H0");
@@ -1568,7 +1756,7 @@ function App() {
               closeModal();
               return;
             }
-            if (dispatch(action)) closeModal();
+            if (await dispatch(action)) closeModal();
           }}
         />
       )}
@@ -1610,15 +1798,34 @@ function QuestionList({ questions, onSelect, compact }) {
           </div>
           <p className="question-text">{q.text}</p>
           <div className="answer">
-            <strong>Сведения из макета</strong>
-            <p>{q.answer}</p>
+            <strong>
+              {q.answerAttempt
+                ? "Ответ исполнителя"
+                : q.answer
+                  ? "Сведения из макета"
+                  : "Ответ еще не получен"}
+            </strong>
+            <p>
+              {q.answer ||
+                (q.kind === "proposal"
+                  ? "Предложение записано."
+                  : "Задание ожидает запуска.")}
+            </p>
           </div>
         </article>
       ))}
     </div>
   );
 }
-function Dialog({ modal, state, study, onClose, onSubmit }) {
+function Dialog({
+  modal,
+  state,
+  study,
+  onClose,
+  onSubmit,
+  live = false,
+  busy = false,
+}) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -1656,6 +1863,8 @@ function Dialog({ modal, state, study, onClose, onSubmit }) {
     accept: "Приемка кандидата",
     reject: "Запросить исправления",
     reset: "Сбросить данные макета",
+    study: "Создать исследование",
+    closeFinding: "Результат перепроверки",
   };
   const target = state.entities.find((x) => x.id === modal.target);
   return (
@@ -1682,6 +1891,12 @@ function Dialog({ modal, state, study, onClose, onSubmit }) {
             const v = Object.fromEntries(new FormData(e.currentTarget));
             const actions = {
               lemma: { type: "LEMMA", ...v, study },
+              study: { type: "CREATE_STUDY", ...v },
+              closeFinding: {
+                type: "CLOSE_FINDING",
+                finding: modal.target,
+                text: v.text,
+              },
               split: {
                 type: "SPLIT",
                 target: modal.target,
@@ -1698,18 +1913,20 @@ function Dialog({ modal, state, study, onClose, onSubmit }) {
                 type: "REVIEW",
                 target: modal.target,
                 decision: "accept",
+                text: v.text,
               },
               reject: {
                 type: "REVIEW",
                 target: modal.target,
                 decision: "reject",
+                text: v.text,
               },
               reset: { type: "RESET" },
             };
             onSubmit(actions[modal.kind]);
           }}
         >
-          {modal.kind === "lemma" && (
+          {["lemma", "study"].includes(modal.kind) && (
             <>
               <label>
                 Название
@@ -1803,7 +2020,14 @@ function Dialog({ modal, state, study, onClose, onSubmit }) {
               )}
             </>
           )}
-          {modal.kind === "accept" && (
+          {live &&
+            ["accept", "reject", "closeFinding"].includes(modal.kind) && (
+              <label>
+                Обоснование решения
+                <textarea name="text" required maxLength={4000} />
+              </label>
+            )}
+          {modal.kind === "accept" && !live && (
             <p>
               Записать приемку {target?.id} в демонстрационном журнале? Реальная
               проверка доказательства не выполняется.
@@ -1829,7 +2053,7 @@ function Dialog({ modal, state, study, onClose, onSubmit }) {
             >
               Отмена
             </button>
-            <button className="button primary" type="submit">
+            <button className="button primary" type="submit" disabled={busy}>
               {modal.kind === "reset" ? "Сбросить" : "Подтвердить"}
             </button>
           </footer>
@@ -1838,4 +2062,8 @@ function Dialog({ modal, state, study, onClose, onSubmit }) {
     </div>
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+const demonstration =
+  new URLSearchParams(window.location.search).get("demo") === "1";
+createRoot(document.getElementById("root")).render(
+  demonstration ? <App /> : <Connected App={App} />,
+);

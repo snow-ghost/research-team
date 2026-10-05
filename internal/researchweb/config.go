@@ -12,6 +12,7 @@ import (
 
 	"github.com/snow-ghost/research-team/internal/coddy"
 	"github.com/snow-ghost/research-team/internal/execution"
+	"github.com/snow-ghost/research-team/internal/leancheck"
 )
 
 type ProfileFile struct {
@@ -24,23 +25,35 @@ type Workspace struct {
 	Path  string `json:"path"`
 }
 type Config struct {
-	Listen                 string        `json:"listen"`
-	DataDir                string        `json:"data_dir"`
-	WebDir                 string        `json:"web_dir"`
-	TokenEnv               string        `json:"token_env,omitempty"`
-	MaxParallel            int           `json:"max_parallel"`
-	AllowExternalExecution bool          `json:"allow_external_execution,omitempty"`
-	Profiles               []ProfileFile `json:"profiles"`
-	Workspaces             []Workspace   `json:"workspaces"`
-	CoddyConfig            string        `json:"coddy_config,omitempty"`
+	Workers                []WorkerConfig    `json:"workers,omitempty"`
+	Telegram               []TelegramChannel `json:"telegram,omitempty"`
+	LeanConfig             string            `json:"lean_config,omitempty"`
+	Database               DatabaseConfig    `json:"database,omitempty"`
+	Listen                 string            `json:"listen"`
+	DataDir                string            `json:"data_dir"`
+	WebDir                 string            `json:"web_dir"`
+	TokenEnv               string            `json:"token_env,omitempty"`
+	SecretFile             string            `json:"secret_file,omitempty"`
+	MaxParallel            int               `json:"max_parallel"`
+	AllowExternalExecution bool              `json:"allow_external_execution,omitempty"`
+	Profiles               []ProfileFile     `json:"profiles"`
+	Workspaces             []Workspace       `json:"workspaces"`
+	CoddyConfig            string            `json:"coddy_config,omitempty"`
+}
+type DatabaseConfig struct {
+	Driver string `json:"driver"`
+	DSNEnv string `json:"dsn_env,omitempty"`
 }
 type Options struct {
-	Config   Config
-	Profiles map[string]execution.Profile
-	Labels   map[string]string
-	Coddy    *coddy.Config
-	Lookup   func(string) (string, bool)
-	Factory  func(execution.Profile, func(string) (string, bool)) (execution.Executor, error)
+	TelegramClient TelegramClient
+	Lean           *leancheck.Config
+	Checker        leancheck.Checker
+	Config         Config
+	Profiles       map[string]execution.Profile
+	Labels         map[string]string
+	Coddy          *coddy.Config
+	Lookup         func(string) (string, bool)
+	Factory        func(execution.Profile, func(string) (string, bool)) (execution.Executor, error)
 }
 
 func ReadJSON(path string, value any) error {
@@ -79,6 +92,18 @@ func LoadOptions(path string) (Options, error) {
 		return filepath.Join(base, p)
 	}
 	c := &o.Config
+	if err := validateWorkers(c.Workers); err != nil {
+		return o, err
+	}
+	if err := validateTelegram(c.Telegram); err != nil {
+		return o, err
+	}
+	if c.Database.Driver != "" && c.Database.Driver != "sqlite" && c.Database.Driver != "postgres" {
+		return o, errors.New("unsupported database driver")
+	}
+	if c.Database.Driver == "postgres" && c.Database.DSNEnv == "" {
+		return o, errors.New("postgres requires dsn_env")
+	}
 	host, port, err := net.SplitHostPort(c.Listen)
 	p, nErr := strconv.Atoi(port)
 	ip := net.ParseIP(host)
@@ -89,6 +114,19 @@ func LoadOptions(path string) (Options, error) {
 		return o, errors.New("invalid server directories or limits")
 	}
 	c.DataDir, c.WebDir = resolve(c.DataDir), resolve(c.WebDir)
+	if c.SecretFile != "" {
+		c.SecretFile = resolve(c.SecretFile)
+		values, err := readPrivateSecrets(c.SecretFile, c.WebDir)
+		if err != nil {
+			return o, err
+		}
+		o.Lookup = func(key string) (string, bool) {
+			if value, ok := values[key]; ok {
+				return value, true
+			}
+			return os.LookupEnv(key)
+		}
+	}
 	relative, err := filepath.Rel(c.WebDir, c.DataDir)
 	if err != nil || relative == "." || (!filepath.IsAbs(relative) && relative != ".." && !bytes.HasPrefix([]byte(relative), []byte(".."+string(filepath.Separator)))) {
 		return o, errors.New("private state must be outside web directory")
@@ -125,6 +163,17 @@ func LoadOptions(path string) (Options, error) {
 		if err := o.Coddy.Validate(); err != nil {
 			return o, err
 		}
+	}
+	if c.LeanConfig != "" {
+		c.LeanConfig = resolve(c.LeanConfig)
+		o.Lean = &leancheck.Config{}
+		if err := ReadJSON(c.LeanConfig, o.Lean); err != nil {
+			return o, err
+		}
+		if err := o.Lean.Validate(); err != nil {
+			return o, err
+		}
+		o.Checker = leancheck.DockerChecker{Config: *o.Lean}
 	}
 	return o, nil
 }

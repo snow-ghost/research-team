@@ -10,6 +10,12 @@ const repo = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
+const databaseURL = process.env.MVP_DATABASE_URL;
+if (databaseURL && !new URL(databaseURL).pathname.endsWith("_test")) {
+  throw new Error(
+    "MVP_DATABASE_URL must name a separate database ending in _test",
+  );
+}
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "research-web-test-"));
 const repository = "test-owner/lab";
 const bot = "test-bot",
@@ -37,8 +43,17 @@ const fake = http.createServer(async (req, res) => {
         {
           message: {
             role: "assistant",
-            content:
-              "Кандидат доказательства. Предпосылки проверены на учебном примере.",
+            content: text.includes("ROLE_counterexample")
+              ? JSON.stringify({
+                  outcome: "none_found",
+                  evidence: "Проверены конечные граничные случаи.",
+                })
+              : text.includes("ROLE_review")
+                ? JSON.stringify({
+                    summary: "Проверено на учебном примере.",
+                    findings: [],
+                  })
+                : "Кандидат доказательства. Предпосылки проверены на учебном примере.",
           },
           finish_reason: "stop",
         },
@@ -190,13 +205,30 @@ const coddy = write("coddy.json", {
   max_pages: 3,
   allow_loopback_http: true,
 });
+const roleProfiles = ["proof", "counterexample", "review"].map((role) => {
+  const value = JSON.parse(fs.readFileSync(profile, "utf8"));
+  value.id = "fixture-" + role;
+  value.skills = [{ id: role, version: "1", instructions: "ROLE_" + role }];
+  return {
+    file: write("profile-" + role + ".json", value),
+    label: "Исполнитель: " + role,
+  };
+});
 const config = write("server.json", {
   listen: "127.0.0.1:4190",
   data_dir: path.join(temporary, "state"),
   web_dir: path.join(repo, "web-research-demo/dist"),
   token_env: "RESEARCH_WEB_TOKEN",
   max_parallel: 1,
-  profiles: [{ file: profile, label: "Проверочный исполнитель" }],
+  ...(databaseURL
+    ? {
+        database: { driver: "postgres", dsn_env: "RESEARCH_TEST_DATABASE_URL" },
+      }
+    : {}),
+  profiles: [
+    { file: profile, label: "Проверочный исполнитель" },
+    ...roleProfiles,
+  ],
   workspaces: [
     {
       id: "example",
@@ -205,6 +237,9 @@ const config = write("server.json", {
     },
   ],
   coddy_config: coddy,
+  ...(process.env.MVP_LEAN_CONFIG
+    ? { lean_config: process.env.MVP_LEAN_CONFIG }
+    : {}),
 });
 const binary = path.join(temporary, "research-server");
 execFileSync("go", ["build", "-o", binary, "./cmd/research-server"], {
@@ -220,6 +255,7 @@ const child = spawn(binary, ["-config", config], {
     RESEARCH_WEB_TOKEN: ACCESS_KEY,
     MODEL_TOKEN: "test-model-key",
     GITHUB_TOKEN: "test-github-key",
+    ...(databaseURL ? { RESEARCH_TEST_DATABASE_URL: databaseURL } : {}),
   },
 });
 let stopping = false;

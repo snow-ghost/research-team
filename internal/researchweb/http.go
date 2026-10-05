@@ -87,6 +87,18 @@ func NewHTTP(s *Service, key string) (*HTTP, error) {
 	}
 	h := &HTTP{service: s, key: key, root: root, mux: http.NewServeMux(), sessions: map[string]browserSession{},
 		hosts: map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true, net.JoinHostPort("::1", port): true}}
+	workerKeys := map[string]bool{}
+	for _, worker := range s.Options.Config.Workers {
+		value, _ := s.Options.Lookup(worker.TokenEnv)
+		if value == "" {
+			continue
+		}
+		if len(value) < 32 || len(value) > 256 || strings.ContainsAny(value, " \t\r\n") || secureEqual(value, key) || workerKeys[value] {
+			root.Close()
+			return nil, errors.New("worker keys must be private, unique and distinct from the operator key")
+		}
+		workerKeys[value] = true
+	}
 	h.routes()
 	return h, nil
 }
@@ -119,6 +131,28 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.login(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/workers/") {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) < 4 {
+			http.Error(w, "Неверный адрес.", 404)
+			return
+		}
+		worker := h.service.worker(parts[2])
+		key := ""
+		if worker != nil {
+			key, _ = h.service.Options.Lookup(worker.TokenEnv)
+		}
+		if len(key) < 32 || !secureEqual(r.Header.Get("Authorization"), "Bearer "+key) {
+			http.Error(w, "Нужен ключ исполнителя.", 401)
+			return
+		}
+		if h.service.ctx.Err() != nil {
+			h.fail(w, errors.New("service stopped"))
+			return
+		}
+		h.mux.ServeHTTP(w, r)
 		return
 	}
 	bearer := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -245,6 +279,12 @@ func (h *HTTP) json(w http.ResponseWriter, value any) {
 	}
 	// Mask credential values in strings without changing the response's JSON keys.
 	keys := []string{h.service.Options.Config.TokenEnv}
+	for _, worker := range h.service.Options.Config.Workers {
+		keys = append(keys, worker.TokenEnv)
+	}
+	for _, channel := range h.service.Options.Config.Telegram {
+		keys = append(keys, channel.TokenEnv)
+	}
 	for _, p := range h.service.Options.Profiles {
 		if p.Model != nil {
 			keys = append(keys, p.Model.TokenEnv)
@@ -259,6 +299,9 @@ func (h *HTTP) json(w http.ResponseWriter, value any) {
 		keys = append(keys, h.service.Options.Coddy.TokenEnv)
 	}
 	secrets := []string{h.key}
+	if secret := databaseSecret(h.service.Options.Config, h.service.Options.Lookup); secret != "" {
+		secrets = append(secrets, secret)
+	}
 	for _, key := range keys {
 		if key != "" {
 			if value, ok := h.service.Options.Lookup(key); ok && value != "" {
@@ -322,9 +365,313 @@ func (h *HTTP) view(w http.ResponseWriter) {
 		coddyInfo["repository"] = c.Repository
 		coddyInfo["bot_login"] = c.BotLogin
 	}
-	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "operational": h.service.ctx.Err() == nil})
+	channels := []map[string]any{}
+	for _, c := range h.service.Options.Config.Telegram {
+		token, ok := h.service.Options.Lookup(c.TokenEnv)
+		channels = append(channels, map[string]any{"id": c.ID, "label": c.Label, "available": ok && token != ""})
+	}
+	workers := []map[string]any{}
+	for _, c := range h.service.Options.Config.Workers {
+		key, _ := h.service.Options.Lookup(c.TokenEnv)
+		workers = append(workers, map[string]any{"id": c.ID, "label": c.Label, "profiles": c.Profiles, "available": len(key) >= 32})
+	}
+	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
 }
 func (h *HTTP) routes() {
+	h.mux.HandleFunc("POST /api/studies/{id}/budget", func(w http.ResponseWriter, r *http.Request) {
+		var body BudgetRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SetStudyBudget(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/results", func(w http.ResponseWriter, r *http.Request) {
+		var body ResultRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.BindResult(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/decompositions", func(w http.ResponseWriter, r *http.Request) {
+		var body ProposalRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ImportDecomposition(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/decompositions/{id}/apply", func(w http.ResponseWriter, r *http.Request) {
+		var body ProposalRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ApplyDecomposition(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/library", func(w http.ResponseWriter, r *http.Request) {
+		var body PublishRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.PublishLemma(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/library/{id}/source", func(w http.ResponseWriter, r *http.Request) {
+		v, err := h.service.Store.Read()
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		for _, l := range v.Library {
+			if l.ID == r.PathValue("id") && l.Status == "ready" && libraryMatches(&v.Data, l) {
+				h.json(w, map[string]any{"module": l.Module, "source": l.Source, "report": l.Report, "lemma": l.Lemma, "revision": l.LemmaRevision})
+				return
+			}
+		}
+		h.fail(w, RuleError("Действующий модуль не найден."))
+	})
+	h.mux.HandleFunc("GET /api/studies/{id}/observability", func(w http.ResponseWriter, r *http.Request) {
+		value, err := h.service.ObserveStudy(r.PathValue("id"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, value)
+	})
+	h.mux.HandleFunc("GET /api/studies/{id}/report", func(w http.ResponseWriter, r *http.Request) {
+		v, err := h.service.Store.Read()
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		for _, study := range v.Studies {
+			if study.ID == r.PathValue("id") {
+				h.json(w, map[string]any{"study": study.ID, "revision": v.Revision, "text": studyStatus(v.Data, study.ID)})
+				return
+			}
+		}
+		h.fail(w, RuleError("Исследование не найдено."))
+	})
+	h.mux.HandleFunc("POST /api/worker-bindings", func(w http.ResponseWriter, r *http.Request) {
+		var body BindingRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.BindWorker(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/workers/{id}/claim", func(w http.ResponseWriter, r *http.Request) {
+		var body WorkerRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		packet, err := h.service.ClaimWorker(r.PathValue("id"), body)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, packet)
+	})
+	h.mux.HandleFunc("POST /api/workers/{id}/attempts/{attempt}/heartbeat", func(w http.ResponseWriter, r *http.Request) {
+		var body WorkerRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.HeartbeatWorker(r.PathValue("id"), r.PathValue("attempt"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, map[string]bool{"ok": true})
+	})
+	h.mux.HandleFunc("POST /api/workers/{id}/attempts/{attempt}/result", func(w http.ResponseWriter, r *http.Request) {
+		var body WorkerRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SubmitWorker(r.PathValue("id"), r.PathValue("attempt"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, map[string]bool{"ok": true})
+	})
+	h.mux.HandleFunc("POST /api/telegram/bindings", func(w http.ResponseWriter, r *http.Request) {
+		var body BindingRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.BindTelegram(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/telegram/messages", func(w http.ResponseWriter, r *http.Request) {
+		var body MessageRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SendStudyMessage(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/teams", func(w http.ResponseWriter, r *http.Request) {
+		var body TeamRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.StartTeam(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/teams/{id}/commands", func(w http.ResponseWriter, r *http.Request) {
+		var body TeamCommand
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ControlTeam(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/entities/{id}/formal-goal", func(w http.ResponseWriter, r *http.Request) {
+		var body FormalGoalRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SetFormalGoal(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/verifications", func(w http.ResponseWriter, r *http.Request) {
+		var body VerifyRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.StartVerification(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/entities/{id}/proof-source", func(w http.ResponseWriter, r *http.Request) {
+		var body ProofSourceRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SubmitProofSource(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/verifications/{id}/attach", func(w http.ResponseWriter, r *http.Request) {
+		var body AttachVerificationRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.AttachVerification(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/attempts/{id}/events", func(w http.ResponseWriter, r *http.Request) {
+		after := 0
+		if value := r.URL.Query().Get("after"); value != "" {
+			n, err := strconv.Atoi(value)
+			if err != nil {
+				h.fail(w, RuleError("Неверный номер события."))
+				return
+			}
+			after = n
+		}
+		rows, err := h.service.Journal(r.PathValue("id"), after)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, rows)
+	})
+	h.mux.HandleFunc("POST /api/attempts/{id}/resume", func(w http.ResponseWriter, r *http.Request) {
+		var body ResumeRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ResumeAttempt(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/cycles", func(w http.ResponseWriter, r *http.Request) {
+		var request CycleRequest
+		if err := bodyJSON(w, r, &request); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.StartCycle(request); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/cycles/{id}/commands", func(w http.ResponseWriter, r *http.Request) {
+		var request CycleCommand
+		if err := bodyJSON(w, r, &request); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ControlCycle(r.PathValue("id"), request); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("GET /api/bootstrap", func(w http.ResponseWriter, r *http.Request) { h.view(w) })
 	h.mux.HandleFunc("GET /api/history/{revision}", func(w http.ResponseWriter, r *http.Request) {
 		revision, err := strconv.Atoi(r.PathValue("revision"))

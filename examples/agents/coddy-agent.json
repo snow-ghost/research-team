@@ -17,7 +17,7 @@
   "external": {
     "provider": "coddy-agent",
     "executable": "/usr/local/bin/coddy-agent",
-    "expected_version": "1.1.64",
+    "expected_version": "1.2.54",
     "model": "replace-model",
     "base_url": "https://provider.example/v1",
     "search_path": "/usr/local/bin:/usr/bin:/bin",

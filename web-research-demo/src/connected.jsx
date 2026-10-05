@@ -159,7 +159,11 @@ export function Connected({ App }) {
         error,
         refresh,
         action: (action) => post("/actions", action, true),
+        command: (path, body) => post(path, body, true),
         start: (body) => post("/attempts", body, true),
+        startCycle: (body) => post("/cycles", body, true),
+        controlCycle: (id, body) =>
+          post("/cycles/" + encodeURIComponent(id) + "/commands", body, true),
         cancel: (id) =>
           post("/attempts/" + encodeURIComponent(id) + "/cancel", {}),
         prepareCoddy: (body) => post("/coddy", body, true),

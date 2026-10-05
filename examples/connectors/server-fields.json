@@ -1,0 +1,19 @@
+{
+  "workers": [
+    {
+      "id": "worker-proof",
+      "label": "Удаленный поиск доказательства",
+      "token_env": "RESEARCH_WORKER_KEY",
+      "profiles": ["model-proof-reader"]
+    }
+  ],
+  "telegram": [
+    {
+      "id": "research-chat",
+      "label": "Чат исследования",
+      "token_env": "RESEARCH_TELEGRAM_TOKEN",
+      "chat_id": -1000000000000,
+      "allowed_user_ids": [123456789]
+    }
+  ]
+}

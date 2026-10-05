@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/snow-ghost/research-team/internal/execution"
+	"github.com/snow-ghost/research-team/internal/leancheck"
 )
 
 var ErrConflict = errors.New("Снимок изменился. Обновите данные перед повторным действием.")
@@ -19,33 +22,38 @@ type RuleError string
 func (e RuleError) Error() string { return string(e) }
 
 type Study struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Goal     string `json:"goal"`
-	Category string `json:"category"`
-	Formula  string `json:"formula"`
+	Budget   *StudyBudget `json:"budget,omitempty"`
+	ID       string       `json:"id"`
+	Title    string       `json:"title"`
+	Goal     string       `json:"goal"`
+	Category string       `json:"category"`
+	Formula  string       `json:"formula"`
 }
 type Entity struct {
-	ID                  string         `json:"id"`
-	Title               string         `json:"title"`
-	Kind                string         `json:"kind"`
-	Study               string         `json:"study"`
-	Status              string         `json:"status"`
-	Statement           string         `json:"statement"`
-	Revision            int            `json:"revision"`
-	Author              string         `json:"author"`
-	Domain              string         `json:"domain"`
-	Assumptions         string         `json:"assumptions"`
-	Dependencies        []string       `json:"dependencies"`
-	DependencyRevisions map[string]int `json:"dependencyRevisions,omitempty"`
-	Proof               string         `json:"proof"`
-	ProofAuthor         string         `json:"proofAuthor,omitempty"`
-	ProofAttempt        string         `json:"proofAttempt,omitempty"`
-	Counterexample      string         `json:"counterexample,omitempty"`
-	ReviewReason        string         `json:"reviewReason,omitempty"`
-	ReviewedBy          string         `json:"reviewedBy,omitempty"`
+	FormalGoal          *leancheck.Goal `json:"formal_goal,omitempty"`
+	ID                  string          `json:"id"`
+	Title               string          `json:"title"`
+	Kind                string          `json:"kind"`
+	Study               string          `json:"study"`
+	Status              string          `json:"status"`
+	Statement           string          `json:"statement"`
+	Revision            int             `json:"revision"`
+	Author              string          `json:"author"`
+	Domain              string          `json:"domain"`
+	Assumptions         string          `json:"assumptions"`
+	Dependencies        []string        `json:"dependencies"`
+	DependencyRevisions map[string]int  `json:"dependencyRevisions,omitempty"`
+	Proof               string          `json:"proof"`
+	ProofAuthor         string          `json:"proofAuthor,omitempty"`
+	ProofAttempt        string          `json:"proofAttempt,omitempty"`
+	ProofVerification   string          `json:"proofVerification,omitempty"`
+	ResearchResult      string          `json:"researchResult,omitempty"`
+	Counterexample      string          `json:"counterexample,omitempty"`
+	ReviewReason        string          `json:"reviewReason,omitempty"`
+	ReviewedBy          string          `json:"reviewedBy,omitempty"`
 }
 type Task struct {
+	CycleID   string `json:"cycle_id,omitempty"`
 	ID        string `json:"id"`
 	Target    string `json:"target"`
 	Title     string `json:"title"`
@@ -67,12 +75,13 @@ type Question struct {
 	AnswerAttempt string `json:"answerAttempt,omitempty"`
 }
 type Finding struct {
-	ID       string `json:"id"`
-	Target   string `json:"target"`
-	Text     string `json:"text"`
-	Severity string `json:"severity"`
-	State    string `json:"state"`
-	Revision int    `json:"revision"`
+	ReviewAttempt string `json:"review_attempt,omitempty"`
+	ID            string `json:"id"`
+	Target        string `json:"target"`
+	Text          string `json:"text"`
+	Severity      string `json:"severity"`
+	State         string `json:"state"`
+	Revision      int    `json:"revision"`
 }
 type Application struct {
 	ID            string `json:"id"`
@@ -82,38 +91,61 @@ type Application struct {
 	State         string `json:"state"`
 }
 type Attempt struct {
-	ID             string     `json:"id"`
-	TaskID         string     `json:"task_id"`
-	Target         string     `json:"target"`
-	TargetRevision int        `json:"target_revision"`
-	Profile        string     `json:"profile"`
-	Workspace      string     `json:"workspace"`
-	Status         string     `json:"status"`
-	CreatedAt      time.Time  `json:"created_at"`
-	FinishedAt     *time.Time `json:"finished_at,omitempty"`
-	InputSnapshot  int        `json:"input_snapshot"`
-	InputSHA256    string     `json:"input_sha256,omitempty"`
-	ResultSHA256   string     `json:"result_sha256,omitempty"`
-	RemoteOutcome  string     `json:"remote_outcome"`
+	StopCause            string            `json:"stop_cause,omitempty"`
+	ReservedOutputTokens int64             `json:"reserved_output_tokens,omitempty"`
+	ProofBinding         *ProofBinding     `json:"proof_binding,omitempty"`
+	RemoteWorker         string            `json:"remote_worker,omitempty"`
+	LeaseEpoch           uint64            `json:"lease_epoch,omitempty"`
+	LeaseExpires         *time.Time        `json:"lease_expires,omitempty"`
+	LeaseDeadline        *time.Time        `json:"lease_deadline,omitempty"`
+	ClaimRequest         string            `json:"claim_request,omitempty"`
+	TeamID               string            `json:"team_id,omitempty"`
+	Role                 string            `json:"role,omitempty"`
+	ReviewOf             string            `json:"review_of,omitempty"`
+	ParentAttempt        string            `json:"parent_attempt,omitempty"`
+	Limits               *execution.Limits `json:"limits,omitempty"`
+	CycleID              string            `json:"cycle_id,omitempty"`
+	ID                   string            `json:"id"`
+	TaskID               string            `json:"task_id"`
+	Target               string            `json:"target"`
+	TargetRevision       int               `json:"target_revision"`
+	Profile              string            `json:"profile"`
+	Workspace            string            `json:"workspace"`
+	Status               string            `json:"status"`
+	CreatedAt            time.Time         `json:"created_at"`
+	FinishedAt           *time.Time        `json:"finished_at,omitempty"`
+	InputSnapshot        int               `json:"input_snapshot"`
+	InputSHA256          string            `json:"input_sha256,omitempty"`
+	ResultSHA256         string            `json:"result_sha256,omitempty"`
+	RemoteOutcome        string            `json:"remote_outcome"`
 }
 type Delegation struct {
 	ID     string `json:"id"`
 	Target string `json:"target"`
 }
 type Data struct {
-	Schema       int           `json:"schema"`
-	Revision     int           `json:"revision"`
-	Paused       bool          `json:"paused"`
-	ScenarioStep int           `json:"scenarioStep"`
-	Studies      []Study       `json:"studies"`
-	Entities     []Entity      `json:"entities"`
-	WorkLinks    [][2]string   `json:"workLinks"`
-	Tasks        []Task        `json:"tasks"`
-	Questions    []Question    `json:"questions"`
-	Findings     []Finding     `json:"findings"`
-	Applications []Application `json:"applications"`
-	Attempts     []Attempt     `json:"attempts"`
-	Delegations  []Delegation  `json:"delegations"`
+	Results         []ResearchResult   `json:"results,omitempty"`
+	Proposals       []Decomposition    `json:"proposals,omitempty"`
+	Library         []LibraryEntry     `json:"library,omitempty"`
+	Messages        []StudyMessage     `json:"messages,omitempty"`
+	TelegramOffsets []TelegramOffset   `json:"telegram_offsets,omitempty"`
+	Bindings        []ConnectorBinding `json:"bindings,omitempty"`
+	Teams           []ResearchTeam     `json:"teams,omitempty"`
+	Verifications   []Verification     `json:"verifications,omitempty"`
+	Cycles          []Cycle            `json:"cycles"`
+	Schema          int                `json:"schema"`
+	Revision        int                `json:"revision"`
+	Paused          bool               `json:"paused"`
+	ScenarioStep    int                `json:"scenarioStep"`
+	Studies         []Study            `json:"studies"`
+	Entities        []Entity           `json:"entities"`
+	WorkLinks       [][2]string        `json:"workLinks"`
+	Tasks           []Task             `json:"tasks"`
+	Questions       []Question         `json:"questions"`
+	Findings        []Finding          `json:"findings"`
+	Applications    []Application      `json:"applications"`
+	Attempts        []Attempt          `json:"attempts"`
+	Delegations     []Delegation       `json:"delegations"`
 }
 type History struct {
 	ID     int    `json:"id"`
@@ -148,7 +180,7 @@ type Action struct {
 }
 
 func emptyData() Data {
-	return Data{Schema: 1, Revision: 1, Studies: []Study{}, Entities: []Entity{}, WorkLinks: [][2]string{},
+	return Data{Schema: 1, Revision: 1, Cycles: []Cycle{}, Studies: []Study{}, Entities: []Entity{}, WorkLinks: [][2]string{},
 		Tasks: []Task{}, Questions: []Question{}, Findings: []Finding{}, Applications: []Application{},
 		Attempts: []Attempt{}, Delegations: []Delegation{}}
 }

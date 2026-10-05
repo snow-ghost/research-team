@@ -18,6 +18,7 @@ const maxState = 16 << 20
 var requestPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{8,100}$`)
 
 type Store struct {
+	pg      *postgresStore
 	db      *sql.DB
 	mu      sync.Mutex
 	release func()
@@ -90,8 +91,18 @@ func OpenStore(dir string) (*Store, error) {
 	}
 	return s, nil
 }
-func (s *Store) Close() error { err := s.db.Close(); s.release(); return err }
+func (s *Store) Close() error {
+	if s.pg != nil {
+		return s.pg.Close()
+	}
+	err := s.db.Close()
+	s.release()
+	return err
+}
 func (s *Store) Read() (View, error) {
+	if s.pg != nil {
+		return s.pg.Read()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var data []byte
@@ -128,6 +139,9 @@ func (s *Store) Read() (View, error) {
 	return view, rows.Err()
 }
 func (s *Store) Snapshot(revision int) (Data, error) {
+	if s.pg != nil {
+		return s.pg.Snapshot(revision)
+	}
 	var data []byte
 	err := s.db.QueryRow("SELECT snapshot FROM history WHERE revision=?", revision).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) && revision == 1 {
@@ -142,6 +156,17 @@ func (s *Store) Snapshot(revision int) (Data, error) {
 
 // State, its historical snapshot and command deduplication commit together.
 func (s *Store) Change(expected int, requestID, fingerprint, label, target, actor string, mutate func(*Data) error) error {
+	change := mutate
+	mutate = func(d *Data) error {
+		if err := change(d); err != nil {
+			return err
+		}
+		refreshEvidence(d)
+		return nil
+	}
+	if s.pg != nil {
+		return s.pg.Change(expected, requestID, fingerprint, label, target, actor, mutate)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.Begin()
@@ -182,7 +207,10 @@ func (s *Store) Change(expected int, requestID, fingerprint, label, target, acto
 	if err = mutate(&data); err != nil {
 		return err
 	}
-	if len(data.Entities) > 2000 || len(data.Tasks) > 2000 || len(data.Questions) > 2000 || len(data.Attempts) > 100 || len(data.Findings) > 2000 {
+	if err := validateState(data); err != nil {
+		return err
+	}
+	if len(data.Entities) > 2000 || len(data.Tasks) > 2000 || len(data.Questions) > 2000 || len(data.Attempts) > 100 || len(data.Findings) > 2000 || len(data.Cycles) > 100 {
 		return ErrLimit
 	}
 	data.Revision++

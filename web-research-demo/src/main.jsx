@@ -562,6 +562,11 @@ function App({ live } = {}) {
       formula: "",
     };
   const item = view.entities.find((x) => x.id === selected);
+  const proofCheck = item && (view.verifications || []).find((v) =>
+    v.target === item.id && v.target_revision === item.revision &&
+    v.status === "verified" && v.report?.status === "verified" &&
+    (item.proofVerification ? v.id === item.proofVerification : item.proofAttempt && v.attempt === item.proofAttempt),
+  );
   const readOnly = historic !== null || !!live?.busy;
   const allStudy = view.entities.filter((x) => x.study === currentStudy.id);
   const tasks = view.tasks.filter(
@@ -1213,7 +1218,7 @@ function App({ live } = {}) {
                       {view.entities
                         .filter(
                           (x) =>
-                            x.kind === "lemma" &&
+                            (x.kind === "lemma" || (view.library || []).some(l => l.lemma === x.id && l.status === "ready")) &&
                             (lemmaFilter === "all" ||
                               effectiveStatus(view, x.id) === "accepted"),
                         )
@@ -1555,10 +1560,14 @@ function App({ live } = {}) {
                 {detailTab === "proof" && (
                   <>
                     <div className="field-label">АРГУМЕНТ</div>
-                    <p>{item.proof || "Обоснование еще не представлено."}</p>
+                    {live && item.formal_goal && item.proof
+                      ? <pre className="proof-source">{item.proof}</pre>
+                      : <p>{item.proof || "Обоснование еще не представлено."}</p>}
+                    {live && item.proofAuthor && <p className="muted">Автор: {item.proofAuthor}</p>}
                     {live && item.proofAttempt && (
                       <p className="muted">Источник: <code>{item.proofAttempt}</code></p>
                     )}
+                    {live && item.proofVerification && <p className="muted">Проверка: <code>{item.proofVerification}</code></p>}
                     {live && item.reviewReason && (
                       <>
                         <div className="field-label">РЕШЕНИЕ ОПЕРАТОРА</div>
@@ -1595,7 +1604,9 @@ function App({ live } = {}) {
                       <ShieldCheck size={16} />
                       <span>
                         {live
-                          ? "Приемка записывает решение оператора с обоснованием; автоматической проверки доказательства нет."
+                          ? item.formal_goal
+                            ? proofCheck ? "Lean: подтверждено для версии " + item.revision + "." : "Lean: нет успешной проверки текущего доказательства."
+                            : "Формальная цель не закреплена."
                           : "Приемка здесь относится только к данным макета."}
                       </span>
                     </div>
@@ -1608,7 +1619,7 @@ function App({ live } = {}) {
                               readOnly ||
                               (live
                                 ? !item.proofAuthor ||
-                                  item.proofAuthor === "operator"
+                                  item.proofAuthor === "operator" || (item.formal_goal && !proofCheck)
                                 : item.author === "user" ||
                                   item.kind === "application")
                             }

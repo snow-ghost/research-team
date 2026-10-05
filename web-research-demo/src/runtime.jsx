@@ -1,4 +1,15 @@
 import React, { useEffect, useState } from "react";
+import { CyclePanel } from "./cycles.jsx";
+import { EvidencePanel } from "./evidence.jsx";
+import {
+  TeamPanel,
+  FormalGoalPanel,
+  JournalPanel,
+  ResumeForm,
+  TelegramPanel,
+  WorkerPanel,
+  UsageSummary,
+} from "./process.jsx";
 import {
   Play,
   Square,
@@ -8,6 +19,10 @@ import {
   CircleAlert,
   Cpu,
   RefreshCw,
+  ScrollText,
+  RotateCcw,
+  ShieldCheck,
+  Download,
 } from "lucide-react";
 
 export const attemptStates = {
@@ -21,9 +36,12 @@ export const attemptStates = {
   timed_out: "Истекло время",
   limit_reached: "Достигнут предел",
   interrupted: "Прервано; исход требует проверки",
+  awaiting_worker: "Ожидает удаленного исполнителя",
 };
 const running = (status) =>
-  ["queued", "preparing", "running", "cancelling"].includes(status);
+  ["queued", "preparing", "running", "cancelling", "awaiting_worker"].includes(
+    status,
+  );
 
 export function RuntimePanel({
   live,
@@ -37,6 +55,21 @@ export function RuntimePanel({
   const [launch, setLaunch] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [journal, setJournal] = useState(null);
+  const [resume, setResume] = useState(null);
+  const remoteAvailable = (profile) =>
+    (live.data.workers || []).some(
+      (w) =>
+        w.available &&
+        w.profiles.includes(profile) &&
+        state.bindings?.some(
+          (b) =>
+            b.kind === "worker" &&
+            b.study === study &&
+            b.connector === w.id &&
+            b.enabled,
+        ),
+    );
   const tasks = state.tasks.filter(
     (t) =>
       providers ||
@@ -61,6 +94,38 @@ export function RuntimePanel({
   }, [state, launch]);
   return (
     <div className="scroll-content runtime-panel">
+      <TeamPanel
+        live={live}
+        study={study}
+        all={providers}
+        onSelect={onSelect}
+      />
+      {!providers && (
+        <FormalGoalPanel live={live} study={study} selected={selected} />
+      )}
+      {!providers && (
+        <EvidencePanel live={live} study={study} selected={selected} />
+      )}
+      <CyclePanel
+        live={live}
+        study={study}
+        all={providers}
+        onSelect={onSelect}
+      />
+      {journal && (
+        <JournalPanel
+          live={live}
+          attempt={journal}
+          onClose={() => setJournal(null)}
+        />
+      )}
+      {resume && (
+        <ResumeForm
+          live={live}
+          attempt={resume}
+          onClose={() => setResume(null)}
+        />
+      )}
       {providers && (
         <>
           <div className="section-intro">
@@ -140,10 +205,12 @@ export function RuntimePanel({
           </label>
           <label>
             Вид задания
-            <select name="kind">
+            <select name="kind" defaultValue="proof">
+              <option value="decompose">Предложение разбиения</option>
               <option value="proof">Поиск доказательства</option>
               <option value="review">Рецензия</option>
               <option value="counterexample">Поиск контрпримера</option>
+              <option value="formalize">Формализация</option>
             </select>
           </label>
           <label>
@@ -189,6 +256,7 @@ export function RuntimePanel({
                       review: "Рецензия",
                       counterexample: "Контрпример",
                       answer: "Ответ",
+                      formalize: "Формализация",
                     }[t.kind]
                   }
                 </td>
@@ -221,15 +289,47 @@ export function RuntimePanel({
                 task_id: launch,
                 profile: values.profile,
                 workspace: values.workspace,
+                remote_worker: values.remote_worker || "",
+                review_verification: values.review_verification || "",
                 confirm: values.confirm === "on",
               }),
             );
           }}
         >
+          {state.tasks.find((t) => t.id === launch)?.kind === "review" && (
+            <label>
+              Проверенный исходник
+              <select
+                name="review_verification"
+                aria-label="Проверенный исходник"
+                defaultValue=""
+              >
+                <option value="">Без привязки к формальному файлу</option>
+                {(state.verifications || [])
+                  .filter(
+                    (v) =>
+                      v.status === "verified" &&
+                      v.target ===
+                        state.tasks.find((t) => t.id === launch)?.target &&
+                      v.target_revision ===
+                        state.entities.find((e) => e.id === v.target)
+                          ?.revision &&
+                      (v.origin !== "submitted" ||
+                        v.submitted_revision === v.target_revision),
+                  )
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.id} · {v.author || "Исполнитель"}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           <label>
             Исполнитель
             <select
               name="profile"
+              aria-label="Исполнитель"
               required
               defaultValue={profiles.find((p) => p.available)?.id || ""}
             >
@@ -237,9 +337,17 @@ export function RuntimePanel({
                 Выберите профиль
               </option>
               {profiles.map((p) => (
-                <option key={p.id} value={p.id} disabled={!p.available}>
+                <option
+                  key={p.id}
+                  value={p.id}
+                  disabled={!p.available && !remoteAvailable(p.id)}
+                >
                   {p.label}
-                  {p.available ? "" : " (недоступен)"}
+                  {p.available
+                    ? ""
+                    : remoteAvailable(p.id)
+                      ? " (удаленно)"
+                      : " (недоступен)"}
                 </option>
               ))}
             </select>
@@ -258,11 +366,34 @@ export function RuntimePanel({
             <input type="checkbox" name="confirm" required />
             Подтверждаю запуск и возможные расходы модели
           </label>
+          <label>
+            Место исполнения
+            <select name="remote_worker">
+              <option value="">Этот сервер</option>
+              {(live.data.workers || [])
+                .filter(
+                  (w) =>
+                    w.available &&
+                    state.bindings?.some(
+                      (b) =>
+                        b.kind === "worker" &&
+                        b.study === study &&
+                        b.connector === w.id &&
+                        b.enabled,
+                    ),
+                )
+                .map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.label || w.id}
+                  </option>
+                ))}
+            </select>
+          </label>
           <button
             className="button primary"
             disabled={
               live.busy ||
-              !profiles.some((p) => p.available) ||
+              !profiles.some((p) => p.available || remoteAvailable(p.id)) ||
               !workspaces.length
             }
           >
@@ -302,6 +433,39 @@ export function RuntimePanel({
               </small>
             </div>
             <div className="row-actions">
+              <button
+                className="icon-button"
+                title="Журнал действий"
+                aria-label={"Журнал действий " + a.id}
+                onClick={() => setJournal(a)}
+              >
+                <ScrollText size={16} />
+              </button>
+              {!running(a.status) && a.result_sha256 && !a.team_id && (
+                <button
+                  className="icon-button"
+                  title="Продолжить попытку"
+                  aria-label="Продолжить попытку"
+                  onClick={() => setResume(a)}
+                >
+                  <RotateCcw size={16} />
+                </button>
+              )}
+              {a.status === "candidate" &&
+                state.entities.find((e) => e.id === a.target)?.formal_goal && (
+                  <button
+                    className="icon-button"
+                    title="Проверить Lean"
+                    disabled={live.busy || !live.data.lean?.configured}
+                    onClick={() =>
+                      act(() =>
+                        live.command("/verifications", { attempt: a.id }),
+                      )
+                    }
+                  >
+                    <ShieldCheck size={16} />
+                  </button>
+                )}
               {running(a.status) && (
                 <button
                   className="icon-button"
@@ -349,12 +513,89 @@ export function RuntimePanel({
             <strong>{attemptStates[result.result.status]}</strong>
             <span>Расход токенов</span>
             <strong>
-              {result.result.usage
-                ? JSON.stringify(result.result.usage)
-                : "Неизвестен"}
+              <UsageSummary usage={result.result.usage} />
             </strong>
+            {result.result.failure_code && (
+              <>
+                <span>Код остановки</span>
+                <strong>{result.result.failure_code}</strong>
+              </>
+            )}
           </div>
-          <pre>{result.result.candidate || "Кандидат отсутствует."}</pre>
+          {!!result.result.diagnostics?.length && (
+            <section aria-label="Диагностика исполнителя">
+              <div className="section-intro">
+                <h3>Диагностика исполнителя</h3>
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="Скачать диагностику"
+                  aria-label="Скачать диагностику"
+                  onClick={() => {
+                    const a = result.attempt;
+                    const r = result.result;
+                    const report = {
+                      format: "research-team-execution-diagnostics-v1",
+                      attempt: {
+                        id: a.id,
+                        parent_attempt: a.parent_attempt,
+                        profile: a.profile,
+                        created_at: a.created_at,
+                        finished_at: a.finished_at,
+                        limits: a.limits,
+                      },
+                      status: r.status,
+                      failure_code: r.failure_code,
+                      remote_outcome: r.remote_outcome,
+                      profile_sha256: r.profile_sha256,
+                      diagnostics: r.diagnostics,
+                      usage: r.usage,
+                    };
+                    const url = URL.createObjectURL(
+                      new Blob([JSON.stringify(report, null, 2) + "\n"], {
+                        type: "application/json",
+                      }),
+                    );
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = a.id + ".diagnostics.json";
+                    link.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  }}
+                >
+                  <Download size={16} />
+                </button>
+              </div>
+              {result.result.diagnostics.some((d) => d.byte_limit_reached) && (
+                <p className="api-error" role="status">
+                  Достигнут предел байтов вывода процесса.
+                </p>
+              )}
+              {result.result.diagnostics.map((d, i) => (
+                <details
+                  key={i}
+                  open={d.source !== "process" || d.byte_limit_reached}
+                >
+                  <summary>
+                    {{
+                      acp: "Ошибка ACP",
+                      stderr: "Поток ошибок",
+                      process: "Завершение процесса",
+                    }[d.source] || d.source}
+                    {" · "}
+                    {d.stage}
+                    {d.rpc_code != null ? " · " + d.rpc_code : ""}
+                  </summary>
+                  <pre>{JSON.stringify(d, null, 2)}</pre>
+                </details>
+              ))}
+            </section>
+          )}
+          <pre>
+            {result.result.candidate ||
+              result.result.partial ||
+              "Кандидат отсутствует."}
+          </pre>
           <details>
             <summary>Сведения об исполнении</summary>
             <pre>
@@ -366,8 +607,10 @@ export function RuntimePanel({
             </pre>
           </details>
           {result.result.status === "candidate" &&
-            state.tasks.find((t) => t.id === result.attempt.task_id)?.kind ===
-              "proof" && (
+            !result.attempt.team_id &&
+            ["proof", "formalize"].includes(
+              state.tasks.find((t) => t.id === result.attempt.task_id)?.kind,
+            ) && (
               <button
                 className="button primary"
                 disabled={
@@ -392,6 +635,8 @@ export function RuntimePanel({
             )}
         </section>
       )}
+      {!providers && <TelegramPanel live={live} study={study} />}
+      {!providers && <WorkerPanel live={live} study={study} />}
     </div>
   );
 }

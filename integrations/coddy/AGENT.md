@@ -9,7 +9,9 @@ Coddy Agent написан на Go и выполняет задания отде
 
 ## Версия и сборка
 
-Закреплены Coddy Agent `1.1.64`, исходники `aae37407fbe6aedfe81b9f620c9b8cd702d63b0b`, и клиентская библиотека Go `github.com/coder/acp-go-sdk v0.13.5`. [Исходники агента](https://github.com/coddy-project/coddy-agent/tree/aae37407fbe6aedfe81b9f620c9b8cd702d63b0b), [библиотека ACP](https://github.com/coder/acp-go-sdk/tree/v0.13.5).
+Адаптер допускает Coddy Agent `1.1.64`, `1.2.1` и `1.2.54`. Профиль закрепляет одну точную версию. Для `1.2.54` проверен официальный [выпуск](https://github.com/coddy-project/coddy-agent/releases/tag/1.2.54) с исходниками `cc012f2b890a5a271b40dd15566a43b922669ce3`. Клиентская библиотека: `github.com/coder/acp-go-sdk v0.13.5`.
+
+Ниже сохранен порядок сборки исходной версии `1.1.64` из `aae37407fbe6aedfe81b9f620c9b8cd702d63b0b`. [Исходники этой версии](https://github.com/coddy-project/coddy-agent/tree/aae37407fbe6aedfe81b9f620c9b8cd702d63b0b), [библиотека ACP](https://github.com/coder/acp-go-sdk/tree/v0.13.5).
 
 В проверенной копии исходников агента:
 

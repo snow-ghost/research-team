@@ -86,7 +86,7 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		result.Events = append(result.Events, Event{Type: "model_requested", Step: step})
+		record(ctx, &result, Event{Type: "model_requested", Step: step})
 		result.RemoteOutcome = "unknown"
 		result.Usage = nil
 		reply, err := e.complete(ctx, messages)
@@ -108,19 +108,28 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 		} else {
 			result.Usage = nil
 		}
+		record(ctx, &result, Event{Type: "model_response", Step: step, Usage: result.Usage})
 		if len(reply.Choices) != 1 {
 			return result, ErrProtocol
 		}
 		choice := reply.Choices[0]
 		m := choice.Message
+		if m.Content != "" {
+			result.Partial = e.redact(m.Content)
+			record(ctx, &result, Event{Type: "assistant_message", Step: step, Output: result.Partial})
+		}
 		if m.Role != "assistant" || m.Refusal != "" {
 			return result, ErrProtocol
 		}
 		if len(m.ToolCalls) == 0 {
+			if choice.FinishReason == "length" {
+				return result, ErrLimit
+			}
 			if choice.FinishReason != "stop" || strings.TrimSpace(m.Content) == "" {
 				return result, ErrProtocol
 			}
 			result.Candidate = e.redact(m.Content)
+			result.Partial = ""
 			return result, nil
 		}
 		if choice.FinishReason != "tool_calls" {
@@ -145,13 +154,18 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 				return result, err
 			}
 			path, _ := readArguments(call.Function.Arguments)
+			record(ctx, &result, maskedEvent(Event{Type: "tool_started", Step: step, Tool: call.Function.Name, CallID: call.ID, Input: call.Function.Arguments}, e.token))
 			data, toolErr := readWorkspaceFile(root, path)
 			if toolErr != nil {
 				data = "File read denied or unavailable."
 			}
 			messages = append(messages, message{Role: "tool", ToolCallID: call.ID, Content: data})
 			toolCount++
-			result.Events = append(result.Events, Event{Type: "tool_completed", Step: step, Tool: call.Function.Name})
+			status := "completed"
+			if toolErr != nil {
+				status = "denied"
+			}
+			record(ctx, &result, maskedEvent(Event{Type: "tool_completed", Step: step, Tool: call.Function.Name, CallID: call.ID, Status: status, Output: data}, e.token))
 		}
 	}
 	return result, ErrLimit

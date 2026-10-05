@@ -54,6 +54,7 @@ func applyAction(d *Data, a Action) error {
 		item.Proof = ""
 		item.ProofAuthor = ""
 		item.ProofAttempt = ""
+		item.ProofVerification = ""
 		item.DependencyRevisions = nil
 		for i, title := range a.Parts {
 			d.Entities = append(d.Entities, newEntity(ids[i], title, "claim", parent.Study, title, parent.Assumptions))
@@ -71,7 +72,7 @@ func applyAction(d *Data, a Action) error {
 			title = "Поиск контрпримера: " + item.Title
 			objective = "Проверить граничные случаи и найти контрпример, удовлетворяющий всем предпосылкам."
 		}
-		if kind != "proof" && kind != "review" && kind != "counterexample" {
+		if kind != "proof" && kind != "review" && kind != "counterexample" && kind != "formalize" && kind != "decompose" {
 			return RuleError("Неподдерживаемый вид задания.")
 		}
 		if !textOK(title, 500) || !textOK(objective, 16000) {
@@ -90,7 +91,13 @@ func applyAction(d *Data, a Action) error {
 		}
 	case "APPLY":
 		lemma := d.entity(a.Lemma)
-		if lemma == nil || lemma.Kind != "lemma" || d.effective(lemma.ID, map[string]bool{}) != "accepted" {
+		published := false
+		for _, l := range d.Library {
+			if l.Lemma == a.Lemma && l.Status == "ready" && libraryMatches(d, l) {
+				published = true
+			}
+		}
+		if lemma == nil || (lemma.Kind != "lemma" && !published) || d.effective(lemma.ID, map[string]bool{}) != "accepted" {
 			return RuleError("Нужна действующая принятая лемма.")
 		}
 		if item == nil || item.ID == lemma.ID || (item.Kind != "goal" && item.Kind != "claim") || item.Status == "accepted" || item.Status == "refuted" {
@@ -110,6 +117,7 @@ func applyAction(d *Data, a Action) error {
 		item.Proof = ""
 		item.ProofAuthor = ""
 		item.ProofAttempt = ""
+		item.ProofVerification = ""
 		item.DependencyRevisions = nil
 		d.WorkLinks = append(d.WorkLinks, [2]string{item.ID, id})
 		d.Applications = append(d.Applications, app)

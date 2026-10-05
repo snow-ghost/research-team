@@ -22,7 +22,7 @@ func main() {
 	}
 }
 func run() error {
-	config := flag.String("config", "examples/server/local.json", "Trusted server configuration")
+	config := flag.String("config", "examples/server/postgres.json", "Trusted server configuration")
 	flag.Parse()
 	o, err := researchweb.LoadOptions(*config)
 	if err != nil {

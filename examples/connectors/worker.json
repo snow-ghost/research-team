@@ -1,0 +1,6 @@
+{
+  "server": "http://127.0.0.1:4187",
+  "worker": "worker-proof",
+  "token_env": "RESEARCH_WORKER_KEY",
+  "profile": "local-profile.json"
+}

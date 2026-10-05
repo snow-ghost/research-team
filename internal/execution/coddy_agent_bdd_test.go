@@ -110,10 +110,14 @@ func TestCoddyACPHelper(t *testing.T) {
 		}
 		return out
 	}
-	notify := func(session, kind, text string) {
+	notifyContent := func(session, kind, contentType, text string) {
 		send(map[string]any{"jsonrpc": "2.0", "method": "session/update",
 			"params": map[string]any{"sessionId": session, "update": map[string]any{
-				"sessionUpdate": kind, "content": map[string]any{"type": "text", "text": text}}}})
+				"sessionUpdate": kind, "content": map[string]any{"type": contentType, "text": text}}}})
+	}
+	notify := func(session, kind, text string) { notifyContent(session, kind, "text", text) }
+	tokenUsage := func(session string, input, output, total int64) {
+		send(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": session, "update": map[string]any{"sessionUpdate": "token_usage", "inputTokens": input, "outputTokens": output, "totalTokens": total}}})
 	}
 	for {
 		var frame struct {
@@ -177,6 +181,23 @@ func TestCoddyACPHelper(t *testing.T) {
 			}
 			reply(frame.ID, map[string]any{"configOptions": options()})
 		case "session/prompt":
+			if scenario == "prompt_error" {
+				fmt.Fprintln(os.Stderr, `{"level":"error","message":"provider failed","token":"private-test-token","authorization":"Bearer OTHER_CREDENTIAL"}`)
+				send(map[string]any{"jsonrpc": "2.0", "id": frame.ID, "error": map[string]any{
+					"code": -32603, "message": "model did not respond; credential private-test-token",
+					"data": map[string]any{"request_id": "request-503", "http_status": 503, "authorization": "OTHER_CREDENTIAL", "raw_response": "PRIVATE_ERROR_BODY"},
+				}})
+				continue
+			}
+			if scenario == "process_crash" {
+				fmt.Fprintln(os.Stderr, "agent crashed: private-test-token")
+				os.Exit(42)
+			}
+			if scenario == "stderr_tail" {
+				_, _ = io.WriteString(os.Stderr, strings.Repeat("old diagnostic\n", 6000))
+				_, _ = io.WriteString(os.Stderr, "last diagnostic: private-test-")
+				_, _ = io.WriteString(os.Stderr, "token\n")
+			}
 			if scenario == "missing_end" {
 				os.Exit(0)
 			}
@@ -213,6 +234,26 @@ func TestCoddyACPHelper(t *testing.T) {
 				session = "another"
 			}
 			notify(session, "agent_thought_chunk", "not a result")
+			if strings.HasPrefix(scenario, "usage_") {
+				notifyContent(session, "agent_message_chunk", "reasoning", "SYNTHETIC_PRIVATE_REASONING")
+				if scenario == "usage_zero" {
+					tokenUsage(session, 0, 0, 0)
+				} else {
+					tokenUsage(session, 10, 2, 12)
+				}
+				if scenario == "usage_multi" {
+					tokenUsage(session, 5, 3, 20)
+				}
+				if scenario == "usage_duplicate" {
+					tokenUsage(session, 10, 2, 12)
+				}
+				if scenario == "usage_invalid" {
+					tokenUsage(session, -1, 3, 14)
+				}
+				if scenario == "usage_gap" {
+					tokenUsage(session, 0, 0, 12)
+				}
+			}
 			if scenario != "empty" {
 				notify(session, "agent_message_chunk", "candidate ")
 				notify(session, "agent_message_chunk", "private-test-token")
@@ -256,7 +297,7 @@ func TestCoddyAgentBDD_CompletedTurnIsAnUnverifiedCandidate(t *testing.T) {
 func TestCoddyAgentBDD_IncompleteOrUntrustedTurnsAreRejected(t *testing.T) {
 	for _, scenario := range []string{"wrong_protocol", "wrong_model", "setting_error", "missing_end",
 		"wrong_session", "wrong_early_session", "mode_changed", "config_changed", "model_changed_at_last_setting",
-		"empty", "max_tokens", "max_turns", "max_turn_requests", "refusal", "cancelled"} {
+		"empty", "max_tokens", "max_turns", "max_turn_requests", "refusal", "cancelled", "usage_invalid"} {
 		t.Run(scenario, func(t *testing.T) {
 			r, err := buildTest(t, coddyProfile(coddyFixture(t, scenario))).Run(context.Background(), taskFor(t))
 			if err == nil || r.Candidate != "" || r.Status == "candidate" || strings.Contains(err.Error(), "private-test-token") {
@@ -375,7 +416,7 @@ func TestCoddyAgentBDD_CancellationStopsTheProcessGroup(t *testing.T) {
 func TestCoddyAgentBDD_RealBinaryWithLocalModel(t *testing.T) {
 	binary := os.Getenv("CODDY_AGENT_TEST_BINARY")
 	if binary == "" {
-		t.Skip("set CODDY_AGENT_TEST_BINARY to a reviewed 1.1.64 binary; only a local model stub is used")
+		t.Skip("set CODDY_AGENT_TEST_BINARY and optionally CODDY_AGENT_TEST_VERSION; only a local model stub is used")
 	}
 	for _, reason := range []string{"stop", "length"} {
 		t.Run(reason, func(t *testing.T) {
@@ -394,12 +435,16 @@ func TestCoddyAgentBDD_RealBinaryWithLocalModel(t *testing.T) {
 					t.Error("incorrect credential")
 				}
 				var req struct {
-					Model     string                                     `json:"model"`
-					MaxTokens int                                        `json:"max_tokens"`
-					Messages  []struct{ Content any }                    `json:"messages"`
-					Tools     []struct{ Function struct{ Name string } } `json:"tools"`
+					Model         string                                     `json:"model"`
+					MaxTokens     int                                        `json:"max_tokens"`
+					Messages      []struct{ Content any }                    `json:"messages"`
+					Tools         []struct{ Function struct{ Name string } } `json:"tools"`
+					Stream        bool                                       `json:"stream"`
+					StreamOptions struct {
+						IncludeUsage bool `json:"include_usage"`
+					} `json:"stream_options"`
 				}
-				if json.NewDecoder(r.Body).Decode(&req) != nil || req.Model != "test/model" || req.MaxTokens != 512 {
+				if json.NewDecoder(r.Body).Decode(&req) != nil || req.Model != "test/model" || req.MaxTokens != 16384 || !req.Stream || !req.StreamOptions.IncludeUsage {
 					t.Error("incorrect model request")
 				}
 				data, _ := json.Marshal(req.Messages)
@@ -413,11 +458,17 @@ func TestCoddyAgentBDD_RealBinaryWithLocalModel(t *testing.T) {
 					}
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprint(w, "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"SYNTHETIC_PRIVATE_REASONING\"},\"finish_reason\":null}]}\n\n")
 				fmt.Fprintf(w, "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Candidate lemma\"},\"finish_reason\":null}]}\n\n")
-				fmt.Fprintf(w, "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":%q}]}\n\ndata: [DONE]\n\n", reason)
+				fmt.Fprintf(w, "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":%q}]}\n\n", reason)
+				fmt.Fprint(w, "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"total_tokens\":18}}\n\ndata: [DONE]\n\n")
 			}))
 			defer server.Close()
 			p := coddyProfile(binary)
+			p.Limits.MaxOutputTokens = 16384
+			if version := os.Getenv("CODDY_AGENT_TEST_VERSION"); version != "" {
+				p.External.ExpectedVersion = version
+			}
 			p.External.BaseURL, p.External.AllowLoopbackHTTP = server.URL+"/v1", true
 			home := t.TempDir()
 			path := filepath.Join(home, "config.json")
@@ -442,6 +493,49 @@ func TestCoddyAgentBDD_RealBinaryWithLocalModel(t *testing.T) {
 			}
 			if calls.Load() != 1 {
 				t.Fatalf("unexpected model calls: %d", calls.Load())
+			}
+			if result.Usage == nil || result.Usage.InputTokens != 11 || result.Usage.OutputTokens != 7 || result.Usage.Incomplete || result.Usage.Source != "coddy_token_usage" {
+				t.Fatalf("usage missing: %+v", result)
+			}
+			if strings.Contains(result.Candidate+result.Partial, "SYNTHETIC_PRIVATE_REASONING") {
+				t.Fatal("reasoning leaked into result")
+			}
+			for _, event := range result.Events {
+				if strings.Contains(event.Output, "SYNTHETIC_PRIVATE_REASONING") {
+					t.Fatal("reasoning leaked into events")
+				}
+			}
+		})
+	}
+}
+func TestCoddyAgentBDD_ReasoningIsExcludedAndUsageIsMeasured(t *testing.T) {
+	for _, tc := range []struct {
+		scenario          string
+		input, output     int64
+		known, incomplete bool
+	}{
+		{"usage_multi", 15, 5, true, false}, {"usage_duplicate", 10, 2, true, false}, {"usage_zero", 0, 0, false, false}, {"usage_gap", 10, 2, true, true},
+	} {
+		t.Run(tc.scenario, func(t *testing.T) {
+			p := coddyProfile(coddyFixture(t, tc.scenario))
+			published := []Event{}
+			ctx := WithObserver(context.Background(), func(e Event) { published = append(published, e) })
+			result, err := buildTest(t, p).Run(ctx, taskFor(t))
+			if err != nil || result.Candidate != "candidate [REDACTED]" || result.ContentPolicy != CoddyContentPolicy {
+				t.Fatalf("%+v %v", result, err)
+			}
+			if (result.Usage != nil) != tc.known {
+				t.Fatal("unknown usage presented as measured")
+			}
+			if tc.known && (result.Usage.InputTokens != tc.input || result.Usage.OutputTokens != tc.output || result.Usage.Incomplete != tc.incomplete) {
+				t.Fatalf("usage %+v", result.Usage)
+			}
+			body, _ := json.Marshal(struct {
+				Result Result
+				Events []Event
+			}{result, published})
+			if strings.Contains(string(body), "SYNTHETIC_PRIVATE_REASONING") {
+				t.Fatal("reasoning was persisted")
 			}
 		})
 	}

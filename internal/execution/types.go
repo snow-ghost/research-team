@@ -69,6 +69,14 @@ type ExternalConfig struct {
 	ExecutionBoundary string            `json:"execution_boundary"`
 	BaseURL           string            `json:"base_url,omitempty"`
 	AllowLoopbackHTTP bool              `json:"allow_loopback_http,omitempty"`
+	Container         *ContainerConfig  `json:"container,omitempty"`
+}
+
+type ContainerConfig struct {
+	Runtime  string `json:"runtime"`
+	Image    string `json:"image"`
+	MemoryMB int    `json:"memory_mb"`
+	CPUs     int    `json:"cpus"`
 }
 
 type Task struct {
@@ -82,31 +90,43 @@ type Task struct {
 }
 
 type Event struct {
-	Type string `json:"type"`
-	Step int    `json:"step,omitempty"`
-	Tool string `json:"tool,omitempty"`
+	Type   string `json:"type"`
+	Step   int    `json:"step,omitempty"`
+	Tool   string `json:"tool,omitempty"`
+	CallID string `json:"call_id,omitempty"`
+	Status string `json:"status,omitempty"`
+	Input  string `json:"input,omitempty"`
+	Output string `json:"output,omitempty"`
+	Usage  *Usage `json:"usage,omitempty"`
 }
 
 type Usage struct {
-	InputTokens  int64 `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
+	Source       string `json:"source,omitempty"`
+	Incomplete   bool   `json:"incomplete,omitempty"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
 }
 
 type Result struct {
-	TaskID        string  `json:"task_id"`
-	AttemptID     string  `json:"attempt_id"`
-	Snapshot      string  `json:"snapshot"`
-	LeaseEpoch    uint64  `json:"lease_epoch"`
-	ProfileID     string  `json:"profile_id"`
-	ProfileSHA256 string  `json:"profile_sha256"`
-	PacketSHA256  string  `json:"packet_sha256"`
-	Status        string  `json:"status"`
-	Candidate     string  `json:"candidate,omitempty"`
-	SessionID     string  `json:"session_id,omitempty"`
-	Usage         *Usage  `json:"usage"`
-	Events        []Event `json:"events"`
+	Diagnostics            []Diagnostic `json:"diagnostics,omitempty"`
+	ContentPolicy          string       `json:"content_policy,omitempty"`
+	ExecutionProfileSHA256 string       `json:"execution_profile_sha256,omitempty"`
+	TaskID                 string       `json:"task_id"`
+	AttemptID              string       `json:"attempt_id"`
+	Snapshot               string       `json:"snapshot"`
+	LeaseEpoch             uint64       `json:"lease_epoch"`
+	ProfileID              string       `json:"profile_id"`
+	ProfileSHA256          string       `json:"profile_sha256"`
+	PacketSHA256           string       `json:"packet_sha256"`
+	Status                 string       `json:"status"`
+	Candidate              string       `json:"candidate,omitempty"`
+	Partial                string       `json:"partial,omitempty"`
+	SessionID              string       `json:"session_id,omitempty"`
+	Usage                  *Usage       `json:"usage"`
+	Events                 []Event      `json:"events"`
 	// A stopped local process/request does not establish remote cancellation.
 	RemoteOutcome string `json:"remote_outcome"`
+	FailureCode   string `json:"failure_code,omitempty"`
 }
 
 type Executor interface {
@@ -166,7 +186,8 @@ func (p Profile) Validate() error {
 		if e.Provider != "codex" && e.Provider != "claude" && e.Provider != "opencode" && e.Provider != "coddy-agent" {
 			return ErrUnsupported
 		}
-		if e.ExpectedVersion != supportedVersions[e.Provider] {
+		if e.ExpectedVersion != supportedVersions[e.Provider] &&
+			!(e.Provider == "coddy-agent" && (e.ExpectedVersion == "1.2.1" || e.ExpectedVersion == "1.2.54")) {
 			return errors.New("external version requires a reviewed adapter revision")
 		}
 		if !filepath.IsAbs(e.Executable) || e.ExpectedVersion == "" || e.Model == "" || e.SearchPath == "" {
@@ -177,8 +198,15 @@ func (p Profile) Validate() error {
 				return errors.New("search path entries must be absolute")
 			}
 		}
-		if e.ExecutionBoundary != "operator_managed" {
-			return errors.New("external execution requires operator-managed isolation")
+		if e.ExecutionBoundary == "docker" {
+			if e.Provider != "coddy-agent" || e.Container == nil || !filepath.IsAbs(e.Container.Runtime) ||
+				!regexp.MustCompile(`^sha256:[a-f0-9]{64}$`).MatchString(e.Container.Image) ||
+				e.Container.MemoryMB < 128 || e.Container.MemoryMB > 8192 || e.Container.CPUs < 1 || e.Container.CPUs > 4 ||
+				e.AllowLoopbackHTTP {
+				return errors.New("invalid coddy container configuration; pinned local image and HTTPS required")
+			}
+		} else if e.ExecutionBoundary != "operator_managed" || e.Container != nil {
+			return errors.New("external execution requires an explicit isolation boundary")
 		}
 		if e.Provider == "coddy-agent" {
 			if strings.ContainsAny(e.BaseURL, "$\r\n\x00") {
@@ -282,16 +310,24 @@ func finish(r *Result, err error) {
 	if err == nil {
 		r.Status = "candidate"
 		r.RemoteOutcome = "response_received"
+		r.FailureCode = ""
 	} else {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
 			r.Status = "timed_out"
+			r.FailureCode = "deadline_exceeded"
 		case errors.Is(err, context.Canceled):
 			r.Status = "cancelled"
+			r.FailureCode = "cancelled"
 		case errors.Is(err, ErrLimit):
 			r.Status = "limit_reached"
+			r.FailureCode = "limit_reached"
+		case errors.Is(err, ErrProtocol):
+			r.Status = "failed"
+			r.FailureCode = "protocol_or_remote_error"
 		default:
 			r.Status = "failed"
+			r.FailureCode = "execution_failed"
 		}
 		r.Candidate = ""
 	}

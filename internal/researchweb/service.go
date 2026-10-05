@@ -28,21 +28,25 @@ type Service struct {
 	closeErr  error
 }
 type RunRequest struct {
-	ExpectedRevision int    `json:"expected_revision"`
-	RequestID        string `json:"request_id"`
-	TaskID           string `json:"task_id"`
-	Profile          string `json:"profile"`
-	Workspace        string `json:"workspace"`
-	Confirm          bool   `json:"confirm"`
+	ReviewVerification string            `json:"review_verification,omitempty"`
+	RemoteWorker       string            `json:"remote_worker,omitempty"`
+	Limits             *execution.Limits `json:"limits,omitempty"`
+	ExpectedRevision   int               `json:"expected_revision"`
+	RequestID          string            `json:"request_id"`
+	TaskID             string            `json:"task_id"`
+	Profile            string            `json:"profile"`
+	Workspace          string            `json:"workspace"`
+	Confirm            bool              `json:"confirm"`
 }
 type ProfileView struct {
-	ID        string   `json:"id"`
-	Label     string   `json:"label"`
-	Kind      string   `json:"kind"`
-	Provider  string   `json:"provider"`
-	Model     string   `json:"model"`
-	Available bool     `json:"available"`
-	Skills    []string `json:"skills"`
+	Limits    execution.Limits `json:"limits"`
+	ID        string           `json:"id"`
+	Label     string           `json:"label"`
+	Kind      string           `json:"kind"`
+	Provider  string           `json:"provider"`
+	Model     string           `json:"model"`
+	Available bool             `json:"available"`
+	Skills    []string         `json:"skills"`
 }
 
 func NewService(o Options) (*Service, error) {
@@ -55,8 +59,12 @@ func NewService(o Options) (*Service, error) {
 	if o.Config.MaxParallel < 1 || o.Config.MaxParallel > 4 {
 		return nil, errors.New("invalid parallel limit")
 	}
-	store, err := OpenStore(o.Config.DataDir)
+	store, err := OpenDatabase(o.Config, o.Lookup)
 	if err != nil {
+		return nil, err
+	}
+	if err = store.RequireImportedSQLite(o.Config.DataDir); err != nil {
+		store.Close()
 		return nil, err
 	}
 	if err = os.MkdirAll(filepath.Join(o.Config.DataDir, "attempts"), 0700); err != nil {
@@ -65,19 +73,69 @@ func NewService(o Options) (*Service, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{Options: o, Store: store, running: map[string]context.CancelFunc{}, ctx: ctx, cancel: cancel}
+	if err := validateWorkers(o.Config.Workers); err != nil {
+		s.Close()
+		return nil, err
+	}
+	if err := validateTelegram(o.Config.Telegram); err != nil {
+		s.Close()
+		return nil, err
+	}
 	v, err := store.Read()
 	if err != nil {
 		s.Close()
 		return nil, err
 	}
 	interrupted := false
+	for _, l := range v.Library {
+		if l.Status == "running" {
+			interrupted = true
+		}
+	}
 	for _, a := range v.Attempts {
 		if active(a.Status) {
 			interrupted = true
 		}
 	}
+	for _, c := range v.Cycles {
+		if cycleActive(c.Status) {
+			interrupted = true
+		}
+	}
+	for _, v := range v.Verifications {
+		if v.Status == "queued" || v.Status == "running" {
+			interrupted = true
+		}
+	}
+	for _, team := range v.Teams {
+		if teamActive(team.Status) {
+			interrupted = true
+		}
+	}
 	if interrupted {
 		err = store.Change(0, "", "", "Прерванные попытки восстановлены как неизвестный исход", "", "server", func(d *Data) error {
+			for i := range d.Library {
+				if d.Library[i].Status == "running" {
+					d.Library[i].Status = "interrupted"
+				}
+			}
+			for i := range d.Teams {
+				if teamActive(d.Teams[i].Status) {
+					d.Teams[i].Status = "interrupted"
+					d.Teams[i].Reason = "Сервер перезапущен; проверьте завершенные попытки."
+				}
+			}
+			for i := range d.Verifications {
+				if d.Verifications[i].Status == "queued" || d.Verifications[i].Status == "running" {
+					d.Verifications[i].Status = "interrupted"
+				}
+			}
+			for i := range d.Cycles {
+				if cycleActive(d.Cycles[i].Status) {
+					d.Cycles[i].Status = "interrupted"
+					d.Cycles[i].Reason = "Сервер перезапущен. Проверьте результаты и отдельно разрешите новый цикл."
+				}
+			}
 			for i := range d.Attempts {
 				a := &d.Attempts[i]
 				if active(a.Status) {
@@ -99,6 +157,10 @@ func NewService(o Options) (*Service, error) {
 	}
 	s.wg.Add(1)
 	go s.schedule()
+	if len(o.Config.Telegram) > 0 {
+		s.wg.Add(1)
+		go s.telegramLoop()
+	}
 	return s, nil
 }
 func (s *Service) Close() error {
@@ -106,12 +168,12 @@ func (s *Service) Close() error {
 	return s.closeErr
 }
 func active(status string) bool {
-	return status == "queued" || status == "preparing" || status == "running" || status == "cancelling"
+	return status == "queued" || status == "preparing" || status == "running" || status == "awaiting_worker" || status == "cancelling"
 }
 func (s *Service) Profiles() []ProfileView {
 	out := []ProfileView{}
 	for id, p := range s.Options.Profiles {
-		v := ProfileView{ID: id, Label: s.Options.Labels[id], Kind: p.Kind, Available: true, Skills: []string{}}
+		v := ProfileView{ID: id, Label: s.Options.Labels[id], Kind: p.Kind, Limits: p.Limits, Available: true, Skills: []string{}}
 		if v.Label == "" {
 			v.Label = id
 		}
@@ -153,51 +215,32 @@ func (s *Service) Act(a Action) error {
 	}
 	if a.Type == "ATTACH_PROOF" {
 		return s.Store.Change(a.ExpectedRevision, a.RequestID, hash(a), actionLabel(a.Type), a.Target, "operator", func(d *Data) error {
-			attempt := d.attempt(a.Attempt)
-			item := d.entity(a.Target)
-			if attempt == nil || item == nil || attempt.Status != "candidate" || attempt.Target != item.ID || attempt.TargetRevision != item.Revision {
-				return RuleError("Материал не соответствует текущей версии утверждения.")
-			}
-			if item.Status == "accepted" || item.Status == "refuted" {
-				return RuleError("Принятая версия не изменяется.")
-			}
-			task := d.task(attempt.TaskID)
-			if task == nil || task.Kind != "proof" {
-				return RuleError("Для доказательства нужно задание вида proof.")
-			}
-			result, err := s.readResult(*attempt)
-			if err != nil {
-				return err
-			}
-			source, err := s.readInput(*attempt)
-			if err != nil {
-				return err
-			}
-			previous := source.entity(item.ID)
-			if previous == nil {
-				return ErrConflict
-			}
-			pins := map[string]int{}
-			for _, dep := range previous.Dependencies {
-				old, current := source.entity(dep), d.entity(dep)
-				if old == nil || current == nil || old.Revision != current.Revision {
-					return RuleError("Основания изменились после запуска попытки.")
-				}
-				pins[dep] = old.Revision
-			}
-			if !textOK(result.Candidate, 64000) {
-				return RuleError("Материал пуст или превышает размер текстового доказательства.")
-			}
-			item.Proof = result.Candidate
-			item.ProofAuthor = "executor:" + attempt.Profile
-			item.ProofAttempt = attempt.ID
-			item.DependencyRevisions = pins
-			item.Status = "in_review"
-			item.Revision++
-			return nil
+			return s.attachProof(d, a.Target, a.Attempt)
 		})
 	}
-	return s.Store.Change(a.ExpectedRevision, a.RequestID, hash(a), actionLabel(a.Type), a.Target, "operator", func(d *Data) error { return applyAction(d, a) })
+	return s.Store.Change(a.ExpectedRevision, a.RequestID, hash(a), actionLabel(a.Type), a.Target, "operator", func(d *Data) error {
+		if a.Type == "REVIEW" && a.Decision == "accept" {
+			e := d.entity(a.Target)
+			if e != nil && e.FormalGoal != nil && !hasVerifiedProof(d, e) {
+				return RuleError("Нужна успешная проверка Lean для текущего доказательства и цели.")
+			}
+			if e != nil && !teamReviewReady(d, e) {
+				return RuleError("Дождитесь независимого задания рецензирования команды.")
+			}
+			if e != nil && e.ResearchResult != "" {
+				valid := false
+				for _, r := range d.Results {
+					if r.ID == e.ResearchResult && r.Status == "ready" && resultMatches(d, r) {
+						valid = true
+					}
+				}
+				if !valid {
+					return RuleError("Связанная запись результата устарела или содержит незавершенные проверки.")
+				}
+			}
+		}
+		return applyAction(d, a)
+	})
 }
 func (s *Service) Start(r RunRequest) error {
 	if !requestPattern.MatchString(r.RequestID) {
@@ -215,6 +258,9 @@ func (s *Service) Start(r RunRequest) error {
 	}
 	if profile.Kind == "external" && !s.Options.Config.AllowExternalExecution {
 		return RuleError("Внешние процессы запрещены настройками сервера.")
+	}
+	if r.Limits != nil {
+		profile.Limits = *r.Limits
 	}
 	if err := profile.Validate(); err != nil {
 		return err
@@ -238,12 +284,37 @@ func (s *Service) Start(r RunRequest) error {
 		if item == nil {
 			return RuleError("Утверждение не найдено.")
 		}
+		var binding *ProofBinding
+		reviewOf := ""
+		if r.ReviewVerification != "" {
+			v := d.verification(r.ReviewVerification)
+			if t.Kind != "review" || v == nil || v.Target != item.ID || !verifiedReportMatches(*v) || !verificationMatches(d, *v) || v.TargetRevision != item.Revision || (v.Origin == "submitted" && v.SubmittedRevision != item.Revision) || v.Author == "executor:"+r.Profile {
+				return RuleError("Рецензии нужен проверенный файл текущей версии и другой автор.")
+			}
+			if v.Attempt != "" {
+				author := d.attempt(v.Attempt)
+				if author == nil || author.Profile == r.Profile {
+					return RuleError("Для рецензии нужен другой профиль автора исходной попытки.")
+				}
+				reviewOf = author.ID
+			}
+			binding = &ProofBinding{v.ID, v.Report.GoalSHA256, v.Report.SourceSHA256}
+		}
+		if r.RemoteWorker != "" {
+			if err := s.workerScope(*d, r.RemoteWorker, r.Profile, item.ID); err != nil {
+				return err
+			}
+		}
+		reservation, err := s.reserveStudyBudget(d, item.ID, profile)
+		if err != nil {
+			return err
+		}
 		id := identifier("run")
 		t.Attempt = id
 		t.Agent = r.Profile
 		d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: t.ID, Target: item.ID, TargetRevision: item.Revision,
-			Profile: r.Profile, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
-			InputSnapshot: d.Revision, RemoteOutcome: "not_started"})
+			Profile: r.Profile, RemoteWorker: r.RemoteWorker, Limits: &profile.Limits, ProofBinding: binding, ReviewOf: reviewOf, ReservedOutputTokens: reservation, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
+			InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 		return nil
 	})
 }
@@ -258,7 +329,7 @@ func (s *Service) Cancel(id string) error {
 		if !active(a.Status) {
 			return RuleError("Попытка уже завершена.")
 		}
-		if a.Status == "queued" {
+		if a.Status == "queued" || a.RemoteWorker != "" {
 			a.Status = "cancelled"
 		} else {
 			a.Status = "cancelling"
@@ -282,6 +353,15 @@ func (s *Service) schedule() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
+			s.expireStudyBudgets()
+			s.expireWorkerLeases()
+			s.advanceCycles()
+			s.advanceTeams()
+			s.startChecks()
+			s.startLibraryBuilds()
+			if s.ctx.Err() != nil {
+				return
+			}
 			s.mu.Lock()
 			if len(s.running) >= s.Options.Config.MaxParallel {
 				s.mu.Unlock()
@@ -294,10 +374,28 @@ func (s *Service) schedule() {
 			}
 			for _, a := range v.Attempts {
 				if a.Status == "queued" {
+					if a.TeamID != "" {
+						team := v.team(a.TeamID)
+						if team == nil || team.Status != "running" {
+							continue
+						}
+					}
+					if a.CycleID != "" {
+						c := v.cycle(a.CycleID)
+						if c == nil || c.Status != "running" {
+							continue
+						}
+					}
 					err = s.Store.Change(0, "", "", "Подготовка снимка входных файлов", a.Target, "server", func(d *Data) error {
 						current := d.attempt(a.ID)
 						if current == nil || current.Status != "queued" || d.Paused {
 							return ErrConflict
+						}
+						if current.CycleID != "" {
+							c := d.cycle(current.CycleID)
+							if c == nil || c.Status != "running" || d.effective(c.Goal, map[string]bool{}) == "accepted" {
+								return ErrConflict
+							}
 						}
 						current.Status = "preparing"
 						d.task(a.TaskID).State = "preparing"
@@ -320,6 +418,15 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 	defer s.wg.Done()
 	result := execution.Result{TaskID: a.TaskID, AttemptID: a.ID, ProfileID: a.Profile, LeaseEpoch: 1, Status: "failed", RemoteOutcome: "not_started", Events: []execution.Event{}}
 	err := s.perform(ctx, a, &result)
+	if errors.Is(err, errWorkerQueued) {
+		s.mu.Lock()
+		if cancel := s.running[a.ID]; cancel != nil {
+			cancel()
+		}
+		delete(s.running, a.ID)
+		s.mu.Unlock()
+		return
+	}
 	if ctx.Err() != nil {
 		result.Status = "cancelled"
 		result.Candidate = ""
@@ -360,6 +467,9 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 		}
 		current.ResultSHA256 = hash(result)
 		current.Status = result.Status
+		if current.StopCause == "" {
+			current.StopCause = attemptStopCause(result, current.Limits)
+		}
 		current.FinishedAt = &now
 		current.RemoteOutcome = result.RemoteOutcome
 		task := d.task(a.TaskID)
@@ -402,6 +512,9 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 			source = w.Path
 		}
 	}
+	if a.ParentAttempt != "" {
+		source = filepath.Join(s.Options.Config.DataDir, "attempts", a.ParentAttempt, "workspace")
+	}
 	files, err := copyWorkspace(ctx, source, filepath.Join(dir, "workspace"))
 	if err != nil {
 		return err
@@ -409,11 +522,15 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	profile := s.Options.Profiles[a.Profile]
+	if a.Limits != nil {
+		profile.Limits = *a.Limits
+	}
 	input := struct {
 		Research Data              `json:"research"`
 		Files    []FileDigest      `json:"files"`
 		Profile  execution.Profile `json:"profile"`
-	}{d, files, s.Options.Profiles[a.Profile]}
+	}{d, files, profile}
 	inputSHA := hash(input)
 	data, _ := json.Marshal(input)
 	if err = atomicFile(filepath.Join(dir, "input.json"), data); err != nil {
@@ -439,18 +556,66 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		}
 	}
 	visit(entity.ID)
+	materials := []map[string]string{}
+	for _, name := range []string{"TASK.md", "Goal.lean"} {
+		if content, readErr := readBoundedFile(filepath.Join(dir, "workspace", name), 65536); readErr == nil {
+			materials = append(materials, map[string]string{"path": name, "content": string(content)})
+		}
+	}
+	previous := s.continuationContext(d, a)
+	modules := []map[string]any{}
+	for _, l := range d.Library {
+		if l.Status == "ready" && libraryMatches(&d, l) {
+			for _, e := range relevant {
+				if e.ID == l.Lemma {
+					modules = append(modules, map[string]any{"module": l.Module, "lemma": l.Lemma, "revision": l.LemmaRevision, "declaration": l.Goal.Declaration, "candidate": l.Goal.Candidate, "artifact_sha256": l.Report.ArtifactSHA256})
+				}
+			}
+		}
+	}
 	contextData, _ := json.Marshal(struct {
-		Entities  []Entity   `json:"entities"`
-		Questions []Question `json:"questions"`
-	}{relevant, questionsFor(d, a.Target)})
+		Entities  []Entity            `json:"entities"`
+		Questions []Question          `json:"questions"`
+		Materials []map[string]string `json:"materials"`
+		Previous  any                 `json:"previous_unverified,omitempty"`
+		Team      any                 `json:"team_materials,omitempty"`
+		Library   []Entity            `json:"accepted_lemmas,omitempty"`
+		Modules   []map[string]any    `json:"lean_modules,omitempty"`
+		Review    any                 `json:"review_materials,omitempty"`
+	}{relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
+	if a.RemoteWorker != "" {
+		selected := []Entity{}
+		for _, e := range relevant {
+			if e.Study == entity.Study {
+				selected = append(selected, e)
+			}
+		}
+		contextData, _ = json.Marshal(map[string]any{"entities": selected, "questions": questionsFor(d, a.Target), "materials": materials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
+	}
 	t := execution.Task{ID: task.ID, AttemptID: a.ID, Snapshot: inputSHA, LeaseEpoch: 1, Workspace: filepath.Join(dir, "workspace"), Objective: task.Objective, Context: string(contextData)}
-	profile, ok := s.Options.Profiles[a.Profile]
+	_, ok := s.Options.Profiles[a.Profile]
 	if !ok {
 		return errors.New("profile unavailable")
 	}
-	executor, err := s.Options.Factory(profile, s.Options.Lookup)
+	var executor execution.Executor
+	if a.RemoteWorker == "" {
+		executor, err = s.Options.Factory(profile, s.Options.Lookup)
+	}
 	if err != nil {
 		return err
+	}
+	if a.RemoteWorker != "" {
+		t.Workspace = ""
+		packet := WorkerPacket{Task: t, Skills: profile.Skills, Limits: profile.Limits, Profile: profile.ID, ProfileSHA256: hash(profile)}
+		for _, f := range files {
+			if f.Path == "TASK.md" || f.Path == "Goal.lean" {
+				packet.Files = append(packet.Files, f)
+			}
+		}
+		body, _ := json.Marshal(packet)
+		if err := atomicFile(filepath.Join(dir, "worker-task.json"), body); err != nil {
+			return err
+		}
 	}
 	s.mu.Lock()
 	err = s.Store.Change(0, "", "", "Исполнитель запущен", a.Target, "server", func(d *Data) error {
@@ -459,6 +624,9 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 			return context.Canceled
 		}
 		current.Status = "running"
+		if a.RemoteWorker != "" {
+			current.Status = "awaiting_worker"
+		}
 		current.InputSHA256 = inputSHA
 		current.RemoteOutcome = "unknown"
 		d.task(a.TaskID).State = "running"
@@ -468,7 +636,24 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	if err != nil {
 		return err
 	}
-	*result, err = executor.Run(ctx, t)
+	if a.RemoteWorker != "" {
+		return errWorkerQueued
+	}
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	journal, jErr := openJournal(dir, s.profileSecrets(profile), stop)
+	if jErr != nil {
+		return jErr
+	}
+	defer journal.Close()
+	journal.observe(execution.Event{Type: "attempt_started"})
+	runCtx = execution.WithObserver(runCtx, journal.observe)
+	*result, err = executor.Run(runCtx, t)
+	journal.observe(execution.Event{Type: result.Status, Usage: result.Usage})
+	journal.Close()
+	if jErr := journal.Err(); jErr != nil {
+		err = errors.Join(err, jErr)
+	}
 	if err == nil && (result.TaskID != task.ID || result.AttemptID != a.ID || result.Snapshot != inputSHA || result.LeaseEpoch != 1 || result.ProfileID != a.Profile) {
 		result.Status = "failed"
 		result.Candidate = ""
@@ -498,6 +683,10 @@ func (s *Service) readResult(a Attempt) (execution.Result, error) {
 		return r, errors.New("result integrity check failed")
 	}
 	return r, nil
+}
+func (s *Service) safeResultContent(a Attempt, result execution.Result) bool {
+	p := s.Options.Profiles[a.Profile]
+	return p.External == nil || p.External.Provider != "coddy-agent" || result.ContentPolicy == execution.CoddyContentPolicy
 }
 func (s *Service) readInput(a Attempt) (Data, error) {
 	var input struct {

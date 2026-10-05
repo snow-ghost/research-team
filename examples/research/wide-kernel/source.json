@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/Vilin97/lean-pool",
+  "commit": "91d0ec39f64373612c106504fcd164451c460c38",
+  "path": "LeanPool/Fineqs/Main.lean",
+  "declaration": "exists_nonzero_mulVec_zero",
+  "source_authors": ["Stefan Baranczuk", "Aristotle"],
+  "source_license": "Apache-2.0",
+  "task_kind": "known_result_reproduction",
+  "source_solution_available": true,
+  "candidate_solution_included": false,
+  "lean_toolchain": "leanprover/lean4:v4.34.0",
+  "local_mathlib_revision": "5ed2965256430c3649e86755f9576b54eca72435"
+}

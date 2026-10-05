@@ -100,7 +100,7 @@ func TestModelBDD_RejectUntrustedCallsAndIncompleteReplies(t *testing.T) {
 	}{
 		{"unknown_tool", `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"1","type":"function","function":{"name":"shell","arguments":"{\"path\":\"x\"}"}}]},"finish_reason":"tool_calls"}]}`, 3, ErrUnsupported},
 		{"invalid_arguments", `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"x\",\"extra\":true}"}}]},"finish_reason":"tool_calls"}]}`, 3, ErrProtocol},
-		{"truncated_reply", `{"choices":[{"message":{"role":"assistant","content":"partial proof"},"finish_reason":"length"}]}`, 3, ErrProtocol},
+		{"truncated_reply", `{"choices":[{"message":{"role":"assistant","content":"partial proof"},"finish_reason":"length"}]}`, 3, ErrLimit},
 		{"step_limit", `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"x\"}"}}]},"finish_reason":"tool_calls"}]}`, 1, ErrLimit},
 		{"malformed_json", "{", 3, ErrProtocol},
 		{"oversized_reply", strings.Repeat("x", 9000), 3, ErrLimit},

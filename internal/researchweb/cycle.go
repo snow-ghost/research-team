@@ -337,7 +337,7 @@ func (s *Service) advanceCycle(d *Data, c *Cycle) error {
 	task.Attempt = id
 	task.Agent = c.Profile
 	d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: task.ID, Target: target.ID, TargetRevision: target.Revision,
-		CycleID: c.ID, Profile: c.Profile, Limits: &p.Limits, ReservedOutputTokens: reservation, Workspace: c.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
+		CycleID: c.ID, Profile: c.Profile, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: c.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
 		InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 	c.UsedAttempts++
 	c.CurrentAttempt = id

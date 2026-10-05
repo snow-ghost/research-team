@@ -4,8 +4,10 @@ package researchweb
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,8 +76,15 @@ func TestVerificationBDD_AcceptanceRequiresExactSourceAndCurrentGoal(t *testing.
 }
 func TestTeamBDD_RejectionExhaustsBudgetWithoutAutomaticAcceptance(t *testing.T) {
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// A combined report is sufficient for both structured reports in this test.
-		completeModel(w, `{"outcome":"none_found","evidence":"Boundary cases","summary":"Reviewed","findings":[]}`)
+		var body struct{ Messages []struct{ Content string } }
+		json.NewDecoder(r.Body).Decode(&body)
+		for _, m := range body.Messages {
+			if strings.Contains(m.Content, "ROLE_review") {
+				completeModel(w, `{"summary":"Reviewed","findings":[]}`)
+				return
+			}
+		}
+		completeModel(w, `{"outcome":"none_found","evidence":"Boundary cases"}`)
 	}))
 	defer model.Close()
 	s := serviceFor(t, teamOptions(t, model.URL+"/v1"))

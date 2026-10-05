@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { verificationCurrent } from "./proof-state.js";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -563,7 +564,7 @@ function App({ live } = {}) {
     };
   const item = view.entities.find((x) => x.id === selected);
   const proofCheck = item && (view.verifications || []).find((v) =>
-    v.target === item.id && v.target_revision === item.revision &&
+    v.target === item.id && verificationCurrent(v, item, view) &&
     v.status === "verified" && v.report?.status === "verified" &&
     (item.proofVerification ? v.id === item.proofVerification : item.proofAttempt && v.attempt === item.proofAttempt),
   );
@@ -1639,7 +1640,9 @@ function App({ live } = {}) {
                           </button>
                         </>
                       ) : (
-                        item.status === "open" && (
+                        ["open", "needs_changes", "challenged"].includes(
+                          item.status,
+                        ) && (
                           <button
                             className="button secondary"
                             disabled={readOnly}

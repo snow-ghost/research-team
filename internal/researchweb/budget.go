@@ -7,10 +7,11 @@ import (
 )
 
 type StudyBudget struct {
-	OperatorNote    string     `json:"operator_note,omitempty"`
-	MaxAttempts     int        `json:"max_attempts"`
-	MaxOutputTokens int64      `json:"max_output_tokens"`
-	DeadlineAt      *time.Time `json:"deadline_at,omitempty"`
+	MaxModelRequests int        `json:"max_model_requests,omitempty"`
+	OperatorNote     string     `json:"operator_note,omitempty"`
+	MaxAttempts      int        `json:"max_attempts"`
+	MaxOutputTokens  int64      `json:"max_output_tokens"`
+	DeadlineAt       *time.Time `json:"deadline_at,omitempty"`
 }
 
 type BudgetRequest struct {
@@ -22,14 +23,18 @@ type BudgetRequest struct {
 }
 
 type BudgetObservation struct {
-	Limits            *StudyBudget `json:"limits,omitempty"`
-	Attempts          int          `json:"attempts"`
-	KnownOutputTokens int64        `json:"known_output_tokens"`
-	ChargedTokens     int64        `json:"charged_tokens"`
-	ReservedTokens    int64        `json:"reserved_tokens"`
-	UnknownUsage      int          `json:"unknown_usage"`
-	UnreservedUnknown int          `json:"unreserved_unknown"`
-	DeadlineReached   bool         `json:"deadline_reached"`
+	KnownModelRequests      int          `json:"known_model_requests"`
+	ChargedModelRequests    int          `json:"charged_model_requests"`
+	ReservedModelRequests   int          `json:"reserved_model_requests"`
+	UnreservedModelRequests int          `json:"unreserved_model_requests"`
+	Limits                  *StudyBudget `json:"limits,omitempty"`
+	Attempts                int          `json:"attempts"`
+	KnownOutputTokens       int64        `json:"known_output_tokens"`
+	ChargedTokens           int64        `json:"charged_tokens"`
+	ReservedTokens          int64        `json:"reserved_tokens"`
+	UnknownUsage            int          `json:"unknown_usage"`
+	UnreservedUnknown       int          `json:"unreserved_unknown"`
+	DeadlineReached         bool         `json:"deadline_reached"`
 }
 
 func (d *Data) study(id string) *Study {
@@ -42,7 +47,7 @@ func (d *Data) study(id string) *Study {
 }
 
 func (s *Service) SetStudyBudget(id string, r BudgetRequest) error {
-	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || !r.Confirm || !textOK(r.Note, 4000) || r.Budget.MaxAttempts < 1 || r.Budget.MaxAttempts > 100 || r.Budget.MaxOutputTokens < 0 || r.Budget.MaxOutputTokens > 1000000000 {
+	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || !r.Confirm || !textOK(r.Note, 4000) || r.Budget.MaxAttempts < 1 || r.Budget.MaxAttempts > 100 || r.Budget.MaxOutputTokens < 0 || r.Budget.MaxOutputTokens > 1000000000 || r.Budget.MaxModelRequests < 0 || r.Budget.MaxModelRequests > 10000 {
 		return RuleError("Подтвердите бюджет: от 1 до 100 попыток, неотрицательный предел токенов и основание изменения.")
 	}
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(struct {
@@ -59,6 +64,9 @@ func (s *Service) SetStudyBudget(id string, r BudgetRequest) error {
 			}
 		}
 		o := s.observeBudget(d, id)
+		if r.Budget.MaxModelRequests > 0 && (o.UnreservedModelRequests > 0 || r.Budget.MaxModelRequests < o.ChargedModelRequests) {
+			return RuleError("Предел обращений не покрывает историю или неизвестные резервы.")
+		}
 		if r.Budget.MaxAttempts < o.Attempts || (r.Budget.MaxOutputTokens > 0 && (o.UnreservedUnknown > 0 || r.Budget.MaxOutputTokens < o.ChargedTokens)) {
 			return RuleError("Бюджет не покрывает историю расхода или исторические обращения с неизвестным резервом.")
 		}
@@ -83,6 +91,7 @@ func (s *Service) observeBudget(d *Data, study string) BudgetObservation {
 		}
 		o.Attempts++
 		if active(a.Status) {
+			o.ReservedModelRequests += a.ReservedModelRequests
 			o.ReservedTokens += a.ReservedOutputTokens
 			if a.ReservedOutputTokens == 0 && o.Limits != nil && o.Limits.MaxOutputTokens > 0 {
 				o.UnreservedUnknown++
@@ -90,6 +99,23 @@ func (s *Service) observeBudget(d *Data, study string) BudgetObservation {
 			continue
 		}
 		result, err := s.readResult(a)
+		requests := 0
+		if err == nil {
+			for _, event := range result.Events {
+				if event.Type == "model_requested" {
+					requests++
+				}
+			}
+		}
+		if requests > 0 {
+			o.KnownModelRequests += requests
+			o.ChargedModelRequests += requests
+		} else if a.RemoteOutcome != "not_started" {
+			o.ChargedModelRequests += a.ReservedModelRequests
+			if a.ReservedModelRequests == 0 {
+				o.UnreservedModelRequests++
+			}
+		}
 		if err == nil && result.Usage != nil && !result.Usage.Incomplete && result.Usage.OutputTokens >= 0 && result.Usage.InputTokens >= 0 {
 			o.KnownOutputTokens += result.Usage.OutputTokens
 			o.ChargedTokens += result.Usage.OutputTokens
@@ -120,6 +146,9 @@ func (s *Service) reserveStudyBudget(d *Data, target string, p execution.Profile
 	}
 	if o.Attempts >= o.Limits.MaxAttempts {
 		return 0, RuleError("Исчерпан общий предел попыток исследования.")
+	}
+	if o.Limits.MaxModelRequests > 0 && (p.Limits.MaxSteps < 1 || o.UnreservedModelRequests > 0 || o.ChargedModelRequests+o.ReservedModelRequests+p.Limits.MaxSteps > o.Limits.MaxModelRequests) {
+		return 0, RuleError("Общий бюджет обращений не покрывает резерв новой попытки.")
 	}
 	if o.Limits.MaxOutputTokens > 0 && (reservation <= 0 || o.UnreservedUnknown > 0 || o.ChargedTokens+o.ReservedTokens+reservation > o.Limits.MaxOutputTokens) {
 		return 0, RuleError("Общий бюджет выходных токенов не покрывает резерв новой попытки.")

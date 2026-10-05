@@ -23,16 +23,22 @@ var migrationFiles embed.FS
 const postgresOwnerLock int64 = 731946218057
 
 type postgresStore struct {
-	dir     string
-	mu      sync.Mutex
-	db      *sql.DB
-	conn    *sql.Conn
-	release func()
+	closed      bool
+	generation  int
+	lastFailure string
+	recoveredAt *time.Time
+	dir         string
+	mu          sync.Mutex
+	db          *sql.DB
+	conn        *sql.Conn
+	release     func()
 }
 
 type collectionSpec struct{ field, table string }
 
 var collections = []collectionSpec{
+	{"memory", "research_memory"},
+	{"branches", "research_branches"},
 	{"studies", "studies"}, {"entities", "entities"}, {"workLinks", "work_links"},
 	{"tasks", "tasks"}, {"questions", "questions"}, {"findings", "findings"},
 	{"applications", "applications"}, {"attempts", "attempts"}, {"delegations", "delegations"},
@@ -82,7 +88,7 @@ func OpenPostgres(dir, dsn string) (*Store, error) {
 		return nil, errors.New("invalid postgres connection configuration")
 	}
 	db.SetMaxOpenConns(1)
-	p := &postgresStore{db: db, release: release, dir: dir}
+	p := &postgresStore{db: db, release: release, dir: dir, generation: 1}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	p.conn, err = db.Conn(ctx)
@@ -104,6 +110,12 @@ func OpenPostgres(dir, dsn string) (*Store, error) {
 }
 
 func (p *postgresStore) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil
+	}
+	p.closed = true
 	if p.conn != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		_, _ = p.conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", postgresOwnerLock)
@@ -266,6 +278,9 @@ func (p *postgresStore) Read() (View, error) {
 	defer p.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	if err := p.ensureConnection(ctx); err != nil {
+		return View{}, err
+	}
 	tx, err := p.conn.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return View{}, err
@@ -305,6 +320,9 @@ func (p *postgresStore) Snapshot(revision int) (Data, error) {
 	defer p.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	if err := p.ensureConnection(ctx); err != nil {
+		return Data{}, err
+	}
 	if revision == 1 {
 		return emptyData(), nil
 	}
@@ -337,6 +355,9 @@ func (p *postgresStore) Snapshot(revision int) (Data, error) {
 }
 
 func validateState(d Data) error {
+	if len(d.Memory) > 2000 || len(d.Branches) > 200 {
+		return RuleError("Достигнут предел записей памяти или исследовательских ветвей.")
+	}
 	if len(d.Results) > 200 || len(d.Proposals) > 200 || len(d.Library) > 200 {
 		return ErrLimit
 	}
@@ -361,6 +382,9 @@ func (p *postgresStore) Change(expected int, requestID, fingerprint, label, targ
 	defer p.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	if err := p.ensureConnection(ctx); err != nil {
+		return err
+	}
 	tx, err := p.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err

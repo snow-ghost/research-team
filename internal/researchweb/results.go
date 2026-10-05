@@ -25,7 +25,7 @@ func reviewMaterials(d Data, a Attempt) any {
 	if source := d.attempt(v.Attempt); author == "" && source != nil {
 		author = "executor:" + source.Profile
 	}
-	return map[string]any{"proof_binding": a.ProofBinding, "goal": v.Goal, "source": v.Source, "report": v.Report, "author": author, "origin": v.Origin}
+	return map[string]any{"proof_binding": a.ProofBinding, "goal": v.Goal, "source": v.Source, "report": v.Report, "author": author, "origin": v.Origin, "purpose": v.Purpose, "original_goal_sha256": v.OriginalGoalSHA256}
 }
 
 type ReviewReport struct {
@@ -37,8 +37,9 @@ type ReviewFinding struct {
 	Text     string `json:"text"`
 }
 type CounterReport struct {
-	Outcome  string `json:"outcome"`
-	Evidence string `json:"evidence"`
+	RefutationSource string `json:"refutation_source,omitempty"`
+	Outcome          string `json:"outcome"`
+	Evidence         string `json:"evidence"`
 }
 type ResearchResult struct {
 	FindingIDs          []string       `json:"finding_ids,omitempty"`
@@ -168,7 +169,7 @@ func (s *Service) bindResult(d *Data, r ResultRequest) error {
 		found := ""
 		for i := range d.Findings {
 			old := &d.Findings[i]
-			if old.Target == e.ID && old.Text == f.Text && old.Severity == f.Severity && (old.ReviewAttempt == review.ID || old.ReviewAttempt == "") {
+			if old.Target == e.ID && findingTextMatches(*old, f.Text) && old.Severity == f.Severity && (old.ReviewAttempt == review.ID || old.ReviewAttempt == "") {
 				old.ReviewAttempt = review.ID
 				found = old.ID
 				break
@@ -176,7 +177,7 @@ func (s *Service) bindResult(d *Data, r ResultRequest) error {
 		}
 		if found == "" {
 			found = identifier("F")
-			d.Findings = append(d.Findings, Finding{ID: found, Target: e.ID, Text: f.Text, Severity: f.Severity, State: "open", Revision: e.Revision, ReviewAttempt: review.ID})
+			d.Findings = append(d.Findings, Finding{ID: found, Target: e.ID, Text: f.Text, SourceTextSHA256: hash(f.Text), Severity: f.Severity, State: "open", Revision: e.Revision, ReviewAttempt: review.ID})
 		}
 		findingIDs = append(findingIDs, found)
 	}

@@ -13,6 +13,8 @@ import {
   Upload,
   Gauge,
 } from "lucide-react";
+import { BranchList, RefutationActions } from "./research-progress.jsx";
+import { verificationCurrent } from "./proof-state.js";
 
 const roles = {
   proof: "Поиск доказательства",
@@ -38,11 +40,26 @@ const activeTeam = (status) =>
 
 export function TeamPanel({ live, study, all, onSelect }) {
   const [open, setOpen] = useState(false),
+    [methods, setMethods] = useState([]),
+    [mode, setMode] = useState("team"),
     [error, setError] = useState(""),
     [resume, setResume] = useState(null),
     [selectedStudy, setSelectedStudy] = useState(study || "");
   const { state, profiles, workspaces, lean } = live.data;
   useEffect(() => setSelectedStudy(study || ""), [study]);
+  useEffect(() => {
+    let active = true;
+    api("/research-methods")
+      .then((v) => {
+        if (active) setMethods(v);
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const teams = (state.teams || []).filter((t) => all || t.study === study);
   async function act(fn) {
     setError("");
@@ -79,7 +96,7 @@ export function TeamPanel({ live, study, all, onSelect }) {
             e.preventDefault();
             const v = Object.fromEntries(new FormData(e.currentTarget));
             act(async () => {
-              await live.command("/teams", {
+              const team = {
                 study: v.study,
                 target: v.target,
                 profiles: Object.fromEntries(
@@ -89,11 +106,63 @@ export function TeamPanel({ live, study, all, onSelect }) {
                 max_attempts: Number(v.max_attempts),
                 require_lean: v.lean === "on",
                 confirm: v.confirm === "on",
-              });
+              };
+              await live.command(
+                mode === "branch" ? "/branches" : "/teams",
+                mode === "branch"
+                  ? {
+                      team,
+                      method: v.method,
+                      rationale: v.rationale,
+                      priority: Number(v.priority),
+                      confirm: team.confirm,
+                    }
+                  : team,
+              );
               setOpen(false);
             });
           }}
         >
+          <label>
+            Порядок запуска
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              aria-label="Порядок запуска"
+            >
+              <option value="team">Отдельная команда</option>
+              <option value="branch">Ветвь исследования</option>
+            </select>
+          </label>
+          {mode === "branch" && (
+            <>
+              <label>
+                Прием
+                <select name="method" required>
+                  {methods.map((m) => (
+                    <option value={m.id} key={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Приоритет
+                <input
+                  name="priority"
+                  type="number"
+                  min="0"
+                  max="100"
+                  defaultValue="50"
+                  required
+                />
+              </label>
+              <label className="wide">
+                Основание выбора
+                <textarea name="rationale" maxLength="4000" required />
+              </label>
+            </>
+          )}
           <label>
             Исследование
             <select
@@ -200,6 +269,7 @@ export function TeamPanel({ live, study, all, onSelect }) {
           </button>
         </form>
       )}
+      <BranchList live={live} study={study} all={all} methods={methods} />
       {teams.map((t) => (
         <div className="team-row" key={t.id}>
           <div className="section-intro">
@@ -212,6 +282,30 @@ export function TeamPanel({ live, study, all, onSelect }) {
             </span>
           </div>
           <p>{t.reason}</p>
+          {t.status === "blocked" &&
+            ["exploring", "review", "refutation_review"].includes(t.stage) && (
+              <button
+                className="button secondary"
+                disabled={live.busy}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Повторно обработать сохраненные ответы без повторного запроса той же роли?",
+                    )
+                  )
+                    act(() =>
+                      live.command(`/teams/${t.id}/commands`, {
+                        kind: "reprocess",
+                        confirm: true,
+                        note: "Оператор разрешил повторную обработку сохраненного отчета.",
+                      }),
+                    );
+                }}
+              >
+                <RotateCcw size={15} />
+                Повторно обработать отчеты
+              </button>
+            )}
           <p>{state.entities.find((e) => e.id === t.goal)?.title}</p>
           <div className="role-strip">
             {Object.keys(roles)
@@ -460,6 +554,14 @@ function StudyBudgetPanel({ live, study }) {
           {budget.reserved_tokens}. Неизвестный расход: {budget.unknown_usage}.
         </p>
       )}
+      {budget && (
+        <p>
+          Запросы модели: {budget.known_model_requests} известных; учтено{" "}
+          {budget.charged_model_requests}, зарезервировано{" "}
+          {budget.reserved_model_requests}. Общий предел:{" "}
+          {selected?.budget?.max_model_requests || "не задан"}.
+        </p>
+      )}
       {selected?.budget && (
         <p>
           Предел выходных токенов:{" "}
@@ -489,6 +591,7 @@ function StudyBudgetPanel({ live, study }) {
               await live.command("/studies/" + study + "/budget", {
                 budget: {
                   max_attempts: Number(v.attempts),
+                  max_model_requests: Number(v.requests),
                   max_output_tokens: Number(v.tokens),
                   deadline_at: v.deadline
                     ? new Date(v.deadline).toISOString()
@@ -515,6 +618,18 @@ function StudyBudgetPanel({ live, study }) {
                 selected?.budget?.max_attempts ||
                 Math.max(budget?.attempts || 0, 20)
               }
+              required
+            />
+          </label>
+          <label>
+            Запросов модели на исследование
+            <input
+              name="requests"
+              aria-label="Запросов модели на исследование"
+              type="number"
+              min="0"
+              max="10000"
+              defaultValue={selected?.budget?.max_model_requests || 0}
               required
             />
           </label>
@@ -637,6 +752,7 @@ export function FormalGoalPanel({ live, selected, study }) {
             setError("");
             try {
               await live.command("/entities/" + entity.id + "/formal-goal", {
+                libraries: new FormData(e.currentTarget).getAll("libraries"),
                 goal: {
                   source: v.source,
                   declaration: v.declaration,
@@ -675,6 +791,25 @@ export function FormalGoalPanel({ live, selected, study }) {
               defaultValue={entity.formal_goal?.source || ""}
             />
           </label>
+          {(live.data.state.library || [])
+            .filter(
+              (l) =>
+                l.status === "ready" &&
+                live.data.state.entities.find((e) => e.id === l.lemma)
+                  ?.status === "accepted",
+            )
+            .map((l) => (
+              <label className="checkbox wide" key={l.id}>
+                <input
+                  name="libraries"
+                  type="checkbox"
+                  value={l.id}
+                  defaultChecked={entity.dependencies.includes(l.lemma)}
+                />
+                {live.data.state.entities.find((e) => e.id === l.lemma)?.title}{" "}
+                · версия {l.lemma_revision}
+              </label>
+            ))}
           <button className="button primary" disabled={live.busy}>
             <ShieldCheck size={15} />
             Закрепить версию
@@ -731,7 +866,10 @@ export function FormalGoalPanel({ live, selected, study }) {
         .map((v) => (
           <details className="verification-row" key={v.id}>
             <summary>
-              {v.target_revision !== entity.revision
+              {v.purpose === "refutation"
+                ? "Отрицание · "
+                : "Доказательство · "}
+              {!verificationCurrent(v, entity, state)
                 ? "Устарело"
                 : states[v.status] || v.status}{" "}
               · {v.report?.phase || "Ожидание"} · версия {v.target_revision}
@@ -765,8 +903,9 @@ export function FormalGoalPanel({ live, selected, study }) {
               </details>
             )}
             {v.origin === "submitted" &&
+              v.purpose !== "refutation" &&
               v.status === "verified" &&
-              v.target_revision === entity.revision &&
+              verificationCurrent(v, entity, state) &&
               entity.proofVerification !== v.id &&
               !["accepted", "refuted"].includes(entity.status) && (
                 <button
@@ -788,6 +927,9 @@ export function FormalGoalPanel({ live, selected, study }) {
                   Направить на приемку
                 </button>
               )}
+            {v.purpose === "refutation" && (
+              <RefutationActions live={live} entity={entity} verification={v} />
+            )}
           </details>
         ))}
     </section>

@@ -1,7 +1,6 @@
 package researchweb
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -10,6 +9,7 @@ import (
 )
 
 type ResearchTeam struct {
+	Refuting       bool                        `json:"refuting,omitempty"`
 	Workers        map[string]string           `json:"workers,omitempty"`
 	OperatorNote   string                      `json:"operator_note,omitempty"`
 	RetryRole      string                      `json:"retry_role,omitempty"`
@@ -96,7 +96,7 @@ func (s *Service) StartTeam(r TeamRequest) error {
 	if r.RequireLean {
 		author = r.Profiles["formalize"]
 	}
-	if r.Profiles["review"] == author || r.Profiles["review"] == r.Profiles["proof"] {
+	if r.Profiles["review"] == author || r.Profiles["review"] == r.Profiles["proof"] || r.Profiles["review"] == r.Profiles["counterexample"] {
 		return RuleError("Для рецензии нужен отдельный профиль.")
 	}
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Начата работа команды", r.Study, "operator", func(d *Data) error {
@@ -164,6 +164,19 @@ func (s *Service) ControlTeam(id string, r TeamCommand) error {
 		case "pause":
 			team.Status = "paused"
 			team.Reason = "Приостановлена оператором."
+		case "reprocess":
+			if !r.Confirm || (team.Status != "blocked" && team.Status != "interrupted") || (team.Stage != "exploring" && team.Stage != "review" && team.Stage != "refutation_review") || r.MaxAttempts != 0 || len(r.RoleLimits) != 0 {
+				return RuleError("Повторная обработка доступна заблокированному отчету без изменения ограничений.")
+			}
+			for _, attempt := range team.Current {
+				if a := d.attempt(attempt); a == nil || a.Status != "candidate" {
+					return RuleError("Все текущие ответы должны быть завершены.")
+				}
+			}
+			team.RetryRole = ""
+			team.Status = "running"
+			team.OperatorNote = r.Note
+			team.Reason = "Разрешена повторная обработка сохраненных отчетов."
 		case "resume", "configure":
 			if !r.Confirm {
 				return RuleError("Подтвердите продолжение и возможные расходы.")
@@ -219,7 +232,7 @@ func (s *Service) ControlTeam(id string, r TeamCommand) error {
 				team.RetryRole = ""
 			}
 			team.Status = "running"
-			if team.Stage == "acceptance" {
+			if team.Stage == "acceptance" || team.Stage == "refutation_acceptance" {
 				if e := d.entity(team.Target); e != nil && e.Status == "in_review" {
 					team.Status = "awaiting_review"
 				}
@@ -262,12 +275,12 @@ func (s *Service) advanceTeams() {
 		return
 	}
 	for _, team := range v.Teams {
-		if !teamActive(team.Status) {
+		if !teamActive(team.Status) && !(team.Status == "interrupted" && teamGoalClosed(&v.Data, team)) {
 			continue
 		}
 		err = s.Store.Change(0, "", "", "Шаг команды", team.ID, "coordinator", func(d *Data) error {
 			current := d.team(team.ID)
-			if current == nil || !teamActive(current.Status) {
+			if current == nil || (!teamActive(current.Status) && !(current.Status == "interrupted" && teamGoalClosed(d, *current))) {
 				return errNoCycleChange
 			}
 			return s.advanceTeam(d, current)
@@ -279,8 +292,19 @@ func (s *Service) advanceTeams() {
 	}
 	s.cancelRequested()
 }
+
+func teamGoalClosed(d *Data, team ResearchTeam) bool {
+	e := d.entity(team.Goal)
+	return e != nil && (e.Status == "refuted" || d.effective(e.ID, map[string]bool{}) == "accepted")
+}
 func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 	block := func(reason string) error { team.Status = "blocked"; team.Reason = reason; return nil }
+	if goal := d.entity(team.Goal); goal != nil && goal.Status == "refuted" {
+		cancelTeam(d, team.ID)
+		team.Status = "completed"
+		team.Reason = "Оператор принял проверенное отрицание цели."
+		return nil
+	}
 	if d.effective(team.Goal, map[string]bool{}) == "accepted" {
 		cancelTeam(d, team.ID)
 		team.Status = "completed"
@@ -357,15 +381,23 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 				team.RetryRole = "counterexample"
 				return block("Отчет получен до исправления разделения текста Coddy. Нужна новая проверка контрпримеров.")
 			}
-			var found struct {
-				Outcome  string `json:"outcome"`
-				Evidence string `json:"evidence"`
-			}
+			var found CounterReport
 			if decodeAgentReport(report.Candidate, &found) != nil || (found.Outcome != "none_found" && found.Outcome != "counterexample_candidate" && found.Outcome != "inconclusive") || !textOK(found.Evidence, 4000) {
 				team.RetryRole = "counterexample"
 				return block("Ответ проверяющего контрпримеры не соответствует форме отчета.")
 			}
 			if found.Outcome == "counterexample_candidate" {
+				if team.RequireLean && found.RefutationSource != "" {
+					id, err := s.queueRefutation(d, counter.ID)
+					if err != nil {
+						return block(err.Error())
+					}
+					team.Refuting = true
+					team.Verification = id
+					team.Stage = "refuting"
+					team.Reason = "Проверка отрицания исходной цели."
+					return nil
+				}
 				team.RetryRole = "counterexample"
 				d.Findings = append(d.Findings, Finding{ID: identifier("F"), Target: team.Target, Text: execution.Preview(found.Evidence, 4000),
 					Severity: "major", State: "open", Revision: team.TargetRevision})
@@ -386,6 +418,7 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 		team.Reason = map[string]string{"formalize": "Начата формализация.", "review": "Начата независимая рецензия."}[role]
 		return nil
 	case "formalize":
+		team.Refuting = false
 		id, err := s.queueVerification(d, team.Current["formalize"], "")
 		if err != nil {
 			team.RetryRole = "formalize"
@@ -395,6 +428,33 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 		team.Stage = "verifying"
 		team.Reason = "Проверка Lean."
 		return nil
+	case "refuting":
+		v := d.verification(team.Verification)
+		if v == nil {
+			return block("Отсутствует проверка отрицания.")
+		}
+		if v.Status == "queued" || v.Status == "running" {
+			return errNoCycleChange
+		}
+		if !verifiedReportMatches(*v) || !verificationMatches(d, *v) {
+			return block("Отрицание не прошло проверку; гипотеза не опровергнута.")
+		}
+		if err := s.queueTeamAttempt(d, team, "review", ""); err != nil {
+			return block(err.Error())
+		}
+		team.Stage = "refutation_review"
+		team.Reason = "Рецензия проверенного отрицания."
+		return nil
+	case "refutation_review":
+		if err := s.bindRefutationReview(d, team.Verification, team.Current["review"]); err != nil {
+			return block(err.Error())
+		}
+		team.Status = "awaiting_review"
+		team.Stage = "refutation_acceptance"
+		team.Reason = "Отрицание проверено; решение об опровержении принимает оператор."
+		return nil
+	case "refutation_acceptance":
+		return errNoCycleChange
 	case "verifying":
 		v := d.verification(team.Verification)
 		if v == nil {
@@ -512,6 +572,9 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 		"review":         "Проверь доказательство, предпосылки, контрпримеры и результат Lean. Верни JSON с полями summary и findings, где каждый элемент содержит severity (major|editorial|question) и text. Решение о приемке не принимается агентом.",
 	}
 	profile := team.Profiles[role]
+	if role == "counterexample" {
+		objectives[role] += " Если найден контрпример и доступен check_refutation, подготовь исходник отрицания из tool_goals. Добавь в JSON поле refutation_source с полным Lean-файлом. Проверка отрицания не является доказательством исходной цели. При none_found поле не требуется."
+	}
 	if err := s.validateAssignment(profile, team.Workspace, team.Workers[role]); err != nil {
 		return err
 	}
@@ -535,11 +598,15 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 	task.Attempt, task.Agent = id, profile
 	reviewOf := team.Current["proof"]
 	if role == "review" && team.RequireLean {
-		reviewOf = team.Current["formalize"]
+		if team.Refuting {
+			reviewOf = team.Current["counterexample"]
+		} else {
+			reviewOf = team.Current["formalize"]
+		}
 	}
 	d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: task.ID, Target: target.ID, TargetRevision: target.Revision,
 		TeamID: team.ID, Role: role, ReviewOf: reviewOf, ParentAttempt: parent, Profile: profile, RemoteWorker: team.Workers[role], Workspace: team.Workspace,
-		Status: "queued", Limits: &p.Limits, ReservedOutputTokens: reservation, CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
+		Status: "queued", Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 	if role == "review" && team.RequireLean {
 		if v := d.verification(team.Verification); v != nil && verifiedReportMatches(*v) {
 			d.Attempts[len(d.Attempts)-1].ProofBinding = &ProofBinding{v.ID, v.Report.GoalSHA256, v.Report.SourceSHA256}
@@ -629,10 +696,19 @@ func teamReviewReady(d *Data, e *Entity) bool {
 }
 func decodeAgentReport(text string, out any) error {
 	text = strings.TrimSpace(text)
-	if strings.HasPrefix(text, "```json\n") && strings.HasSuffix(text, "```") {
-		text = strings.TrimSuffix(strings.TrimPrefix(text, "```json\n"), "```")
+	if strings.Contains(text, "```") {
+		if strings.Count(text, "```") != 2 || strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") {
+			return RuleError("Отчет содержит неоднозначные блоки JSON.")
+		}
+		parts := strings.Split(text, "```")
+		block := strings.TrimSpace(parts[1])
+		line, body, ok := strings.Cut(block, "\n")
+		if !ok || strings.TrimSpace(line) != "json" {
+			return RuleError("Нужен блок с меткой json.")
+		}
+		text = body
 	}
-	return json.Unmarshal([]byte(text), out)
+	return decodeJSON([]byte(text), out)
 }
 func slicesContainsSeverity(s string) bool {
 	return s == "major" || s == "editorial" || s == "question"

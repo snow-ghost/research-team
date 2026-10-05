@@ -12,6 +12,8 @@ import (
 )
 
 type Verification struct {
+	Purpose             string            `json:"purpose,omitempty"`
+	OriginalGoalSHA256  string            `json:"original_goal_sha256,omitempty"`
 	Environment         *leancheck.Config `json:"environment,omitempty"`
 	LibraryPins         map[string]string `json:"library_pins,omitempty"`
 	ID                  string            `json:"id"`
@@ -31,6 +33,7 @@ type Verification struct {
 	FinishedAt          *time.Time        `json:"finished_at,omitempty"`
 }
 type FormalGoalRequest struct {
+	Libraries        []string       `json:"libraries,omitempty"`
 	ExpectedRevision int            `json:"expected_revision"`
 	RequestID        string         `json:"request_id"`
 	Goal             leancheck.Goal `json:"goal"`
@@ -102,7 +105,7 @@ func (s *Service) AttachVerification(id string, r AttachVerificationRequest) err
 		AttachVerificationRequest
 	}{id, r}), "Проверенный исходный текст направлен на приемку", id, "operator", func(d *Data) error {
 		v := d.verification(id)
-		if v == nil || v.Origin != "submitted" || !verifiedReportMatches(*v) || !verificationMatches(d, *v) {
+		if v == nil || v.Purpose == "refutation" || v.Origin != "submitted" || !verifiedReportMatches(*v) || !verificationMatches(d, *v) {
 			return RuleError("Нужен зарегистрированный исходный текст с успешной проверкой текущей цели.")
 		}
 		e := d.entity(v.Target)
@@ -138,7 +141,7 @@ func (d *Data) verification(id string) *Verification {
 	return nil
 }
 func (s *Service) SetFormalGoal(target string, r FormalGoalRequest) error {
-	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) {
+	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || len(r.Libraries) > 16 {
 		return RuleError("Нужны снимок и идентификатор команды.")
 	}
 	if err := r.Goal.Validate(); err != nil {
@@ -149,10 +152,34 @@ func (s *Service) SetFormalGoal(target string, r FormalGoalRequest) error {
 		if e == nil || e.Status == "accepted" || e.Status == "refuted" {
 			return RuleError("Нужна открытая версия утверждения.")
 		}
-		if e.FormalGoal != nil && leancheck.Digest(*e.FormalGoal) == leancheck.Digest(r.Goal) {
+		addedDependency := false
+		for _, id := range r.Libraries {
+			var selected *LibraryEntry
+			for i := range d.Library {
+				if d.Library[i].ID == id {
+					selected = &d.Library[i]
+					break
+				}
+			}
+			if selected == nil || selected.Status != "ready" || selected.Lemma == e.ID || !libraryMatches(d, *selected) {
+				return RuleError("Нужен действующий модуль принятой леммы.")
+			}
+			found := false
+			for _, dep := range e.Dependencies {
+				if dep == selected.Lemma {
+					found = true
+				}
+			}
+			if !found {
+				e.Dependencies = append(e.Dependencies, selected.Lemma)
+				addedDependency = true
+			}
+		}
+		if !addedDependency && e.FormalGoal != nil && leancheck.Digest(*e.FormalGoal) == leancheck.Digest(r.Goal) {
 			return nil
 		}
 		e.FormalGoal = &r.Goal
+		e.RefutationVerification, e.RefutationReview = "", ""
 		e.Revision++
 		e.Status = "open"
 		e.Proof, e.ProofAuthor, e.ProofAttempt = "", "", ""
@@ -309,6 +336,9 @@ func (s *Service) checkProof(ctx context.Context, v Verification) {
 			return errors.New("verification missing")
 		}
 		current.Report = &report
+		if current.Status == "interrupted" {
+			report.Status = "interrupted"
+		}
 		current.Status = report.Status
 		current.FinishedAt = &now
 		if !verificationMatches(d, *current) {
@@ -322,7 +352,17 @@ func (s *Service) checkProof(ctx context.Context, v Verification) {
 }
 func verificationMatches(d *Data, v Verification) bool {
 	e := d.entity(v.Target)
-	if e == nil || e.Revision != v.TargetRevision || e.FormalGoal == nil || leancheck.Digest(*e.FormalGoal) != leancheck.Digest(v.Goal) {
+	if e == nil || e.Revision != v.TargetRevision || e.FormalGoal == nil {
+		return false
+	}
+	expected := *e.FormalGoal
+	if v.Purpose == "refutation" {
+		if v.OriginalGoalSHA256 != leancheck.Digest(expected) {
+			return false
+		}
+		expected = refutationGoal(expected)
+	}
+	if leancheck.Digest(expected) != leancheck.Digest(v.Goal) {
 		return false
 	}
 	for id, pin := range v.LibraryPins {
@@ -340,6 +380,9 @@ func verificationMatches(d *Data, v Verification) bool {
 }
 func hasVerifiedProof(d *Data, e *Entity) bool {
 	for _, v := range d.Verifications {
+		if v.Purpose == "refutation" {
+			continue
+		}
 		matches := e.ProofAttempt != "" && v.Attempt == e.ProofAttempt
 		if e.ProofVerification != "" {
 			matches = v.ID == e.ProofVerification && v.Origin == "submitted" && v.Attempt == "" && e.ProofAttempt == "" && e.Proof == v.Source && e.ProofAuthor == v.Author

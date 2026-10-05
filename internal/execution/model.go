@@ -67,6 +67,13 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 		return result, err
 	}
 	defer func() { finish(&result, err) }()
+	for _, name := range e.profile.Model.Tools {
+		if name != "read_file" {
+			if _, ok := runtimeTool(ctx, name); !ok {
+				return result, ErrUnsupported
+			}
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, duration(e.profile))
 	defer cancel()
 	root, err := os.OpenRoot(task.Workspace)
@@ -143,7 +150,7 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 			if call.ID == "" || seenCalls[call.ID] || call.Type != "function" || !e.allows(call.Function.Name) {
 				return result, ErrUnsupported
 			}
-			if _, err := readArguments(call.Function.Arguments); err != nil {
+			if err := validateToolArguments(ctx, call.Function.Name, call.Function.Arguments); err != nil {
 				return result, err
 			}
 			seenCalls[call.ID] = true
@@ -153,12 +160,24 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 			if err := ctx.Err(); err != nil {
 				return result, err
 			}
-			path, _ := readArguments(call.Function.Arguments)
 			record(ctx, &result, maskedEvent(Event{Type: "tool_started", Step: step, Tool: call.Function.Name, CallID: call.ID, Input: call.Function.Arguments}, e.token))
-			data, toolErr := readWorkspaceFile(root, path)
-			if toolErr != nil {
-				data = "File read denied or unavailable."
+			var data string
+			var toolErr error
+			if call.Function.Name == "read_file" {
+				path, _ := readArguments(call.Function.Arguments)
+				data, toolErr = readWorkspaceFile(root, path)
+			} else {
+				handler, _ := runtimeTool(ctx, call.Function.Name)
+				data, toolErr = handler.Run(ctx, call.Function.Arguments)
 			}
+			if toolErr != nil && data == "" {
+				data = "Tool denied or unavailable."
+			}
+			if len(data) > 64*1024 {
+				data = "Tool output exceeded its bound."
+				toolErr = ErrLimit
+			}
+			data = e.redact(data)
 			messages = append(messages, message{Role: "tool", ToolCallID: call.ID, Content: data})
 			toolCount++
 			status := "completed"
@@ -194,13 +213,26 @@ func (e *modelExecutor) complete(ctx context.Context, messages []message) (compl
 		field = "max_completion_tokens"
 	}
 	payload[field] = e.profile.Limits.MaxOutputTokens
+	definitions := []any{}
 	if e.allows("read_file") {
-		payload["tools"] = []any{map[string]any{
+		definitions = append(definitions, map[string]any{
 			"type": "function", "function": map[string]any{
 				"name": "read_file", "description": "Read an approved regular text file relative to the task workspace.",
 				"parameters": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]string{"type": "string"}}, "required": []string{"path"}, "additionalProperties": false},
 			},
-		}}
+		})
+	}
+	for _, name := range e.profile.Model.Tools {
+		if name != "read_file" {
+			h, ok := runtimeTool(ctx, name)
+			if !ok {
+				return completion{}, ErrUnsupported
+			}
+			definitions = append(definitions, map[string]any{"type": "function", "function": map[string]any{"name": h.Name, "description": h.Description, "parameters": h.Parameters}})
+		}
+	}
+	if len(definitions) > 0 {
+		payload["tools"] = definitions
 	}
 	body, err := json.Marshal(payload)
 	if err != nil || len(body) > 4*maxPayload {
@@ -253,6 +285,18 @@ func readArguments(raw string) (string, error) {
 		return "", ErrProtocol
 	}
 	return args.Path, nil
+}
+
+func validateToolArguments(ctx context.Context, name, raw string) error {
+	if name == "read_file" {
+		_, err := readArguments(raw)
+		return err
+	}
+	h, ok := runtimeTool(ctx, name)
+	if !ok {
+		return ErrUnsupported
+	}
+	return h.Validate(raw)
 }
 
 func readWorkspaceFile(root *os.Root, path string) (string, error) {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { CyclePanel } from "./cycles.jsx";
 import { EvidencePanel } from "./evidence.jsx";
+import { MemoryPanel } from "./research-progress.jsx";
 import {
   TeamPanel,
   FormalGoalPanel,
@@ -105,6 +106,14 @@ export function RuntimePanel({
       )}
       {!providers && (
         <EvidencePanel live={live} study={study} selected={selected} />
+      )}
+      {!providers && (
+        <MemoryPanel
+          live={live}
+          study={study}
+          selected={selected}
+          onSelect={onSelect}
+        />
       )}
       <CyclePanel
         live={live}

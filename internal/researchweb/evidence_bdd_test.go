@@ -60,6 +60,24 @@ func TestEvidenceBDD_AutomaticBindingAndInvalidation(t *testing.T) {
 	if err != nil || obs.Completed != 4 || obs.Active != 0 {
 		t.Fatal("incorrect observation", obs, err)
 	}
+	bound := v.Results[0]
+	v = act(t, s, Action{Type: "REVIEW", Target: goal, Decision: "accept", Text: "Checked the exact source and separate reports."})
+	v = act(t, s, Action{Type: "CHALLENGE", Target: goal, Text: "Dependency-state regression trial."})
+	if v.Results[0].Status != "stale" {
+		t.Fatal("challenged result remained valid")
+	}
+	finding := v.Findings[len(v.Findings)-1].ID
+	act(t, s, Action{Type: "RESOLVE_FINDING", Finding: finding})
+	act(t, s, Action{Type: "CLOSE_FINDING", Finding: finding, Text: "No mathematical change; the exact checked source is unchanged."})
+	v = act(t, s, Action{Type: "SUBMIT_REVIEW", Target: goal})
+	if err := s.BindResult(ResultRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Target: goal, ReviewAttempt: bound.ReviewAttempt, CounterAttempt: bound.CounterAttempt}); err != nil {
+		t.Fatal("unchanged exact reports cannot be rebound", err)
+	}
+	v = act(t, s, Action{Type: "REVIEW", Target: goal, Decision: "accept", Text: "Rechecked unchanged proof and closed findings."})
+	if len(v.Attempts) != 4 || v.entity(goal).Status != "accepted" {
+		t.Fatal("reopening silently launched or failed acceptance")
+	}
+	v = act(t, s, Action{Type: "CHALLENGE", Target: goal, Text: "Replace the pinned goal for the next regression."})
 	changed := *v.entity(goal).FormalGoal
 	changed.Source = "def Statement : Prop := False"
 	if err := s.SetFormalGoal(goal, FormalGoalRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Goal: changed}); err != nil {

@@ -1966,6 +1966,9 @@ td small {
 .process-section { padding: 16px 0; border-bottom: 1px solid var(--process-rule); min-width: 0; }
 .team-row { padding: 14px 0; border-top: 1px solid var(--process-rule); min-width: 0; }
 .team-row p, .journal-event p { overflow-wrap: anywhere; }
+.memory-list code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; margin-bottom: 8px; }
+.branch-list .row-actions input { width: 80px; }
+.branch-list strong { overflow-wrap: anywhere; }
 .role-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
 .role-strip > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 12px; overflow-wrap: anywhere; border-left: 2px solid #7aa99a; padding-left: 8px; }
 .role-strip strong { font-size: 12px; }

@@ -1,0 +1,26 @@
+{
+  "id": "lean-formalizer",
+  "kind": "model",
+  "skills": [
+    {
+      "id": "formalize-with-check",
+      "version": "1",
+      "instructions": "Докажи точную цель из tool_goals.check_lean. Вызови check_lean с полным исходником, исправь ошибки по отчету. Верни один завершенный блок lean с import Goal и точным именем кандидата. Не меняй предпосылки и не используй sorry, axiom или native_decide. Промежуточная проверка не является приемкой."
+    }
+  ],
+  "limits": {
+    "timeout_seconds": 900,
+    "max_steps": 4,
+    "max_tool_calls": 4,
+    "max_output_tokens": 32768,
+    "max_output_bytes": 16777216
+  },
+  "model": {
+    "protocol": "chat_completions",
+    "base_url": "https://api.example.com/v1",
+    "token_env": "MODEL_TOKEN",
+    "model": "operator-selected-model",
+    "token_limit_field": "max_tokens",
+    "tools": ["check_lean"]
+  }
+}

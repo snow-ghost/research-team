@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/snow-ghost/research-team/internal/execution"
+	"github.com/snow-ghost/research-team/internal/leancheck"
 )
 
 type Service struct {
@@ -179,6 +180,9 @@ func (s *Service) Profiles() []ProfileView {
 		}
 		keys := []string{}
 		if p.Model != nil {
+			if modelHasLeanTool(p) && s.Options.Checker == nil {
+				v.Available = false
+			}
 			v.Provider = p.Model.Protocol
 			v.Model = p.Model.Model
 			keys = append(keys, p.Model.TokenEnv)
@@ -219,6 +223,12 @@ func (s *Service) Act(a Action) error {
 		})
 	}
 	return s.Store.Change(a.ExpectedRevision, a.RequestID, hash(a), actionLabel(a.Type), a.Target, "operator", func(d *Data) error {
+		if a.Type == "SUBMIT_REVIEW" {
+			e := d.entity(a.Target)
+			if e != nil && e.Status == "challenged" && e.FormalGoal != nil && !hasVerifiedProof(d, e) {
+				return RuleError("Оспоренный исходник требует действительной проверки Lean перед повторной рецензией.")
+			}
+		}
 		if a.Type == "REVIEW" && a.Decision == "accept" {
 			e := d.entity(a.Target)
 			if e != nil && e.FormalGoal != nil && !hasVerifiedProof(d, e) {
@@ -313,7 +323,7 @@ func (s *Service) Start(r RunRequest) error {
 		t.Attempt = id
 		t.Agent = r.Profile
 		d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: t.ID, Target: item.ID, TargetRevision: item.Revision,
-			Profile: r.Profile, RemoteWorker: r.RemoteWorker, Limits: &profile.Limits, ProofBinding: binding, ReviewOf: reviewOf, ReservedOutputTokens: reservation, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
+			Profile: r.Profile, RemoteWorker: r.RemoteWorker, Limits: &profile.Limits, ProofBinding: binding, ReviewOf: reviewOf, ReservedOutputTokens: reservation, ReservedModelRequests: profile.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
 			InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 		return nil
 	})
@@ -357,6 +367,7 @@ func (s *Service) schedule() {
 			s.expireWorkerLeases()
 			s.advanceCycles()
 			s.advanceTeams()
+			s.advanceBranches()
 			s.startChecks()
 			s.startLibraryBuilds()
 			if s.ctx.Err() != nil {
@@ -368,6 +379,23 @@ func (s *Service) schedule() {
 				continue
 			}
 			v, err := s.Store.Read()
+			if err == nil {
+				for id, cancel := range s.running {
+					if a := v.attempt(id); a != nil && a.Status == "interrupted" {
+						cancel()
+					}
+					for _, check := range v.Verifications {
+						if id == "verify:"+check.ID && check.Status == "interrupted" {
+							cancel()
+						}
+					}
+					for _, module := range v.Library {
+						if id == "library:"+module.ID && module.Status == "interrupted" {
+							cancel()
+						}
+					}
+				}
+			}
 			if err != nil || v.Paused {
 				s.mu.Unlock()
 				continue
@@ -447,7 +475,7 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 		if current == nil {
 			return errors.New("attempt missing")
 		}
-		if current.Status == "cancelling" || ctx.Err() != nil {
+		if current.Status == "cancelling" || current.Status == "interrupted" || ctx.Err() != nil {
 			result.Status = "cancelled"
 			result.Candidate = ""
 		}
@@ -574,15 +602,17 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		}
 	}
 	contextData, _ := json.Marshal(struct {
-		Entities  []Entity            `json:"entities"`
-		Questions []Question          `json:"questions"`
-		Materials []map[string]string `json:"materials"`
-		Previous  any                 `json:"previous_unverified,omitempty"`
-		Team      any                 `json:"team_materials,omitempty"`
-		Library   []Entity            `json:"accepted_lemmas,omitempty"`
-		Modules   []map[string]any    `json:"lean_modules,omitempty"`
-		Review    any                 `json:"review_materials,omitempty"`
-	}{relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
+		Memory    []MemoryHit               `json:"research_memory,omitempty"`
+		ToolGoals map[string]leancheck.Goal `json:"tool_goals,omitempty"`
+		Entities  []Entity                  `json:"entities"`
+		Questions []Question                `json:"questions"`
+		Materials []map[string]string       `json:"materials"`
+		Previous  any                       `json:"previous_unverified,omitempty"`
+		Team      any                       `json:"team_materials,omitempty"`
+		Library   []Entity                  `json:"accepted_lemmas,omitempty"`
+		Modules   []map[string]any          `json:"lean_modules,omitempty"`
+		Review    any                       `json:"review_materials,omitempty"`
+	}{memoryForTarget(d, a.Target), toolGoals(entity, profile), relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
 	if a.RemoteWorker != "" {
 		selected := []Entity{}
 		for _, e := range relevant {
@@ -599,6 +629,10 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	}
 	var executor execution.Executor
 	if a.RemoteWorker == "" {
+		ctx, err = s.leanToolContext(ctx, d, a)
+		if err != nil {
+			return err
+		}
 		executor, err = s.Options.Factory(profile, s.Options.Lookup)
 	}
 	if err != nil {

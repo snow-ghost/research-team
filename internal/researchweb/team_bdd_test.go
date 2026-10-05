@@ -36,6 +36,9 @@ func teamOptions(t *testing.T, base string) Options {
 func waitTeam(t *testing.T, s *Service, id, status string) View {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
+	if s.Options.Lean != nil {
+		deadline = time.Now().Add(120 * time.Second)
+	}
 	for time.Now().Before(deadline) {
 		v := stateOf(t, s)
 		if team := v.team(id); team != nil && team.Status == status {

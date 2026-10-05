@@ -2,6 +2,18 @@ package researchweb
 
 import "strings"
 
+func findingTextMatches(f Finding, text string) bool {
+	if f.Text == text || f.SourceTextSHA256 == hash(text) {
+		return true
+	}
+	// Earlier records appended the resolution without a separate source digest.
+	if f.SourceTextSHA256 == "" && f.State == "resolved" {
+		original, _, ok := strings.Cut(f.Text, "\nРезультат перепроверки: ")
+		return ok && original == text
+	}
+	return false
+}
+
 func actionLabel(kind string) string {
 	labels := map[string]string{
 		"CREATE_STUDY": "Создано исследование", "LEMMA": "Добавлена лемма-кандидат", "SPLIT": "Предложено разбиение",
@@ -124,7 +136,7 @@ func applyAction(d *Data, a Action) error {
 		d.Entities = append(d.Entities, obligation)
 		d.addTask(id, "Проверить перенос леммы", "proof", obligation.Statement)
 	case "SUBMIT_REVIEW":
-		if item == nil || (item.Status != "open" && item.Status != "needs_changes") {
+		if item == nil || (item.Status != "open" && item.Status != "needs_changes" && item.Status != "challenged") {
 			return RuleError("Кандидат недоступен для рецензии.")
 		}
 		if !textOK(item.Proof, 64000) {
@@ -207,6 +219,9 @@ func applyAction(d *Data, a Action) error {
 						return RuleError("Нужен результат перепроверки замечания.")
 					}
 					f.State = "resolved"
+					if f.ReviewAttempt != "" && f.SourceTextSHA256 == "" {
+						f.SourceTextSHA256 = hash(f.Text)
+					}
 					f.Text += "\nРезультат перепроверки: " + a.Text
 				}
 				return nil

@@ -452,8 +452,8 @@ export function transition(state, action) {
       "Создано отдельное обязательство применимости. Целевая гипотеза не принята автоматически.";
   } else if (action.type === "SUBMIT_REVIEW") {
     assert(
-      item && item.status === "open",
-      "На проверку можно направить открытый кандидат.",
+      item && ["open", "needs_changes", "challenged"].includes(item.status),
+      "На проверку можно направить открытый или оспоренный кандидат.",
     );
     item.status = "in_review";
     addTask(item.id, "Рецензия: " + item.title, "R03", "Проверяющий");

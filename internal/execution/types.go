@@ -169,7 +169,7 @@ func (p Profile) Validate() error {
 		}
 		allowed := map[string]bool{}
 		for _, name := range m.Tools {
-			if name != "read_file" || allowed[name] {
+			if (name != "read_file" && name != "check_lean" && name != "check_refutation") || allowed[name] {
 				return ErrUnsupported
 			}
 			allowed[name] = true

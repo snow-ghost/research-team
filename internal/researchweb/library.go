@@ -132,6 +132,9 @@ func (s *Service) buildLibrary(ctx context.Context, l LibraryEntry) {
 	err = s.Store.Change(0, "", "", "Завершена сборка леммы", l.ID, "checker", func(d *Data) error {
 		for i := range d.Library {
 			if d.Library[i].ID == l.ID {
+				if d.Library[i].Status == "interrupted" {
+					report.Status = "interrupted"
+				}
 				d.Library[i].Report = &report
 				d.Library[i].Status = report.Status
 				return nil

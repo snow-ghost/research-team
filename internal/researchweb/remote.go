@@ -65,6 +65,9 @@ func workerEnabled(d Data, study, id string) bool {
 	return false
 }
 func (s *Service) workerScope(d Data, id, profile, target string) error {
+	if modelHasLeanTool(s.Options.Profiles[profile]) {
+		return RuleError("Промежуточный инструмент Lean пока доступен только местному исполнителю.")
+	}
 	w := s.worker(id)
 	e := d.entity(target)
 	if w == nil || e == nil || !slices.Contains(w.Profiles, profile) || !workerEnabled(d, e.Study, id) {

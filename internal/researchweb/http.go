@@ -378,6 +378,102 @@ func (h *HTTP) view(w http.ResponseWriter) {
 	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
 }
 func (h *HTTP) routes() {
+	h.mux.HandleFunc("POST /api/memory", func(w http.ResponseWriter, r *http.Request) {
+		var b MemoryRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.AddMemory(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/memory/search", func(w http.ResponseWriter, r *http.Request) {
+		hits, err := h.service.SearchMemory(r.URL.Query().Get("q"), r.URL.Query().Get("study"), r.URL.Query().Get("other_studies") == "true")
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, map[string]any{"hits": hits})
+	})
+	h.mux.HandleFunc("GET /api/research-methods", func(w http.ResponseWriter, r *http.Request) { h.json(w, researchMethods) })
+	h.mux.HandleFunc("POST /api/branches", func(w http.ResponseWriter, r *http.Request) {
+		var b BranchRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.CreateBranch(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/branches/{id}/commands", func(w http.ResponseWriter, r *http.Request) {
+		var b BranchCommand
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ControlBranch(r.PathValue("id"), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/entities/{id}/refutation-source", func(w http.ResponseWriter, r *http.Request) {
+		var b ProofSourceRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SubmitRefutation(r.PathValue("id"), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/refutations", func(w http.ResponseWriter, r *http.Request) {
+		var b VerifyRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.StartRefutation(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/refutations/{id}/review", func(w http.ResponseWriter, r *http.Request) {
+		var b RefutationReviewRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.BindRefutationReview(r.PathValue("id"), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/refutations/{id}/accept", func(w http.ResponseWriter, r *http.Request) {
+		var b RefutationAcceptanceRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.AcceptRefutation(r.PathValue("id"), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		h.json(w, map[string]any{"storage": h.service.Store.Health(), "operational": h.service.ctx.Err() == nil})
+	})
 	h.mux.HandleFunc("POST /api/studies/{id}/budget", func(w http.ResponseWriter, r *http.Request) {
 		var body BudgetRequest
 		if err := bodyJSON(w, r, &body); err != nil {

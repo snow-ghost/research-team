@@ -82,6 +82,9 @@ func studyFor(t *testing.T, s *Service) View {
 func waitAttempt(t *testing.T, s *Service, id string, match func(Attempt) bool) Attempt {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
+	if s.Options.Lean != nil {
+		deadline = time.Now().Add(150 * time.Second)
+	}
 	for time.Now().Before(deadline) {
 		v := stateOf(t, s)
 		if a := v.attempt(id); a != nil && match(*a) {

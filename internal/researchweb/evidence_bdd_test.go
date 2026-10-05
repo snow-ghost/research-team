@@ -60,6 +60,9 @@ func TestEvidenceBDD_AutomaticBindingAndInvalidation(t *testing.T) {
 	if err != nil || obs.Completed != 4 || obs.Active != 0 {
 		t.Fatal("incorrect observation", obs, err)
 	}
+	// Keep the completion event from changing the snapshot during these evidence commands.
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	bound := v.Results[0]
 	v = act(t, s, Action{Type: "REVIEW", Target: goal, Decision: "accept", Text: "Checked the exact source and separate reports."})
 	v = act(t, s, Action{Type: "CHALLENGE", Target: goal, Text: "Dependency-state regression trial."})

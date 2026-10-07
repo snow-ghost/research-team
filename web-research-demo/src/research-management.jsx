@@ -301,6 +301,17 @@ export function ComparisonPanel({ live }) {
             {new Date(entry.created_at).toLocaleString("ru-RU")} ·{" "}
             {entry.report.runs.length} запусков
           </p>
+          {entry.report.runs.some(
+            (run) =>
+              run.verification?.status === "verified" &&
+              !run.verification.audit_sha256,
+          ) && (
+            <p role="alert">
+              Проверки Lean выполнены прежним механизмом без контроля
+              происхождения цели. Результаты требуют повторного аудита; приемка
+              не выполнена.
+            </p>
+          )}
           <div className="table-wrap">
             <table>
               <thead>

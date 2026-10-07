@@ -250,6 +250,12 @@ func (s *Service) Act(a Action) error {
 			if e != nil && e.FormalGoal != nil && !hasVerifiedProof(d, e) {
 				return RuleError("Нужна успешная проверка Lean для текущего доказательства и цели.")
 			}
+			if e != nil && e.FormalGoal != nil {
+				v := proofVerification(d, e)
+				if v == nil || v.Report.AuditSHA256 != leancheck.AuditDigest() {
+					return RuleError("Нужна новая проверка Lean актуальной программой аудита.")
+				}
+			}
 			if e != nil && !teamReviewReady(d, e) {
 				return RuleError("Дождитесь независимого задания рецензирования команды.")
 			}

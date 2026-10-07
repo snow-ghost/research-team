@@ -62,6 +62,9 @@ func (s *Service) PublishLemma(r PublishRequest) error {
 			}
 		}
 		v := proofVerification(d, e)
+		if v == nil || v.Report.AuditSHA256 != leancheck.AuditDigest() {
+			return RuleError("Нужна новая проверка Lean актуальной программой аудита.")
+		}
 		source, err := leancheck.ModuleSource(v.Goal, v.Source)
 		if err != nil {
 			return err

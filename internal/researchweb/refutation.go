@@ -144,6 +144,9 @@ func (s *Service) AcceptRefutation(id string, r RefutationAcceptanceRequest) err
 		if v == nil || v.Purpose != "refutation" || !verifiedReportMatches(*v) || !verificationMatches(d, *v) {
 			return RuleError("Нужна действительная проверка отрицания.")
 		}
+		if v.Report.AuditSHA256 != leancheck.AuditDigest() {
+			return RuleError("Нужна новая проверка Lean актуальной программой аудита.")
+		}
 		e := d.entity(v.Target)
 		if v.Author == "operator" {
 			return RuleError("Автор отрицания не может принимать собственный результат.")

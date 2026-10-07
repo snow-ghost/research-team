@@ -100,7 +100,7 @@ func TestCoddyLeanToolBDD_RealBinaryCorrectsCandidate(t *testing.T) {
 		if source == bad {
 			status = "failed"
 		}
-		return leancheck.Report{Status: status, GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+		return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: status, GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 	})
 	if path := os.Getenv("RESEARCH_TEST_LEAN_CONFIG"); path != "" {
 		var c leancheck.Config
@@ -186,7 +186,7 @@ func TestLeanToolBDD_FailedIntermediateCorrectedBeforeFinalCandidate(t *testing.
 		if s == bad {
 			status = "failed"
 		}
-		return leancheck.Report{Status: status, GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(s)}, nil
+		return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: status, GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(s)}, nil
 	})
 	if file := os.Getenv("RESEARCH_TEST_LEAN_CONFIG"); file != "" {
 		var c leancheck.Config

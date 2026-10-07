@@ -27,7 +27,7 @@ func TestLemmaSearchBDD_StructureConditionsAndStaleness(t *testing.T) {
 		lemma.ProofAuthor = "executor:author"
 		lemma.ProofVerification = identifier("verify")
 		lemma.ResearchResult = identifier("result")
-		v := Verification{ID: lemma.ProofVerification, Target: lemma.ID, TargetRevision: lemma.Revision, Origin: "submitted", Author: lemma.ProofAuthor, Status: "verified", Goal: g, Source: submittedProof, Report: &leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(submittedProof), EnvironmentSHA256: "fixture"}}
+		v := Verification{ID: lemma.ProofVerification, Target: lemma.ID, TargetRevision: lemma.Revision, Origin: "submitted", Author: lemma.ProofAuthor, Status: "verified", Goal: g, Source: submittedProof, Report: &leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(submittedProof), EnvironmentSHA256: "fixture"}}
 		review, counter := identifier("run"), identifier("run")
 		d.Attempts = append(d.Attempts, Attempt{ID: review, Status: "candidate", ResultSHA256: "review"}, Attempt{ID: counter, Status: "candidate", ResultSHA256: "counter"})
 		result := ResearchResult{ID: lemma.ResearchResult, Target: lemma.ID, TargetRevision: lemma.Revision, Author: lemma.ProofAuthor, Binding: ProofBinding{v.ID, v.Report.GoalSHA256, v.Report.SourceSHA256}, EnvironmentSHA256: "fixture", ReviewAttempt: review, CounterAttempt: counter, ReviewResultSHA256: "review", CounterResultSHA256: "counter", Status: "accepted", Counter: CounterReport{Outcome: "none_found"}}

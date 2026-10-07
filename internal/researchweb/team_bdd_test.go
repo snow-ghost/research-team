@@ -85,7 +85,7 @@ func TestTeamBDD_FormalRepairReviewAndOperatorAcceptance(t *testing.T) {
 				if n%2 == 1 {
 					status = "failed"
 				}
-				return leancheck.Report{Status: status, Phase: "audit", Diagnostics: "repair required", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+				return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: status, Phase: "audit", Diagnostics: "repair required", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 			})
 			if backend == "postgres" {
 				dsn := postgresDSN(t)

@@ -31,13 +31,38 @@ func TestLeanBDD_RealKernelAndGoalPolicy(t *testing.T) {
 		{"sorry", "import Goal\ntheorem candidate : target := by sorry\n", false, "audit"},
 		{"extra_axiom", "import Goal\naxiom fake : target\ntheorem candidate : target := fake\n", false, "audit"},
 		{"goal_overwrite", "import Goal\ndef target : Prop := True\ntheorem candidate : target := by trivial\n", false, "compile"},
+		{"goal_shadow_without_import", "def target : Prop := True\ntheorem candidate : target := by trivial\n", false, "audit"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := (DockerChecker{Config: config}).Check(context.Background(), goal, tc.source, t.TempDir())
 			if (result.Status == "verified") != tc.verified || result.Phase != tc.phase {
 				t.Fatalf("%+v %v", result, err)
 			}
+			if result.AuditSHA256 != Digest(auditSource) {
+				t.Fatal("trusted audit source was not pinned")
+			}
 		})
+	}
+}
+
+func TestLeanBDD_FalseGoalCannotBeShadowed(t *testing.T) {
+	path := os.Getenv("RESEARCH_TEST_LEAN_CONFIG")
+	if path == "" {
+		t.Skip("set RESEARCH_TEST_LEAN_CONFIG; only local Lean containers are used")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config Config
+	if json.Unmarshal(body, &config) != nil {
+		t.Fatal("invalid Lean test configuration")
+	}
+	goal := Goal{Source: "def target : Prop := False\n", Declaration: "target", Candidate: "candidate"}
+	source := "def target : Prop := True\ntheorem candidate : target := by trivial\n"
+	report, err := (DockerChecker{Config: config}).Check(context.Background(), goal, source, t.TempDir())
+	if report.Status == "verified" || report.Phase != "audit" || err == nil {
+		t.Fatalf("shadowed false goal accepted: %+v %v", report, err)
 	}
 }
 func TestLeanBDD_OnlyOneCompleteSourceBlock(t *testing.T) {

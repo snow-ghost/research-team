@@ -1,6 +1,72 @@
 import { test, expect } from "@playwright/test";
 import { ACCESS_KEY } from "../fixtures/constants.js";
 
+test("историческое сравнение предупреждает о повторном аудите цели", async ({
+  page,
+}) => {
+  const headers = { Authorization: "Bearer " + ACCESS_KEY };
+  const state = (
+    await (await page.request.get("/api/bootstrap", { headers })).json()
+  ).state;
+  const runs = Array.from({ length: 6 }, (_, index) =>
+    ["single", "team"].map((mode) => ({
+      case: `legacy-${index}`,
+      mode,
+      goal_sha256: "a".repeat(64),
+      status: "verified_not_accepted",
+      outcome: "proof",
+      request_upper_bound: 1,
+      measured_requests: 1,
+      unknown_request_count: false,
+      input_tokens: 10,
+      output_tokens: 20,
+      usage_incomplete: false,
+      seconds: 1,
+      profiles: {},
+      verification: { status: "verified", phase: "complete", axioms: [] },
+      review_accepted: true,
+    })),
+  ).flat();
+  let response;
+  for (let retry = 0; retry < 5; retry++) {
+    const current = (
+      await (await page.request.get("/api/bootstrap", { headers })).json()
+    ).state;
+    response = await page.request.post("/api/comparisons", {
+      headers,
+      data: {
+        expected_revision: current.revision,
+        request_id: `browser-legacy-comparison-${retry}`,
+        confirm: true,
+        report: {
+          version: 1,
+          started_at: "2026-10-07T00:00:00Z",
+          configuration_sha256: "b".repeat(64),
+          max_requests: 96,
+          runs,
+        },
+      },
+    });
+    if (response.status() !== 409) break;
+  }
+  expect(response.ok()).toBeTruthy();
+  const after = (await response.json()).state;
+  expect(
+    after.entities.filter((entity) => entity.status === "accepted").length,
+  ).toBe(
+    state.entities.filter((entity) => entity.status === "accepted").length,
+  );
+  await page.goto("/");
+  await page.getByLabel("Ключ доступа").fill(ACCESS_KEY);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page.getByRole("button", { name: "Исполнители", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Сравнение исполнителей" });
+  await expect(panel.getByRole("alert")).toContainText(
+    "без контроля происхождения цели",
+  );
+  await expect(panel.locator("tbody tr")).toHaveCount(12);
+});
+
 test("версии профилей сохраняют навыки и доступны после обновления", async ({
   page,
 }) => {

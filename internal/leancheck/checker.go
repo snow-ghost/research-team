@@ -46,6 +46,7 @@ type Report struct {
 	EnvironmentSHA256 string   `json:"environment_sha256"`
 	LeanVersion       string   `json:"lean_version"`
 	ArtifactSHA256    string   `json:"artifact_sha256,omitempty"`
+	AuditSHA256       string   `json:"audit_sha256,omitempty"`
 }
 type Checker interface {
 	Check(context.Context, Goal, string, string) (Report, error)
@@ -80,9 +81,10 @@ func Digest(value any) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
 }
+func AuditDigest() string { return Digest(auditSource) }
 func (c DockerChecker) Check(ctx context.Context, g Goal, source, dir string) (report Report, err error) {
 	report = Report{Status: "failed", Axioms: []string{}, GoalSHA256: Digest(g), SourceSHA256: Digest(source),
-		EnvironmentSHA256: Digest(c.Config), LeanVersion: c.Config.ExpectedVersion}
+		EnvironmentSHA256: Digest(c.Config), LeanVersion: c.Config.ExpectedVersion, AuditSHA256: AuditDigest()}
 	if err = g.Validate(); err != nil {
 		return report, err
 	}

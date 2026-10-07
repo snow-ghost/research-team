@@ -16,7 +16,7 @@ func submittedService(t *testing.T, backend, outcome string) (*Service, string) 
 	t.Helper()
 	o := optionsFor(t, "http://127.0.0.1:1/v1")
 	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
-		r := leancheck.Report{Status: outcome, GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}
+		r := leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: outcome, GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}
 		if outcome == "wrong_hash" {
 			r.Status, r.SourceSHA256 = "verified", "different source"
 		}

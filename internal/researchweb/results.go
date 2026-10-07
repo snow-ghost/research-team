@@ -70,14 +70,20 @@ type ResultRequest struct {
 }
 
 func proofVerification(d *Data, e *Entity) *Verification {
+	var legacy *Verification
 	for i := range d.Verifications {
 		v := &d.Verifications[i]
 		if verificationMatches(d, *v) && verifiedReportMatches(*v) &&
 			((e.ProofVerification != "" && v.ID == e.ProofVerification) || (e.ProofAttempt != "" && v.Attempt == e.ProofAttempt)) {
-			return v
+			if v.Report.AuditSHA256 == leancheck.AuditDigest() {
+				return v
+			}
+			if legacy == nil {
+				legacy = v
+			}
 		}
 	}
-	return nil
+	return legacy
 }
 func (s *Service) BindResult(r ResultRequest) error {
 	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) {

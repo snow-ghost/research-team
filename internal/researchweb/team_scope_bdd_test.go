@@ -43,7 +43,7 @@ func TestTeamScopeBDD_SeparatePartUsesItsGoalAndBudget(t *testing.T) {
 		t.Run(backend, func(t *testing.T) {
 			o := teamOptions(t, model.URL+"/v1")
 			o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
-				return leancheck.Report{Status: "verified", Phase: "complete", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+				return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "verified", Phase: "complete", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 			})
 			if backend == "postgres" {
 				dsn := postgresDSN(t)

@@ -21,6 +21,7 @@ type ModuleReport struct {
 	ArtifactSHA256    string            `json:"artifact_sha256,omitempty"`
 	Diagnostics       string            `json:"diagnostics,omitempty"`
 	Axioms            []string          `json:"axioms,omitempty"`
+	AuditSHA256       string            `json:"audit_sha256,omitempty"`
 }
 
 func ModuleSource(g Goal, source string) (string, error) {
@@ -38,7 +39,7 @@ func (c DockerChecker) BuildModule(ctx context.Context, g Goal, source, module, 
 	if err != nil {
 		return r, err
 	}
-	r = ModuleReport{Status: "failed", Module: module, SourceSHA256: Digest(combined), EnvironmentSHA256: Digest(c.Config), Artifacts: map[string]string{}}
+	r = ModuleReport{Status: "failed", Module: module, SourceSHA256: Digest(combined), EnvironmentSHA256: Digest(c.Config), AuditSHA256: AuditDigest(), Artifacts: map[string]string{}}
 	if err = c.Config.Validate(); err != nil {
 		return r, err
 	}

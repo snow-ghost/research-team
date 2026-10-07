@@ -34,7 +34,7 @@ func TestVerificationBDD_AcceptanceRequiresExactSourceAndCurrentGoal(t *testing.
 	defer model.Close()
 	o := optionsFor(t, model.URL+"/v1")
 	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
-		return leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+		return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 	})
 	s := serviceFor(t, o)
 	v := studyFor(t, s)
@@ -72,6 +72,47 @@ func TestVerificationBDD_AcceptanceRequiresExactSourceAndCurrentGoal(t *testing.
 	v = stateOf(t, s)
 	if hasVerifiedProof(&v.Data, v.entity(goal)) || v.entity(goal).Proof != "" {
 		t.Fatal("old verification survived goal replacement")
+	}
+}
+
+func TestVerificationBDD_LegacyAuditCannotAuthorizeNewAcceptance(t *testing.T) {
+	for _, digest := range []string{"", strings.Repeat("b", 64)} {
+		t.Run("audit_"+digest, func(t *testing.T) {
+			s, goal := submittedService(t, "sqlite", "verified")
+			id := submitFor(t, s, goal, "Codex")
+			v := waitVerification(t, s, id)
+			if err := s.AttachVerification(id, AttachVerificationRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd")}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Store.Change(0, "", "", "Historical test report", id, "checker", func(d *Data) error {
+				d.verification(id).Report.AuditSHA256 = digest
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			v = stateOf(t, s)
+			err := s.Act(Action{Type: "REVIEW", Target: goal, Decision: "accept", Text: "Reviewed", ExpectedRevision: v.Revision, RequestID: identifier("cmd")})
+			if err == nil || !strings.Contains(err.Error(), "актуальной программой аудита") {
+				t.Fatal("legacy audit authorized acceptance", err)
+			}
+			after := stateOf(t, s)
+			if after.entity(goal).Status == "accepted" || after.verification(id).Report.AuditSHA256 != digest {
+				t.Fatal("acceptance or historical report changed")
+			}
+		})
+	}
+}
+
+func TestVerificationBDD_RecheckIsPreferredWithoutRewritingLegacyReport(t *testing.T) {
+	g := leancheck.Goal{Source: "def Statement : Prop := True", Declaration: "Statement", Candidate: "Candidate"}
+	e := Entity{ID: "goal", Revision: 1, FormalGoal: &g, ProofAttempt: "attempt"}
+	old := Verification{ID: "old", Target: e.ID, TargetRevision: 1, Attempt: e.ProofAttempt, Goal: g, Source: submittedProof, Status: "verified", Report: &leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(submittedProof)}}
+	fresh := old
+	fresh.ID = "fresh"
+	fresh.Report = &leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(submittedProof)}
+	d := Data{Entities: []Entity{e}, Verifications: []Verification{old, fresh}}
+	if found := proofVerification(&d, &e); found == nil || found.ID != fresh.ID || d.Verifications[0].Report.AuditSHA256 != "" {
+		t.Fatal("new audit not selected or historical report changed")
 	}
 }
 func TestTeamBDD_RejectionExhaustsBudgetWithoutAutomaticAcceptance(t *testing.T) {

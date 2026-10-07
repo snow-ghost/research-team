@@ -19,7 +19,7 @@ func TestNativeReviewBDD_DistinctProfileAndOriginalAttemptBinding(t *testing.T) 
 	other.ID = "other-reader"
 	o.Profiles[other.ID] = other
 	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
-		return leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+		return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 	})
 	s := serviceFor(t, o)
 	v := studyFor(t, s)

@@ -2,7 +2,11 @@ import Lean
 
 open Lean
 
-def checkCandidate (env : Environment) (goalName candidateName : Name) : CoreM Json := do
+def checkCandidate (env : Environment) (goalName candidateName goalModuleName : Name) : CoreM Json := do
+  let some goalModuleIdx := env.getModuleIdxFor? goalName
+    | throwError "Goal declaration has no imported module"
+  unless env.header.moduleNames[goalModuleIdx.toNat]? == some goalModuleName do
+    throwError "Goal declaration does not come from the trusted goal module"
   let goal ← getConstInfo goalName
   let candidate ← getConstInfo candidateName
   unless goal.levelParams.length == candidate.levelParams.length do
@@ -23,14 +27,14 @@ def checkCandidate (env : Environment) (goalName candidateName : Name) : CoreM J
 
 def main (args : List String) : IO UInt32 := do
   try
-    let (goal, candidate, moduleName) ← match args with
-      | [goal, candidate] => pure (goal, candidate, "Candidate")
-      | [goal, candidate, moduleName] => pure (goal, candidate, moduleName)
+    let (goal, candidate, moduleName, goalModuleName) ← match args with
+      | [goal, candidate] => pure (goal, candidate, "Candidate", "Goal")
+      | [goal, candidate, moduleName] => pure (goal, candidate, moduleName, moduleName)
       | _ => throw (IO.userError "Expected declaration names and an optional module name")
     initSearchPath (← findSysroot)
     -- Import data without executing untrusted initializers or environment extensions.
     let env ← importModules #[{ module := moduleName.toName }] {} 0 (loadExts := false)
-    let report ← (checkCandidate env goal.toName candidate.toName).toIO'
+    let report ← (checkCandidate env goal.toName candidate.toName goalModuleName.toName).toIO'
       {fileName := "Audit", fileMap := FileMap.ofString ""} {env}
     IO.println report.compress
     return 0

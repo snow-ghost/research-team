@@ -36,7 +36,7 @@ func TestEvidenceBDD_AutomaticBindingAndInvalidation(t *testing.T) {
 	defer model.Close()
 	o := teamOptions(t, model.URL+"/v1")
 	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
-		return leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+		return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 	})
 	s := serviceFor(t, o)
 	v := studyFor(t, s)

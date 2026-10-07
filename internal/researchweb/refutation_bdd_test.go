@@ -17,6 +17,28 @@ import (
 const falseGoal = "import Mathlib\nnamespace NegativeTrial\ndef Statement : Prop := ∀ n : ℕ, n * n = n\nend NegativeTrial\n"
 const negativeProof = "import Goal\nnamespace ResearchRefutation\ntheorem candidate : Statement := by\n  intro h\n  have h2 := h 2\n  norm_num at h2\nend ResearchRefutation\n"
 
+func TestRefutationBDD_LegacyAuditCannotAuthorizeAcceptance(t *testing.T) {
+	s, goal := submittedService(t, "sqlite", "verified")
+	id := identifier("verify")
+	if err := s.Store.Change(0, "", "", "Historical test report", id, "checker", func(d *Data) error {
+		e := d.entity(goal)
+		g := refutationGoal(*e.FormalGoal)
+		d.Verifications = append(d.Verifications, Verification{ID: id, Target: goal, TargetRevision: e.Revision, Purpose: "refutation", OriginalGoalSHA256: leancheck.Digest(*e.FormalGoal), Goal: g, Source: "legacy source", Status: "verified", Report: &leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest("legacy source")}})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	v := stateOf(t, s)
+	err := s.AcceptRefutation(id, RefutationAcceptanceRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Confirm: true, Note: "Reviewed"})
+	if err == nil || !strings.Contains(err.Error(), "актуальной программой аудита") {
+		t.Fatal("legacy audit authorized refutation acceptance", err)
+	}
+	after := stateOf(t, s)
+	if after.entity(goal).Status == "refuted" {
+		t.Fatal("goal refuted by legacy audit")
+	}
+}
+
 func TestRefutationBDD_NegativeProofReviewAcceptanceAndMemory(t *testing.T) {
 	for _, backend := range []string{"sqlite", "postgres"} {
 		t.Run(backend, func(t *testing.T) {
@@ -42,7 +64,7 @@ func TestRefutationBDD_NegativeProofReviewAcceptanceAndMemory(t *testing.T) {
 			defer model.Close()
 			o := teamOptions(t, model.URL+"/v1")
 			o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
-				return leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+				return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 			})
 			if file := os.Getenv("RESEARCH_TEST_LEAN_CONFIG"); file != "" {
 				var c leancheck.Config

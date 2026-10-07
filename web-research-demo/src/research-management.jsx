@@ -319,6 +319,7 @@ export function ComparisonPanel({ live }) {
                   <th>Задача</th>
                   <th>Состав</th>
                   <th>Результат</th>
+                  <th>Запросы, измерено</th>
                   <th>Запросы, верхняя оценка</th>
                   <th>Входные токены</th>
                   <th>Выходные токены</th>
@@ -333,6 +334,11 @@ export function ComparisonPanel({ live }) {
                       {r.mode === "single" ? "Один исследователь" : "Команда"}
                     </td>
                     <td>{statuses[r.status] || r.status}</td>
+                    <td>
+                      {r.unknown_request_count
+                        ? "Не полностью измерено"
+                        : r.measured_requests}
+                    </td>
                     <td>{r.request_upper_bound}</td>
                     <td>
                       {r.usage_incomplete

@@ -115,6 +115,32 @@ func TestVerificationBDD_RecheckIsPreferredWithoutRewritingLegacyReport(t *testi
 		t.Fatal("new audit not selected or historical report changed")
 	}
 }
+
+func TestVerificationBDD_UnrelatedConsumerDoesNotRecurseIntoSourceProof(t *testing.T) {
+	g := leancheck.Goal{Source: "def Statement : Prop := True", Declaration: "Statement", Candidate: "Candidate"}
+	source := newEntity("lemma", "Source", "lemma", "study", "True", "Prop")
+	source.Status, source.ProofAttempt, source.ProofAuthor, source.ResearchResult = "accepted", "source-attempt", "author", "result"
+	source.FormalGoal = &g
+	proof := Verification{ID: "source-proof", Target: source.ID, TargetRevision: source.Revision, Attempt: source.ProofAttempt, Goal: g, Source: submittedProof, Status: "verified", Report: &leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(submittedProof)}}
+	consumer := newEntity("consumer", "Consumer", "hypothesis", "study", "True", "Prop")
+	consumer.FormalGoal, consumer.ProofAttempt = &g, "consumer-attempt"
+	dependent := proof
+	dependent.ID, dependent.Target, dependent.Attempt = "consumer-proof", consumer.ID, consumer.ProofAttempt
+	dependent.LibraryPins = map[string]string{"library": "pin"}
+	result := ResearchResult{ID: source.ResearchResult, Target: source.ID, TargetRevision: source.Revision, Author: source.ProofAuthor, Binding: ProofBinding{proof.ID, proof.Report.GoalSHA256, proof.Report.SourceSHA256}, ReviewAttempt: "review", CounterAttempt: "counter", ReviewResultSHA256: "review-hash", CounterResultSHA256: "counter-hash", Counter: CounterReport{Outcome: "none_found"}}
+	library := LibraryEntry{ID: "library", Lemma: source.ID, LemmaRevision: source.Revision, Result: result.ID, Status: "ready", Report: &leancheck.ModuleReport{Status: "ready", ArtifactSHA256: "pin", Artifacts: map[string]string{"module.olean": "pin"}}}
+	d := Data{Entities: []Entity{source, consumer}, Verifications: []Verification{proof, dependent}, Results: []ResearchResult{result}, Library: []LibraryEntry{library}, Attempts: []Attempt{{ID: "review", ResultSHA256: "review-hash"}, {ID: "counter", ResultSHA256: "counter-hash"}}}
+	if found := proofVerification(&d, &source); found == nil || found.ID != proof.ID {
+		t.Fatal("unrelated verification prevented source proof selection")
+	}
+	if !libraryMatches(&d, library) || !verificationMatches(&d, dependent) {
+		t.Fatal("valid consumer or legacy library became unusable")
+	}
+	refreshEvidence(&d)
+	if d.Results[0].Status != "accepted" || d.Library[0].Status != "ready" {
+		t.Fatal("evidence refresh lost a valid legacy result")
+	}
+}
 func TestTeamBDD_RejectionExhaustsBudgetWithoutAutomaticAcceptance(t *testing.T) {
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ Messages []struct{ Content string } }

@@ -73,8 +73,9 @@ func proofVerification(d *Data, e *Entity) *Verification {
 	var legacy *Verification
 	for i := range d.Verifications {
 		v := &d.Verifications[i]
-		if verificationMatches(d, *v) && verifiedReportMatches(*v) &&
-			((e.ProofVerification != "" && v.ID == e.ProofVerification) || (e.ProofAttempt != "" && v.Attempt == e.ProofAttempt)) {
+		if v.Target == e.ID &&
+			((e.ProofVerification != "" && v.ID == e.ProofVerification) || (e.ProofAttempt != "" && v.Attempt == e.ProofAttempt)) &&
+			verifiedReportMatches(*v) && verificationMatches(d, *v) {
 			if v.Report.AuditSHA256 == leancheck.AuditDigest() {
 				return v
 			}

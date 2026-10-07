@@ -65,6 +65,26 @@ test("историческое сравнение предупреждает о 
     "без контроля происхождения цели",
   );
   await expect(panel.locator("tbody tr")).toHaveCount(12);
+  await expect(
+    panel.getByRole("columnheader", { name: "Запросы, измерено", exact: true }),
+  ).toBeVisible();
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 960 });
+    const table = await panel.locator("table").boundingBox();
+    const mode = await panel
+      .locator("tbody tr")
+      .first()
+      .locator("td")
+      .nth(1)
+      .boundingBox();
+    expect(table.width).toBeGreaterThanOrEqual(1100);
+    expect(mode.width).toBeGreaterThanOrEqual(160);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBeTruthy();
+  }
 });
 
 test("версии профилей сохраняют навыки и доступны после обновления", async ({

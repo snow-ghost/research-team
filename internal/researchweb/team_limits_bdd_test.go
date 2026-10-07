@@ -100,6 +100,7 @@ func TestTeamBDD_BudgetChangeRejectsInvalidAndUnconfirmedCommands(t *testing.T) 
 			v := studyFor(t, s)
 			id := identifier("team")
 			if err := s.Store.Change(0, "", "", "Seed team", v.Studies[0].ID, "test", func(d *Data) error {
+				d.Paused = true
 				d.Teams = append(d.Teams, ResearchTeam{ID: id, Study: v.Studies[0].ID, Goal: v.Studies[0].Goal, Status: tc.status, MaxAttempts: 6, UsedAttempts: 5})
 				return nil
 			}); err != nil {

@@ -1770,6 +1770,11 @@ td small {
 .process-section pre { max-width: 100%; overflow: auto; font-size: 12px; }
 .process-section .table-wrap { max-width: 100%; overflow: auto; }
 .process-section td, .process-section th { padding: 8px; text-align: left; overflow-wrap: anywhere; }
+.process-section .comparison-table { min-width: 1100px; width: 100%; }
+.process-section .comparison-table th, .process-section .comparison-table td { overflow-wrap: normal; word-break: normal; }
+.process-section .comparison-table th:nth-child(1), .process-section .comparison-table td:nth-child(1) { min-width: 160px; }
+.process-section .comparison-table th:nth-child(2), .process-section .comparison-table td:nth-child(2) { min-width: 160px; }
+.process-section .comparison-table th:nth-child(3), .process-section .comparison-table td:nth-child(3) { min-width: 145px; }
 .runtime-form label.checkbox {
   flex-direction: row;
   align-items: flex-start;

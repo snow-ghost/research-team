@@ -313,7 +313,7 @@ export function ComparisonPanel({ live }) {
             </p>
           )}
           <div className="table-wrap">
-            <table>
+            <table className="comparison-table">
               <thead>
                 <tr>
                   <th>Задача</th>

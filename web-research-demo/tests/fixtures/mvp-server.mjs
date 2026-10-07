@@ -43,17 +43,63 @@ const fake = http.createServer(async (req, res) => {
         {
           message: {
             role: "assistant",
-            content: text.includes("ROLE_counterexample")
+            content: text.includes("Предложи план исследования.")
               ? JSON.stringify({
-                  outcome: "none_found",
-                  evidence: "Проверены конечные граничные случаи.",
+                  summary: "Сначала лемма, затем покрытие и исходная цель.",
+                  claims: [
+                    {
+                      title: "Независимая лемма плана",
+                      statement: "True",
+                      assumptions: "Prop",
+                      formal_goal: {
+                        source: "def Statement : Prop := True",
+                        declaration: "Statement",
+                        candidate: "Candidate",
+                      },
+                    },
+                  ],
+                  coverage: {
+                    title: "Покрытие плана",
+                    statement: "Из леммы следует точная исходная цель.",
+                    assumptions: "Принятая лемма",
+                    formal_goal: {
+                      source: "def Statement : Prop := True",
+                      declaration: "Statement",
+                      candidate: "Candidate",
+                    },
+                  },
+                  strategies: [
+                    {
+                      target: 0,
+                      method: "induction",
+                      priority: 20,
+                      rationale: "Начать с независимого основания.",
+                    },
+                    {
+                      target: 1,
+                      method: "decomposition",
+                      priority: 90,
+                      rationale: "Покрытие после приемки леммы.",
+                    },
+                    {
+                      target: -1,
+                      method: "equivalence",
+                      priority: 100,
+                      rationale: "Завершить точную исходную цель.",
+                    },
+                  ],
                 })
-              : text.includes("ROLE_review")
+              : text.includes("ROLE_counterexample")
                 ? JSON.stringify({
-                    summary: "Проверено на учебном примере.",
-                    findings: [],
+                    outcome: "none_found",
+                    evidence: "Проверены конечные граничные случаи.",
                   })
-                : "Кандидат доказательства. Предпосылки проверены на учебном примере.",
+                : text.includes("ROLE_review")
+                  ? JSON.stringify({
+                      summary: "Проверено на учебном примере.",
+                      findings: [],
+                    })
+                  : "Кандидат доказательства. Предпосылки проверены на учебном примере.",
           },
           finish_reason: "stop",
         },

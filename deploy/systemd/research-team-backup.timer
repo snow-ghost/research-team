@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Research Team backup
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+Unit=research-team-backup.service
+
+[Install]
+WantedBy=timers.target

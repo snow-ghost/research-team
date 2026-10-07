@@ -46,6 +46,27 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 		}
 	}
 	spec := e.profile.External
+	mcpServers, closeMCP, err := coddyLeanMCP(ctx, e.profile, home)
+	if err != nil {
+		return result, err
+	}
+	defer closeMCP()
+	mode := "ask"
+	if len(mcpServers) > 0 {
+		mode = "plan"
+	}
+	configHome, sessionWorkspace := home, task.Workspace
+	if spec.ExecutionBoundary == "docker" {
+		configHome, sessionWorkspace = "/research/home", "/research/workspace"
+		for i := range mcpServers {
+			if server := mcpServers[i].Stdio; server != nil {
+				server.Command = containerPath(server.Command, home, task.Workspace)
+				for j, arg := range server.Args {
+					server.Args[j] = containerPath(arg, home, task.Workspace)
+				}
+			}
+		}
+	}
 	env := []string{"HOME=" + home, "CODDY_HOME=" + home, "PATH=" + spec.SearchPath,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, "config"), "XDG_DATA_HOME=" + filepath.Join(home, "data"),
 		"XDG_CACHE_HOME=" + filepath.Join(home, "cache"), "LANG=C.UTF-8", "NO_COLOR=1"}
@@ -67,7 +88,7 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 	}
 	// Keep credentials in the child's environment, not in the configuration file.
 	configPath := filepath.Join(home, "agent.json")
-	if err := os.WriteFile(configPath, coddyAgentConfig(e.profile, home), 0600); err != nil {
+	if err := os.WriteFile(configPath, coddyAgentConfig(e.profile, configHome), 0600); err != nil {
 		return result, errors.New("cannot write coddy-agent configuration")
 	}
 	args := []string{"acp", "--config", configPath, "--home", home, "--cwd", task.Workspace,
@@ -75,6 +96,12 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 		"--skills-auto-discovery=false", "--log-output", "stderr", "--log-level", "warn"}
 	program := spec.Executable
 	if spec.ExecutionBoundary == "docker" {
+		for i, entry := range env {
+			key, value, ok := strings.Cut(entry, "=")
+			if ok {
+				env[i] = key + "=" + containerPath(value, home, task.Workspace)
+			}
+		}
 		var cleanup func() error
 		program, args, cleanup, err = coddyContainer(*spec, home, task.Workspace, env, args)
 		if err != nil {
@@ -94,7 +121,7 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 		func(turnCtx context.Context, writer io.Writer, reader io.Reader) error {
 			sessionCtx, stop := context.WithCancel(turnCtx)
 			defer stop()
-			client := &coddyACPClient{model: "research/" + spec.Model, cancel: stop,
+			client := &coddyACPClient{model: "research/" + spec.Model, mode: mode, allowedTools: spec.Tools, cancel: stop,
 				limit: e.profile.Limits.MaxOutputBytes}
 			client.emit = func(event Event) {
 				event = maskedEvent(event, token)
@@ -120,7 +147,7 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 			client.mu.Unlock()
 			stageStarted = time.Now()
 			session, rpcErr := conn.NewSession(sessionCtx, acp.NewSessionRequest{
-				Cwd: task.Workspace, McpServers: []acp.McpServer{}})
+				Cwd: sessionWorkspace, McpServers: mcpServers})
 			recordACPFailure(ctx, &result, "session", stageStarted, rpcErr, token)
 			if rpcErr != nil || session.SessionId == "" || len(session.SessionId) > 256 {
 				result.Events = append(result.Events, Event{Type: "acp_session_failed"})
@@ -136,7 +163,7 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 			client.mu.Unlock()
 			result.SessionID = string(session.SessionId)
 			result.Events = append(result.Events, Event{Type: "acp_session_created"})
-			for _, setting := range [][2]string{{"mode", "ask"}, {"model", client.model}, {"permission_mode", "ask"}} {
+			for _, setting := range [][2]string{{"mode", mode}, {"model", client.model}, {"permission_mode", "ask"}} {
 				stageStarted = time.Now()
 				response, rpcErr := conn.SetSessionConfigOption(sessionCtx, acp.SetSessionConfigOptionRequest{
 					ValueId: &acp.SetSessionConfigOptionValueId{SessionId: session.SessionId,
@@ -146,7 +173,7 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 					result.Events = append(result.Events, Event{Type: "acp_configuration_failed"})
 					return ErrProtocol
 				}
-				if !coddyOptionEquals(response.ConfigOptions, "mode", "ask") {
+				if !coddyOptionEquals(response.ConfigOptions, "mode", mode) {
 					return ErrProtocol
 				}
 				if setting[0] == "permission_mode" &&
@@ -269,6 +296,8 @@ func coddyOptionEquals(options []acp.SessionConfigOption, id, value string) bool
 }
 
 type coddyACPClient struct {
+	mode         string
+	allowedTools []string
 	usage        Usage
 	usageSeen    bool
 	usageUnknown bool
@@ -366,12 +395,16 @@ func (c *coddyACPClient) SessionUpdate(_ context.Context, n acp.SessionNotificat
 			Input: actionJSON(t.RawInput), Output: actionJSON(output)})
 	}
 	if c.running {
-		if u.CurrentModeUpdate != nil && u.CurrentModeUpdate.CurrentModeId != "ask" {
+		mode := c.mode
+		if mode == "" {
+			mode = "ask"
+		}
+		if u.CurrentModeUpdate != nil && string(u.CurrentModeUpdate.CurrentModeId) != mode {
 			return c.reject(ErrProtocol)
 		}
 		if u.ConfigOptionUpdate != nil {
 			opts := u.ConfigOptionUpdate.ConfigOptions
-			if !coddyOptionEquals(opts, "mode", "ask") || !coddyOptionEquals(opts, "model", c.model) ||
+			if !coddyOptionEquals(opts, "mode", mode) || !coddyOptionEquals(opts, "model", c.model) ||
 				!coddyOptionEquals(opts, "permission_mode", "ask") {
 				return c.reject(ErrProtocol)
 			}
@@ -406,6 +439,18 @@ func (c *coddyACPClient) RequestPermission(_ context.Context, p acp.RequestPermi
 	defer c.mu.Unlock()
 	if p.SessionId != c.session || c.session == "" {
 		return acp.RequestPermissionResponse{}, c.reject(ErrProtocol)
+	}
+	if p.ToolCall.Title != nil {
+		for _, name := range c.allowedTools {
+			if *p.ToolCall.Title == "Run: research__"+name {
+				for _, option := range p.Options {
+					if option.Kind == acp.PermissionOptionKindAllowOnce {
+						c.action(Event{Type: "permission_granted", Tool: name, CallID: string(p.ToolCall.ToolCallId)})
+						return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeSelected(option.OptionId)}, nil
+					}
+				}
+			}
+		}
 	}
 	c.denied = true
 	c.action(Event{Type: "permission_denied", CallID: string(p.ToolCall.ToolCallId)})

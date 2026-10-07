@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { Connected } from "./connected.jsx";
 import { RuntimePanel } from "./runtime.jsx";
+import { ProfileFactory, StructuredLemmaSearch, ComparisonPanel } from "./research-management.jsx";
 import { CoddyPanel } from "./coddy.jsx";
 import {
   createInitialState,
@@ -736,6 +737,7 @@ function App({ live } = {}) {
               className={"nav-item " + (section === id ? "active" : "")}
               onClick={() => {
                 setSection(id);
+                if (["executors", "library"].includes(id)) setInspectorOpen(false);
                 setMobileNav(false);
               }}
             >
@@ -970,6 +972,9 @@ function App({ live } = {}) {
         </section>
         <div className="work-area">
           <div className="main-pane">
+            {live && section === "executors" && <ProfileFactory live={live} />}
+            {live && section === "executors" && <ComparisonPanel live={live} />}
+            {live && section === "library" && <StructuredLemmaSearch live={live} target={selected} />}
             {live && section === "executors" && (
               <RuntimePanel
                 live={live}

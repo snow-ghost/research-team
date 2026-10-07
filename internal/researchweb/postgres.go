@@ -37,6 +37,9 @@ type postgresStore struct {
 type collectionSpec struct{ field, table string }
 
 var collections = []collectionSpec{
+	{"comparisons", "research_comparisons"},
+	{"lemma_signatures", "lemma_signatures"},
+	{"profile_revisions", "agent_profile_revisions"},
 	{"memory", "research_memory"},
 	{"branches", "research_branches"},
 	{"studies", "studies"}, {"entities", "entities"}, {"workLinks", "work_links"},
@@ -355,6 +358,15 @@ func (p *postgresStore) Snapshot(revision int) (Data, error) {
 }
 
 func validateState(d Data) error {
+	if len(d.Comparisons) > 20 {
+		return ErrLimit
+	}
+	if len(d.LemmaSignatures) > 500 {
+		return ErrLimit
+	}
+	if len(d.ProfileRevisions) > 200 {
+		return ErrLimit
+	}
 	if len(d.Memory) > 2000 || len(d.Branches) > 200 {
 		return RuleError("Достигнут предел записей памяти или исследовательских ветвей.")
 	}

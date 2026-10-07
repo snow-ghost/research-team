@@ -2,7 +2,6 @@ package researchweb
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/snow-ghost/research-team/internal/execution"
@@ -90,7 +89,7 @@ func (s *Service) StartTeam(r TeamRequest) error {
 		if err := s.validateAssignment(profile, r.Workspace, r.Workers[role]); err != nil {
 			return err
 		}
-		pins[role] = hash(s.Options.Profiles[profile])
+		pins[role] = hash(s.profile(profile))
 	}
 	author := r.Profiles["proof"]
 	if r.RequireLean {
@@ -199,7 +198,7 @@ func (s *Service) ControlTeam(id string, r TeamCommand) error {
 				}
 			}
 			for role, limits := range r.RoleLimits {
-				profile, ok := s.Options.Profiles[team.Profiles[role]]
+				profile, ok := s.lookupProfile(team.Profiles[role])
 				if !ok {
 					return RuleError("Неизвестная роль.")
 				}
@@ -315,7 +314,7 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 		return errNoCycleChange
 	}
 	for role, pin := range team.ProfileHashes {
-		if hash(s.Options.Profiles[team.Profiles[role]]) != pin {
+		if hash(s.profile(team.Profiles[role])) != pin {
 			cancelTeam(d, team.ID)
 			team.Status = "interrupted"
 			team.Reason = "Изменились настройки профиля."
@@ -584,7 +583,7 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 		}
 	}
 	labels := map[string]string{"proof": "Доказательство", "counterexample": "Контрпримеры", "formalize": "Формализация", "review": "Рецензия"}
-	p := s.Options.Profiles[profile]
+	p := s.profile(profile)
 	if limits, ok := team.RoleLimits[role]; ok {
 		p.Limits = limits
 	}
@@ -606,7 +605,7 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 	}
 	d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: task.ID, Target: target.ID, TargetRevision: target.Revision,
 		TeamID: team.ID, Role: role, ReviewOf: reviewOf, ParentAttempt: parent, Profile: profile, RemoteWorker: team.Workers[role], Workspace: team.Workspace,
-		Status: "queued", Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
+		Status: "queued", ProfileConfiguration: &p, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 	if role == "review" && team.RequireLean {
 		if v := d.verification(team.Verification); v != nil && verifiedReportMatches(*v) {
 			d.Attempts[len(d.Attempts)-1].ProofBinding = &ProofBinding{v.ID, v.Report.GoalSHA256, v.Report.SourceSHA256}
@@ -695,20 +694,10 @@ func teamReviewReady(d *Data, e *Entity) bool {
 	return true
 }
 func decodeAgentReport(text string, out any) error {
-	text = strings.TrimSpace(text)
-	if strings.Contains(text, "```") {
-		if strings.Count(text, "```") != 2 || strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") {
-			return RuleError("Отчет содержит неоднозначные блоки JSON.")
-		}
-		parts := strings.Split(text, "```")
-		block := strings.TrimSpace(parts[1])
-		line, body, ok := strings.Cut(block, "\n")
-		if !ok || strings.TrimSpace(line) != "json" {
-			return RuleError("Нужен блок с меткой json.")
-		}
-		text = body
+	if err := execution.DecodeAgentReport(text, out); err != nil {
+		return RuleError("Нужен один однозначный JSON-отчет без неизвестных полей.")
 	}
-	return decodeJSON([]byte(text), out)
+	return nil
 }
 func slicesContainsSeverity(s string) bool {
 	return s == "major" || s == "editorial" || s == "question"

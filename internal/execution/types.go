@@ -60,6 +60,8 @@ type ModelConfig struct {
 }
 
 type ExternalConfig struct {
+	Tools             []string          `json:"tools,omitempty"`
+	ToolProxy         string            `json:"tool_proxy,omitempty"`
 	Provider          string            `json:"provider"`
 	Executable        string            `json:"executable"`
 	ExpectedVersion   string            `json:"expected_version"`
@@ -179,6 +181,9 @@ func (p Profile) Validate() error {
 			return errors.New("external configuration required exclusively")
 		}
 		e := p.External
+		if e.Provider != "coddy-agent" && (len(e.Tools) > 0 || e.ToolProxy != "") {
+			return ErrUnsupported
+		}
 		if e.Provider == "coddy" {
 			return fmt.Errorf("%w: %w: coddy-bot manages repository tasks; direct process execution is unavailable",
 				ErrUnsupported, ErrWorkflowRequired)
@@ -209,6 +214,20 @@ func (p Profile) Validate() error {
 			return errors.New("external execution requires an explicit isolation boundary")
 		}
 		if e.Provider == "coddy-agent" {
+			if len(e.Tools) > 0 {
+				if e.ExpectedVersion != "1.2.54" || !filepath.IsAbs(e.ToolProxy) || p.Limits.MaxToolCalls < 1 || p.Limits.MaxToolCalls > 4 {
+					return errors.New("coddy Lean tools require version 1.2.54, an absolute proxy and 1..4 calls")
+				}
+				seenTools := map[string]bool{}
+				for _, name := range e.Tools {
+					if (name != "check_lean" && name != "check_refutation") || seenTools[name] {
+						return ErrUnsupported
+					}
+					seenTools[name] = true
+				}
+			} else if e.ToolProxy != "" || p.Limits.MaxToolCalls != 0 {
+				return ErrUnsupported
+			}
 			if strings.ContainsAny(e.BaseURL, "$\r\n\x00") {
 				return errors.New("coddy-agent base_url must be a literal URL")
 			}
@@ -216,7 +235,7 @@ func (p Profile) Validate() error {
 				return err
 			}
 			if p.Limits.MaxSteps < 1 || p.Limits.MaxSteps > 100 ||
-				p.Limits.MaxOutputTokens < 1 || p.Limits.MaxOutputTokens > 1000000 || p.Limits.MaxToolCalls != 0 {
+				p.Limits.MaxOutputTokens < 1 || p.Limits.MaxOutputTokens > 1000000 {
 				return errors.New("coddy-agent requires turn and per-response token limits; tool-call limits unsupported")
 			}
 			if strings.TrimSpace(e.Model) != e.Model || strings.ContainsAny(e.Model, "\r\n\x00$") {

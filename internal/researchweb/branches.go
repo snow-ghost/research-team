@@ -37,6 +37,7 @@ func researchMethod(id string) (ResearchMethod, bool) {
 }
 
 type ResearchBranch struct {
+	Plan           string            `json:"plan,omitempty"`
 	ID             string            `json:"id"`
 	Study          string            `json:"study"`
 	Target         string            `json:"target"`
@@ -87,7 +88,7 @@ func (s *Service) CreateBranch(r BranchRequest) error {
 		if err := s.validateAssignment(c.Profiles[role], c.Workspace, c.Workers[role]); err != nil {
 			return err
 		}
-		pins[role] = hash(s.Options.Profiles[c.Profiles[role]])
+		pins[role] = hash(s.profile(c.Profiles[role]))
 	}
 	if c.Profiles["review"] == c.Profiles["proof"] || c.Profiles["review"] == c.Profiles["formalize"] || c.Profiles["review"] == c.Profiles["counterexample"] {
 		return RuleError("Рецензент должен иметь отдельный профиль.")
@@ -236,6 +237,19 @@ func (s *Service) advanceBranches() {
 		if busy {
 			continue
 		}
+		goal := v.entity(b.Target)
+		if goal == nil {
+			continue
+		}
+		dependenciesReady := true
+		for _, dep := range goal.Dependencies {
+			if v.effective(dep, map[string]bool{}) != "accepted" {
+				dependenciesReady = false
+			}
+		}
+		if !dependenciesReady {
+			continue
+		}
 		_ = s.Store.Change(0, "", "", "Выбрана исследовательская ветвь по приоритету", b.ID, "coordinator", func(d *Data) error {
 			var current *ResearchBranch
 			for i := range d.Branches {
@@ -246,8 +260,17 @@ func (s *Service) advanceBranches() {
 			if current == nil || current.Status != "ready" || current.Team != "" {
 				return errNoCycleChange
 			}
+			goal := d.entity(current.Target)
+			if goal == nil || goal.FormalGoal == nil || goal.Revision != current.TargetRevision || leancheck.Digest(*goal.FormalGoal) != current.GoalSHA256 || !branchLibrariesMatch(d, *current) {
+				return errNoCycleChange
+			}
+			for _, dep := range goal.Dependencies {
+				if d.effective(dep, map[string]bool{}) != "accepted" {
+					return errNoCycleChange
+				}
+			}
 			for role, pin := range current.ProfileHashes {
-				if hash(s.Options.Profiles[current.Configuration.Profiles[role]]) != pin {
+				if hash(s.profile(current.Configuration.Profiles[role])) != pin {
 					current.Status = "blocked"
 					current.Reason = "Профиль изменен; требуется новое разрешение."
 					return nil

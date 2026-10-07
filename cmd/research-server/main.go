@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/snow-ghost/research-team/internal/execution"
 	"github.com/snow-ghost/research-team/internal/researchweb"
 )
 
@@ -22,6 +23,9 @@ func main() {
 	}
 }
 func run() error {
+	if len(os.Args) == 3 && os.Args[1] == "--tool-proxy" {
+		return execution.RunToolProxy(context.Background(), os.Args[2], os.Stdin, os.Stdout)
+	}
 	config := flag.String("config", "examples/server/postgres.json", "Trusted server configuration")
 	flag.Parse()
 	o, err := researchweb.LoadOptions(*config)

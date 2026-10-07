@@ -1,0 +1,11 @@
+[Unit]
+Description=Research Team verified backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=@WORKDIR@
+EnvironmentFile=@ENVFILE@
+Environment=@CONFIG_ENV@
+Environment=@BACKUP_ENV@
+ExecStart=/bin/sh @BACKUP_SCRIPT@
+UMask=0077

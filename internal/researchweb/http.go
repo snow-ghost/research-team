@@ -285,7 +285,7 @@ func (h *HTTP) json(w http.ResponseWriter, value any) {
 	for _, channel := range h.service.Options.Config.Telegram {
 		keys = append(keys, channel.TokenEnv)
 	}
-	for _, p := range h.service.Options.Profiles {
+	for _, p := range h.service.profileList() {
 		if p.Model != nil {
 			keys = append(keys, p.Model.TokenEnv)
 		}
@@ -378,6 +378,82 @@ func (h *HTTP) view(w http.ResponseWriter) {
 	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
 }
 func (h *HTTP) routes() {
+	h.mux.HandleFunc("POST /api/comparisons", func(w http.ResponseWriter, r *http.Request) {
+		var b ComparisonRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ImportComparison(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/lemmas/signatures", func(w http.ResponseWriter, r *http.Request) {
+		var b SignatureRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.IndexLemma(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/lemmas/search", func(w http.ResponseWriter, r *http.Request) {
+		var b LemmaQuery
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		hits, err := h.service.SearchLemmas(b)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, map[string]any{"hits": hits})
+	})
+	h.mux.HandleFunc("POST /api/lemmas/applications", func(w http.ResponseWriter, r *http.Request) {
+		var b ApplicabilityRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.CreateApplicability(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/planning", func(w http.ResponseWriter, r *http.Request) {
+		var b PlanningRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.RequestPlanning(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/profile-templates", func(w http.ResponseWriter, r *http.Request) {
+		h.json(w, h.service.Options.Profiles)
+	})
+	h.mux.HandleFunc("POST /api/profiles", func(w http.ResponseWriter, r *http.Request) {
+		var b ProfileRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.CreateProfile(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("POST /api/memory", func(w http.ResponseWriter, r *http.Request) {
 		var b MemoryRequest
 		if err := bodyJSON(w, r, &b); err != nil {

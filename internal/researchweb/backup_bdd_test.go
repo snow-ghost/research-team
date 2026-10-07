@@ -1,11 +1,50 @@
 package researchweb
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 )
+
+func TestRestoreBDD_ManifestAndArtifactsMustMatch(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(directory, "state"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "state", "Goal.lean"), []byte("True"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "database.dump"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	files, err := backupFiles(filepath.Join(directory, "state"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := fileSHA(filepath.Join(directory, "database.dump"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := BackupManifest{Version: 1, Revision: 1, Files: files, Tables: map[string]string{"workspace": "fixture"}, DatabaseSHA256: digest, RestoreVerified: true}
+	body, _ := json.Marshal(m)
+	if err := os.WriteFile(filepath.Join(directory, "manifest.json"), body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateBackup(directory); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "state", "Goal.lean"), []byte("False"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateBackup(directory); err == nil {
+		t.Fatal("corrupted artifact accepted")
+	}
+}
 
 func TestBackupBDD_PrivateFilesExactAndAccessKeyExcluded(t *testing.T) {
 	source := t.TempDir()

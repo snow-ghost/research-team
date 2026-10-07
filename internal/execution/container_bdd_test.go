@@ -37,7 +37,7 @@ func TestContainerBDD_MountsAndCredentialsAreRestricted(t *testing.T) {
 	joined := strings.Join(args, "\n")
 	for _, required := range []string{"--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
 		"--pull=never", "--user", "--pids-limit=128", "--network=bridge",
-		"type=bind,src=" + workspace + ",dst=" + workspace + ",readonly", "--env\nOPENAI_API_KEY"} {
+		"type=bind,src=" + workspace + ",dst=/research/workspace,readonly", "--env\nOPENAI_API_KEY"} {
 		if !strings.Contains(joined, required) {
 			t.Errorf("missing %s", required)
 		}
@@ -108,7 +108,7 @@ func TestContainerBDD_RealDockerBoundaryAndCancellation(t *testing.T) {
 		args = append(args, "-c", script)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		cmd := exec.CommandContext(ctx, program, args...)
-		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + home}
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=/research/home"}
 		if !cancelRun {
 			out, err := cmd.CombinedOutput()
 			cancel()

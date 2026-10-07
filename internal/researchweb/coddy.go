@@ -58,7 +58,7 @@ func (s *Service) PrepareCoddy(r PrepareCoddy) error {
 			LeaseEpoch: 1, Title: t.Title, Objective: t.Objective, Context: item.Statement + "\nУсловия: " + item.Assumptions,
 			SourceCommit: r.SourceCommit, Acceptance: r.Acceptance}
 		if r.Profile != "" {
-			p, ok := s.Options.Profiles[r.Profile]
+			p, ok := s.lookupProfile(r.Profile)
 			if !ok {
 				return RuleError("Профиль навыков не найден.")
 			}

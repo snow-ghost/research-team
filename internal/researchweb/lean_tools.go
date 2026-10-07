@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/snow-ghost/research-team/internal/execution"
@@ -39,13 +40,11 @@ func refutationGoal(g leancheck.Goal) leancheck.Goal {
 }
 
 func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (context.Context, error) {
-	p := s.Options.Profiles[a.Profile]
-	if p.Kind != "model" {
-		return ctx, nil
-	}
+	p := attemptProfile(s, a)
 	tools := []execution.RuntimeTool{}
 	checks := 0
-	for _, name := range p.Model.Tools {
+	var checkMu sync.Mutex
+	for _, name := range leanToolNames(p) {
 		if name == "read_file" {
 			continue
 		}
@@ -73,6 +72,8 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 		}
 		toolName := name
 		tools = append(tools, execution.RuntimeTool{Name: toolName, Description: "Check a Lean candidate against the server-pinned " + purpose + " goal. Only source is accepted; compilation runs in an isolated environment and does not accept the result.", Parameters: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string"}},"required":["source"],"additionalProperties":false}`), Validate: func(raw string) error { _, err := leanSourceArgument(raw); return err }, Run: func(ctx context.Context, raw string) (string, error) {
+			checkMu.Lock()
+			defer checkMu.Unlock()
 			if checks >= 4 {
 				return `{"status":"denied","reason":"intermediate_check_limit"}`, execution.ErrLimit
 			}
@@ -111,22 +112,30 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 }
 
 func modelHasLeanTool(p execution.Profile) bool {
-	if p.Model != nil {
-		for _, name := range p.Model.Tools {
-			if strings.HasPrefix(name, "check_") {
-				return true
-			}
+	for _, name := range leanToolNames(p) {
+		if strings.HasPrefix(name, "check_") {
+			return true
 		}
 	}
 	return false
 }
 
+func leanToolNames(p execution.Profile) []string {
+	if p.Model != nil {
+		return p.Model.Tools
+	}
+	if p.External != nil && p.External.Provider == "coddy-agent" {
+		return p.External.Tools
+	}
+	return nil
+}
+
 func toolGoals(e *Entity, p execution.Profile) map[string]leancheck.Goal {
-	if e == nil || e.FormalGoal == nil || p.Model == nil {
+	if e == nil || e.FormalGoal == nil {
 		return nil
 	}
 	goals := map[string]leancheck.Goal{}
-	for _, name := range p.Model.Tools {
+	for _, name := range leanToolNames(p) {
 		if name == "check_lean" {
 			goals[name] = *e.FormalGoal
 		}

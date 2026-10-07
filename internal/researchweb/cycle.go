@@ -48,7 +48,7 @@ func cycleActive(status string) bool {
 	return status == "running" || status == "awaiting_review" || status == "paused" || status == "blocked"
 }
 func (s *Service) validateExecutor(profile, workspace string) error {
-	p, ok := s.Options.Profiles[profile]
+	p, ok := s.lookupProfile(profile)
 	if !ok {
 		return RuleError("Исполнитель не разрешен сервером.")
 	}
@@ -110,7 +110,7 @@ func (s *Service) StartCycle(r CycleRequest) error {
 				return RuleError("Нужна открытая цель исследования.")
 			}
 			d.Cycles = append(d.Cycles, Cycle{ID: identifier("cycle"), Study: study.ID, Goal: study.Goal, Profile: r.Profile,
-				ProfileSHA: hash(s.Options.Profiles[r.Profile]), Workspace: r.Workspace, MaxAttempts: r.MaxAttempts,
+				ProfileSHA: hash(s.profile(r.Profile)), Workspace: r.Workspace, MaxAttempts: r.MaxAttempts,
 				Status: "running", Reason: "Выбор следующего обязательства.", CreatedAt: time.Now().UTC()})
 			return nil
 		}
@@ -148,7 +148,7 @@ func (s *Service) ControlCycle(id string, r CycleCommand) error {
 			if err := s.validateExecutor(c.Profile, c.Workspace); err != nil {
 				return err
 			}
-			if c.ProfileSHA != hash(s.Options.Profiles[c.Profile]) {
+			if c.ProfileSHA != hash(s.profile(c.Profile)) {
 				return RuleError("Профиль изменился. Создайте новый цикл.")
 			}
 			c.Status = "running"
@@ -260,7 +260,7 @@ func (s *Service) advanceCycle(d *Data, c *Cycle) error {
 	if c.Status == "paused" || c.Status == "blocked" {
 		return errNoCycleChange
 	}
-	if c.ProfileSHA != hash(s.Options.Profiles[c.Profile]) {
+	if c.ProfileSHA != hash(s.profile(c.Profile)) {
 		cancelCycle(d, c.ID)
 		return set("interrupted", "Настройки исполнителя изменились.")
 	}
@@ -325,7 +325,7 @@ func (s *Service) advanceCycle(d *Data, c *Cycle) error {
 	if err := s.validateExecutor(c.Profile, c.Workspace); err != nil {
 		return set("blocked", "Исполнитель или каталог недоступен.")
 	}
-	p := s.Options.Profiles[c.Profile]
+	p := s.profile(c.Profile)
 	reservation, err := s.reserveStudyBudget(d, target.ID, p)
 	if err != nil {
 		return set("blocked", err.Error())
@@ -337,7 +337,7 @@ func (s *Service) advanceCycle(d *Data, c *Cycle) error {
 	task.Attempt = id
 	task.Agent = c.Profile
 	d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: task.ID, Target: target.ID, TargetRevision: target.Revision,
-		CycleID: c.ID, Profile: c.Profile, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: c.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
+		CycleID: c.ID, Profile: c.Profile, ProfileConfiguration: &p, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: c.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
 		InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 	c.UsedAttempts++
 	c.CurrentAttempt = id

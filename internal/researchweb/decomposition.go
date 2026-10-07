@@ -13,9 +13,10 @@ type ProposedClaim struct {
 	FormalGoal  *leancheck.Goal `json:"formal_goal,omitempty"`
 }
 type DecompositionReport struct {
-	Summary  string          `json:"summary"`
-	Claims   []ProposedClaim `json:"claims"`
-	Coverage ProposedClaim   `json:"coverage"`
+	Strategies []ProposedStrategy `json:"strategies,omitempty"`
+	Summary    string             `json:"summary"`
+	Claims     []ProposedClaim    `json:"claims"`
+	Coverage   ProposedClaim      `json:"coverage"`
 }
 type Decomposition struct {
 	ID             string              `json:"id"`
@@ -29,10 +30,11 @@ type Decomposition struct {
 	CreatedAt      time.Time           `json:"created_at"`
 }
 type ProposalRequest struct {
-	ExpectedRevision int    `json:"expected_revision"`
-	RequestID        string `json:"request_id"`
-	Attempt          string `json:"attempt"`
-	Confirm          bool   `json:"confirm,omitempty"`
+	Team             *TeamRequest `json:"team,omitempty"`
+	ExpectedRevision int          `json:"expected_revision"`
+	RequestID        string       `json:"request_id"`
+	Attempt          string       `json:"attempt"`
+	Confirm          bool         `json:"confirm,omitempty"`
 }
 
 func (s *Service) ImportDecomposition(r ProposalRequest) error {
@@ -78,6 +80,14 @@ func (s *Service) ImportDecomposition(r ProposalRequest) error {
 				seen[dep] = true
 			}
 		}
+		if err := validateStrategies(report); err != nil {
+			return err
+		}
+		for _, old := range d.Proposals {
+			if old.Attempt == a.ID && old.ResultSHA256 == a.ResultSHA256 {
+				return RuleError("Этот результат уже записан как предложение.")
+			}
+		}
 		d.Proposals = append(d.Proposals, Decomposition{ID: identifier("proposal"), Target: e.ID, TargetRevision: e.Revision, Attempt: a.ID, ResultSHA256: a.ResultSHA256, Report: report, Status: "proposed", CreatedAt: time.Now().UTC()})
 		return nil
 	})
@@ -85,6 +95,13 @@ func (s *Service) ImportDecomposition(r ProposalRequest) error {
 func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) {
 		return RuleError("Подтвердите утверждения, предпосылки и формальные цели разбиения.")
+	}
+	if r.Team != nil {
+		for _, role := range []string{"proof", "counterexample", "formalize", "review"} {
+			if err := s.validateAssignment(r.Team.Profiles[role], r.Team.Workspace, ""); err != nil {
+				return err
+			}
+		}
 	}
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(struct {
 		ID string
@@ -147,6 +164,14 @@ func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 		}
 		d.WorkLinks = append(d.WorkLinks, [2]string{e.ID, cover.ID})
 		p.Children = append(ids, cover.ID)
+		if len(p.Report.Strategies) > 0 {
+			if r.Team == nil {
+				return RuleError("Подтвердите состав команды и ограничения плана.")
+			}
+			if err := s.planBranches(d, p, *r.Team); err != nil {
+				return err
+			}
+		}
 		p.Status = "applied"
 		return nil
 	})

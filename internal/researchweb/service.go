@@ -18,15 +18,18 @@ import (
 )
 
 type Service struct {
-	Options   Options
-	Store     *Store
-	mu        sync.Mutex
-	running   map[string]context.CancelFunc
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	closeOnce sync.Once
-	closeErr  error
+	profileMu      sync.RWMutex
+	profileCatalog map[string]execution.Profile
+	profileLabels  map[string]string
+	Options        Options
+	Store          *Store
+	mu             sync.Mutex
+	running        map[string]context.CancelFunc
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
+	closeOnce      sync.Once
+	closeErr       error
 }
 type RunRequest struct {
 	ReviewVerification string            `json:"review_verification,omitempty"`
@@ -73,7 +76,7 @@ func NewService(o Options) (*Service, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Service{Options: o, Store: store, running: map[string]context.CancelFunc{}, ctx: ctx, cancel: cancel}
+	s := &Service{Options: o, Store: store, running: map[string]context.CancelFunc{}, profileCatalog: map[string]execution.Profile{}, profileLabels: map[string]string{}, ctx: ctx, cancel: cancel}
 	if err := validateWorkers(o.Config.Workers); err != nil {
 		s.Close()
 		return nil, err
@@ -86,6 +89,14 @@ func NewService(o Options) (*Service, error) {
 	if err != nil {
 		s.Close()
 		return nil, err
+	}
+	for _, revision := range v.ProfileRevisions {
+		if revision.ID != revision.Configuration.ID || revision.SHA256 != hash(revision.Configuration) || revision.Configuration.Validate() != nil {
+			s.Close()
+			return nil, errors.New("profile revision integrity mismatch")
+		}
+		s.profileCatalog[revision.ID] = cloneProfile(revision.Configuration)
+		s.profileLabels[revision.ID] = revision.Label
 	}
 	interrupted := false
 	for _, l := range v.Library {
@@ -173,8 +184,13 @@ func active(status string) bool {
 }
 func (s *Service) Profiles() []ProfileView {
 	out := []ProfileView{}
-	for id, p := range s.Options.Profiles {
+	for id, p := range s.profileList() {
 		v := ProfileView{ID: id, Label: s.Options.Labels[id], Kind: p.Kind, Limits: p.Limits, Available: true, Skills: []string{}}
+		s.profileMu.RLock()
+		if label := s.profileLabels[id]; label != "" {
+			v.Label = label
+		}
+		s.profileMu.RUnlock()
 		if v.Label == "" {
 			v.Label = id
 		}
@@ -262,7 +278,7 @@ func (s *Service) Start(r RunRequest) error {
 	if r.ExpectedRevision < 1 {
 		return RuleError("Нужен номер снимка.")
 	}
-	profile, ok := s.Options.Profiles[r.Profile]
+	profile, ok := s.lookupProfile(r.Profile)
 	if !ok {
 		return RuleError("Исполнитель не разрешен сервером.")
 	}
@@ -323,7 +339,7 @@ func (s *Service) Start(r RunRequest) error {
 		t.Attempt = id
 		t.Agent = r.Profile
 		d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: t.ID, Target: item.ID, TargetRevision: item.Revision,
-			Profile: r.Profile, RemoteWorker: r.RemoteWorker, Limits: &profile.Limits, ProofBinding: binding, ReviewOf: reviewOf, ReservedOutputTokens: reservation, ReservedModelRequests: profile.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
+			Profile: r.Profile, ProfileConfiguration: &profile, RemoteWorker: r.RemoteWorker, Limits: &profile.Limits, ProofBinding: binding, ReviewOf: reviewOf, ReservedOutputTokens: reservation, ReservedModelRequests: profile.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
 			InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 		return nil
 	})
@@ -550,7 +566,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	profile := s.Options.Profiles[a.Profile]
+	profile := attemptProfile(s, a)
 	if a.Limits != nil {
 		profile.Limits = *a.Limits
 	}
@@ -623,7 +639,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		contextData, _ = json.Marshal(map[string]any{"entities": selected, "questions": questionsFor(d, a.Target), "materials": materials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
 	}
 	t := execution.Task{ID: task.ID, AttemptID: a.ID, Snapshot: inputSHA, LeaseEpoch: 1, Workspace: filepath.Join(dir, "workspace"), Objective: task.Objective, Context: string(contextData)}
-	_, ok := s.Options.Profiles[a.Profile]
+	_, ok := s.lookupProfile(a.Profile)
 	if !ok {
 		return errors.New("profile unavailable")
 	}
@@ -719,7 +735,7 @@ func (s *Service) readResult(a Attempt) (execution.Result, error) {
 	return r, nil
 }
 func (s *Service) safeResultContent(a Attempt, result execution.Result) bool {
-	p := s.Options.Profiles[a.Profile]
+	p := attemptProfile(s, a)
 	return p.External == nil || p.External.Provider != "coddy-agent" || result.ContentPolicy == execution.CoddyContentPolicy
 }
 func (s *Service) readInput(a Attempt) (Data, error) {

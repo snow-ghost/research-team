@@ -65,7 +65,7 @@ func workerEnabled(d Data, study, id string) bool {
 	return false
 }
 func (s *Service) workerScope(d Data, id, profile, target string) error {
-	if modelHasLeanTool(s.Options.Profiles[profile]) {
+	if modelHasLeanTool(s.profile(profile)) {
 		return RuleError("Промежуточный инструмент Lean пока доступен только местному исполнителю.")
 	}
 	w := s.worker(id)
@@ -79,7 +79,7 @@ func (s *Service) validateAssignment(profile, workspace, worker string) error {
 	if worker == "" {
 		return s.validateExecutor(profile, workspace)
 	}
-	p, ok := s.Options.Profiles[profile]
+	p, ok := s.lookupProfile(profile)
 	if !ok {
 		return RuleError("Профиль не найден.")
 	}
@@ -268,7 +268,7 @@ func (s *Service) SubmitWorker(id, attempt string, r WorkerRequest) error {
 		if result.Usage != nil && (result.Usage.InputTokens < 0 || result.Usage.OutputTokens < 0 || result.Usage.InputTokens > 1e9 || result.Usage.OutputTokens > 1e9) {
 			return ErrLimit
 		}
-		profile := s.Options.Profiles[a.Profile]
+		profile := attemptProfile(s, *a)
 		if a.Limits != nil {
 			profile.Limits = *a.Limits
 		}

@@ -14,6 +14,7 @@ import {
   Gauge,
 } from "lucide-react";
 import { BranchList, RefutationActions } from "./research-progress.jsx";
+import { PlanningPanel } from "./research-management.jsx";
 import { verificationCurrent } from "./proof-state.js";
 
 const roles = {
@@ -88,6 +89,7 @@ export function TeamPanel({ live, study, all, onSelect }) {
         </p>
       )}
       {!all && study && <StudyBudgetPanel live={live} study={study} />}
+      {!all && study && <PlanningPanel live={live} study={study} />}
       {open && (
         <form
           className="runtime-form"

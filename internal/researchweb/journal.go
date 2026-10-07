@@ -216,7 +216,7 @@ func (s *Service) ResumeAttempt(id string, r ResumeRequest) error {
 				return err
 			}
 		}
-		profile := s.Options.Profiles[parent.Profile]
+		profile := attemptProfile(s, *parent)
 		limits := r.Limits
 		if limits == nil {
 			limits = parent.Limits

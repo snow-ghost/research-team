@@ -33,10 +33,10 @@ func coddyContainer(spec ExternalConfig, home, workspace string, env, agentArgs 
 		"--pids-limit=128", "--memory", strconv.Itoa(c.MemoryMB) + "m",
 		"--memory-swap", strconv.Itoa(c.MemoryMB) + "m", "--cpus", strconv.Itoa(c.CPUs),
 		"--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777",
-		"--mount", "type=bind,src=" + home + ",dst=" + home,
-		"--mount", "type=bind,src=" + workspace + ",dst=" + workspace + ",readonly",
+		"--mount", "type=bind,src=" + home + ",dst=/research/home",
+		"--mount", "type=bind,src=" + workspace + ",dst=/research/workspace,readonly",
 		"--mount", "type=bind,src=" + spec.Executable + ",dst=/usr/local/bin/coddy,readonly",
-		"--workdir", workspace, "--entrypoint", "/usr/local/bin/coddy"}
+		"--workdir", "/research/workspace", "--entrypoint", "/usr/local/bin/coddy"}
 	for _, entry := range env {
 		key, _, ok := strings.Cut(entry, "=")
 		if !ok || !envName.MatchString(key) {
@@ -45,7 +45,9 @@ func coddyContainer(spec ExternalConfig, home, workspace string, env, agentArgs 
 		args = append(args, "--env", key)
 	}
 	args = append(args, c.Image)
-	args = append(args, agentArgs...)
+	for _, arg := range agentArgs {
+		args = append(args, containerPath(arg, home, workspace))
+	}
 	cleanup := func() error {
 		// Killing an attached Docker client alone does not stop the container.
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -66,4 +68,14 @@ func coddyContainer(spec ExternalConfig, home, workspace string, env, agentArgs 
 		return nil
 	}
 	return c.Runtime, args, cleanup, nil
+}
+
+func containerPath(value, home, workspace string) string {
+	if value == home || strings.HasPrefix(value, home+"/") {
+		return "/research/home" + strings.TrimPrefix(value, home)
+	}
+	if value == workspace || strings.HasPrefix(value, workspace+"/") {
+		return "/research/workspace" + strings.TrimPrefix(value, workspace)
+	}
+	return value
 }

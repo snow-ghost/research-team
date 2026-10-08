@@ -26,7 +26,8 @@ export function ProfileFactory({ live }) {
     [template, setTemplate] = useState(""),
     [error, setError] = useState(""),
     [open, setOpen] = useState(false),
-    [skills, setSkills] = useState([]);
+    [skills, setSkills] = useState([]),
+    [registry, setRegistry] = useState(false);
   useEffect(() => {
     let active = true;
     api("/profile-templates")
@@ -75,6 +76,7 @@ export function ProfileFactory({ live }) {
           onSubmit={async (e) => {
             e.preventDefault();
             const f = Object.fromEntries(new FormData(e.currentTarget));
+            const refs = new FormData(e.currentTarget).getAll("skill_ref");
             setError("");
             try {
               await live.command("/profiles", {
@@ -82,7 +84,8 @@ export function ProfileFactory({ live }) {
                 label: f.label,
                 template,
                 model: f.model,
-                skills,
+                skills: registry ? [] : skills,
+                skill_refs: registry ? refs : [],
                 tools: p.model
                   ? ["check_lean", "check_refutation", "read_file"].filter(
                       (n) => f[n] === "on",
@@ -177,7 +180,26 @@ export function ProfileFactory({ live }) {
               ))}
             </fieldset>
           )}
-          <fieldset className="wide">
+          <label className="checkbox-label wide">
+            <input
+              type="checkbox"
+              checked={registry}
+              onChange={(e) => setRegistry(e.target.checked)}
+            />
+            Версии из каталога навыков
+          </label>
+          {registry && (
+            <fieldset className="wide">
+              <legend>Закрепленные версии</legend>
+              {(live.data.state.skill_revisions || []).map((r) => (
+                <label className="checkbox-label" key={r.id}>
+                  <input type="checkbox" name="skill_ref" value={r.id} />
+                  {r.label} · {r.id}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <fieldset className="wide" disabled={registry} hidden={registry}>
             <legend>Навыки</legend>
             {skills.map((skill, i) => (
               <div className="skill-editor" key={i}>
@@ -288,6 +310,7 @@ export function ProfileFactory({ live }) {
 export function ComparisonPanel({ live }) {
   const statuses = {
     verified_not_accepted: "Проверено, без приемки",
+    verified_baseline_not_accepted: "Проверено Lean, без приемки",
     requires_review: "Требует рецензии",
     failed: "Ошибка",
     inconclusive: "Вывод не получен",
@@ -328,10 +351,18 @@ export function ComparisonPanel({ live }) {
               </thead>
               <tbody>
                 {entry.report.runs.map((r) => (
-                  <tr key={`${r.case}-${r.mode}`}>
-                    <td>{r.case}</td>
+                  <tr key={`${r.case}-${r.mode}-${r.repetition || 0}`}>
                     <td>
-                      {r.mode === "single" ? "Один исследователь" : "Команда"}
+                      {r.case}
+                      {r.repetition ? ` · повтор ${r.repetition}` : ""}
+                    </td>
+                    <td>
+                      {{
+                        single: "Один исследователь",
+                        team: "Фиксированная команда",
+                        adaptive: "Адаптивная команда",
+                        lean: "Lean без модели",
+                      }[r.mode] || r.mode}
                     </td>
                     <td>{statuses[r.status] || r.status}</td>
                     <td>
@@ -774,6 +805,68 @@ export function StructuredLemmaSearch({ live, target }) {
           </button>
         </form>
       )}
+      <form
+        className="runtime-form"
+        aria-label="Извлечение типов Lean"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const f = Object.fromEntries(new FormData(e.currentTarget));
+          act(() =>
+            live.command("/lemmas/inspect", {
+              library: f.library,
+              domain: f.domain,
+            }),
+          );
+        }}
+      >
+        <label>
+          Собранная лемма
+          <select name="library" required>
+            <option value="">Выберите лемму</option>
+            {(state.library || [])
+              .filter((l) => l.status === "ready")
+              .map((l) => (
+                <option value={l.id} key={l.id}>
+                  {state.entities.find((e) => e.id === l.lemma)?.title || l.id}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Область
+          <input name="domain" required maxLength={200} />
+        </label>
+        <button
+          className="button secondary"
+          disabled={live.busy || !live.data.lean?.configured}
+        >
+          <Search size={15} />
+          Извлечь типы Lean
+        </button>
+      </form>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Лемма</th>
+              <th>Источник</th>
+              <th>Заключение</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(state.lemma_signatures || []).map((s) => (
+              <tr key={s.id}>
+                <td>
+                  {state.library?.find((l) => l.id === s.library)?.module ||
+                    s.library}
+                </td>
+                <td>{s.native?.status === "verified" ? "Lean" : "Оператор"}</td>
+                <td>{s.conclusion}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <form
         className="runtime-form"
         aria-label="Поиск по структуре"

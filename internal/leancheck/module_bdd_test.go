@@ -35,6 +35,10 @@ func TestLibraryBDD_RealModuleImportAndTampering(t *testing.T) {
 	if err = VerifyModuleArtifacts(filepath.Join(dir, "checked"), r); err != nil {
 		t.Fatal(err)
 	}
+	signature, err := (DockerChecker{Config: cfg}).InspectModule(context.Background(), goal, filepath.Join(dir, "checked"), r, filepath.Join(t.TempDir(), "inspect"))
+	if err != nil || signature.Status != "verified" || len(signature.Binders) != 1 || signature.Binders[0].Type != "Nat" || signature.InspectorSHA256 != InspectorDigest() {
+		t.Fatal("native signature failed", signature, err)
+	}
 	cfg.Libraries = append(cfg.Libraries, filepath.Join(dir, "checked"))
 	reuse := Goal{Source: "import " + module + "\nnamespace Reuse\ndef Statement : Prop := Shared.Statement\nend Reuse\n", Declaration: "Reuse.Statement", Candidate: "Reuse.candidate"}
 	checkDir := filepath.Join(t.TempDir(), "reuse")

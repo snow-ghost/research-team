@@ -5,9 +5,14 @@ import (
 	"time"
 
 	"github.com/snow-ghost/research-team/internal/execution"
+	"github.com/snow-ghost/research-team/internal/leancheck"
 )
 
 type ResearchTeam struct {
+	Diagnostic     string                      `json:"diagnostic,omitempty"`
+	Strategy       string                      `json:"strategy,omitempty"`
+	Methods        []string                    `json:"methods,omitempty"`
+	MethodIndex    int                         `json:"method_index,omitempty"`
 	Refuting       bool                        `json:"refuting,omitempty"`
 	Workers        map[string]string           `json:"workers,omitempty"`
 	OperatorNote   string                      `json:"operator_note,omitempty"`
@@ -32,6 +37,8 @@ type ResearchTeam struct {
 	CreatedAt      time.Time                   `json:"created_at"`
 }
 type TeamRequest struct {
+	Strategy         string            `json:"strategy,omitempty"`
+	Methods          []string          `json:"methods,omitempty"`
 	Workers          map[string]string `json:"workers,omitempty"`
 	ExpectedRevision int               `json:"expected_revision"`
 	RequestID        string            `json:"request_id"`
@@ -65,6 +72,9 @@ func (d *Data) team(id string) *ResearchTeam {
 	return nil
 }
 func (s *Service) StartTeam(r TeamRequest) error {
+	if err := validateTeamStrategy(r); err != nil {
+		return err
+	}
 	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || r.MaxAttempts < 4 || r.MaxAttempts > 20 {
 		return RuleError("Нужны подтверждение и предел от 4 до 20 попыток.")
 	}
@@ -138,7 +148,7 @@ func (s *Service) StartTeam(r TeamRequest) error {
 				}
 			}
 			d.Teams = append(d.Teams, ResearchTeam{ID: identifier("team"), Study: study.ID, Goal: goal.ID,
-				Profiles: r.Profiles, Workers: r.Workers, ProfileHashes: pins, Workspace: r.Workspace, MaxAttempts: r.MaxAttempts, RequireLean: r.RequireLean,
+				Strategy: r.Strategy, Methods: r.Methods, Profiles: r.Profiles, Workers: r.Workers, ProfileHashes: pins, Workspace: r.Workspace, MaxAttempts: r.MaxAttempts, RequireLean: r.RequireLean,
 				Status: "running", Stage: "planning", Current: map[string]string{}, CreatedAt: time.Now().UTC(), Reason: "Выбор обязательства."})
 			return nil
 		}
@@ -348,8 +358,10 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			return block("Для обязательства нужна формальная постановка Lean.")
 		}
 		team.Target, team.TargetRevision = target.ID, target.Revision
-		if err := s.queueTeamAttempt(d, team, "proof", ""); err != nil {
-			return block(err.Error())
+		if team.Strategy != "adaptive" {
+			if err := s.queueTeamAttempt(d, team, "proof", ""); err != nil {
+				return block(err.Error())
+			}
 		}
 		if err := s.queueTeamAttempt(d, team, "counterexample", ""); err != nil {
 			return block(err.Error())
@@ -386,6 +398,14 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 				return block("Ответ проверяющего контрпримеры не соответствует форме отчета.")
 			}
 			if found.Outcome == "counterexample_candidate" {
+				if team.RequireLean && team.Strategy == "adaptive" {
+					team.Refuting = true
+					if err := s.queueTeamAttempt(d, team, "formalize", ""); err != nil {
+						return block(err.Error())
+					}
+					team.Stage, team.Reason = "formalize", "Формализация найденного контрпримера."
+					return nil
+				}
 				if team.RequireLean && found.RefutationSource != "" {
 					id, err := s.queueRefutation(d, counter.ID)
 					if err != nil {
@@ -406,6 +426,15 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			team.RetryRole = "counterexample"
 			return block("Отчет проверки контрпримеров поврежден или недоступен.")
 		}
+		if team.Strategy == "adaptive" && team.Current["proof"] == "" {
+			if err := s.queueTeamAttempt(d, team, "proof", ""); err != nil {
+				return block(err.Error())
+			}
+			team.Stage, team.Reason = "proving", "Контрпример не подтвержден; поиск доказательства."
+			return nil
+		}
+		fallthrough
+	case "proving":
 		role := "review"
 		if team.RequireLean {
 			role = "formalize"
@@ -417,14 +446,35 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 		team.Reason = map[string]string{"formalize": "Начата формализация.", "review": "Начата независимая рецензия."}[role]
 		return nil
 	case "formalize":
-		team.Refuting = false
-		id, err := s.queueVerification(d, team.Current["formalize"], "")
+		attempt := d.attempt(team.Current["formalize"])
+		result, readErr := s.readResult(*attempt)
+		if readErr != nil || !s.safeResultContent(*attempt, result) {
+			return block("Исходный ответ формализатора поврежден или имеет неизвестное происхождение.")
+		}
+		if _, extractErr := leancheck.ExtractSource(result.Candidate); extractErr != nil {
+			team.Diagnostic = "Формат ответа: нужен один завершенный блок Lean с import Goal."
+			if err := s.queueTeamAttempt(d, team, "formalize", attempt.ID); err != nil {
+				return block(err.Error())
+			}
+			team.Reason = "Исправление формы ответа формализатора."
+			return nil
+		}
+		var id string
+		var err error
+		if team.Refuting {
+			id, err = s.queueRefutation(d, team.Current["formalize"])
+		} else {
+			id, err = s.queueVerification(d, team.Current["formalize"], "")
+		}
 		if err != nil {
 			team.RetryRole = "formalize"
 			return block(err.Error())
 		}
 		team.Verification = id
 		team.Stage = "verifying"
+		if team.Refuting {
+			team.Stage = "refuting"
+		}
 		team.Reason = "Проверка Lean."
 		return nil
 	case "refuting":
@@ -436,7 +486,11 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			return errNoCycleChange
 		}
 		if !verifiedReportMatches(*v) || !verificationMatches(d, *v) {
-			return block("Отрицание не прошло проверку; гипотеза не опровергнута.")
+			if err := s.queueTeamAttempt(d, team, "formalize", v.Attempt); err != nil {
+				return block("Отрицание не прошло проверку: " + err.Error())
+			}
+			team.Stage, team.Reason = "formalize", "Исправление отрицания по диагностике Lean."
+			return nil
 		}
 		if err := s.queueTeamAttempt(d, team, "review", ""); err != nil {
 			return block(err.Error())
@@ -467,6 +521,9 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 				return block("Исчерпан бюджет исправлений Lean.")
 			}
 			parent := team.Current["formalize"]
+			if team.Strategy == "adaptive" && team.MethodIndex+1 < len(team.Methods) {
+				team.MethodIndex++
+			}
 			if err := s.queueTeamAttempt(d, team, "formalize", parent); err != nil {
 				return block(err.Error())
 			}
@@ -574,6 +631,14 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 	if role == "counterexample" {
 		objectives[role] += " Если найден контрпример и доступен check_refutation, подготовь исходник отрицания из tool_goals. Добавь в JSON поле refutation_source с полным Lean-файлом. Проверка отрицания не является доказательством исходной цели. При none_found поле не требуется."
 	}
+	if role == "formalize" && team.Refuting {
+		objectives[role] = "Докажи отрицание исходной цели по кандидату контрпримера. Верни один блок lean с import Goal и именем из candidate_template. Не доказывай исходную цель и не меняй ее предпосылки. Исправления выполняй по диагностике проверки."
+	}
+	if len(team.Methods) > team.MethodIndex && (role == "proof" || role == "formalize") {
+		if method, ok := researchMethod(team.Methods[team.MethodIndex]); ok {
+			objectives[role] += " Метод: " + method.Label + ". " + method.Procedure
+		}
+	}
 	if err := s.validateAssignment(profile, team.Workspace, team.Workers[role]); err != nil {
 		return err
 	}
@@ -598,7 +663,9 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 	reviewOf := team.Current["proof"]
 	if role == "review" && team.RequireLean {
 		if team.Refuting {
-			reviewOf = team.Current["counterexample"]
+			if v := d.verification(team.Verification); v != nil {
+				reviewOf = v.Attempt
+			}
 		} else {
 			reviewOf = team.Current["formalize"]
 		}
@@ -627,6 +694,8 @@ func (s *Service) teamContext(d Data, a Attempt) any {
 		return nil
 	}
 	out := map[string]any{"role": a.Role, "accepted": false}
+	out["strategy"], out["refuting"] = team.Strategy, team.Refuting
+	out["coordinator_diagnostic"] = team.Diagnostic
 	if a.ProofBinding != nil {
 		out["proof_binding"] = a.ProofBinding
 	}

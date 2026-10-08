@@ -10,6 +10,7 @@ import (
 )
 
 type ProfileRevision struct {
+	SkillRefs     []string          `json:"skill_refs,omitempty"`
 	ID            string            `json:"id"`
 	Name          string            `json:"name"`
 	Version       int               `json:"version"`
@@ -21,6 +22,7 @@ type ProfileRevision struct {
 }
 
 type ProfileRequest struct {
+	SkillRefs        []string          `json:"skill_refs,omitempty"`
 	ExpectedRevision int               `json:"expected_revision"`
 	RequestID        string            `json:"request_id"`
 	Name             string            `json:"name"`
@@ -66,6 +68,9 @@ func (s *Service) profileList() map[string]execution.Profile {
 }
 
 func (s *Service) CreateProfile(r ProfileRequest) error {
+	if len(r.SkillRefs) != 0 && len(r.Skills) != 0 {
+		return RuleError("Выберите ссылки на версии навыков либо встроенные инструкции.")
+	}
 	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) ||
 		!regexp.MustCompile(`^[a-z][a-z0-9-]{0,47}$`).MatchString(r.Name) || !textOK(r.Label, 200) || !textOK(r.Model, 200) || len(r.Skills) > 16 {
 		return RuleError("Подтвердите имя, название, модель и настройки профиля.")
@@ -97,6 +102,12 @@ func (s *Service) CreateProfile(r ProfileRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	err := s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Создана версия профиля", r.Name, "operator", func(d *Data) error {
+		if err := resolveSkills(d, r.SkillRefs, &p); err != nil {
+			return err
+		}
+		if err := p.Validate(); err != nil {
+			return RuleError("Некорректный состав навыков профиля.")
+		}
 		version := 1
 		for _, old := range d.ProfileRevisions {
 			if old.Name == r.Name && old.Version >= version {
@@ -107,7 +118,7 @@ func (s *Service) CreateProfile(r ProfileRequest) error {
 		if _, exists := s.Options.Profiles[p.ID]; exists {
 			return RuleError("Имя занято настройками сервера.")
 		}
-		d.ProfileRevisions = append(d.ProfileRevisions, ProfileRevision{ID: p.ID, Name: r.Name, Version: version, Label: r.Label, Template: r.Template, SHA256: hash(p), Configuration: p, CreatedAt: time.Now().UTC()})
+		d.ProfileRevisions = append(d.ProfileRevisions, ProfileRevision{SkillRefs: r.SkillRefs, ID: p.ID, Name: r.Name, Version: version, Label: r.Label, Template: r.Template, SHA256: hash(p), Configuration: p, CreatedAt: time.Now().UTC()})
 		return nil
 	})
 	if err != nil {

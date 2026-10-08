@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/snow-ghost/research-team/internal/execution"
@@ -18,18 +19,19 @@ import (
 )
 
 type Service struct {
-	profileMu      sync.RWMutex
-	profileCatalog map[string]execution.Profile
-	profileLabels  map[string]string
-	Options        Options
-	Store          *Store
-	mu             sync.Mutex
-	running        map[string]context.CancelFunc
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
-	closeOnce      sync.Once
-	closeErr       error
+	schedulerCycles atomic.Int64
+	profileMu       sync.RWMutex
+	profileCatalog  map[string]execution.Profile
+	profileLabels   map[string]string
+	Options         Options
+	Store           *Store
+	mu              sync.Mutex
+	running         map[string]context.CancelFunc
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	closeOnce       sync.Once
+	closeErr        error
 }
 type RunRequest struct {
 	ReviewVerification string            `json:"review_verification,omitempty"`
@@ -98,6 +100,12 @@ func NewService(o Options) (*Service, error) {
 		s.profileCatalog[revision.ID] = cloneProfile(revision.Configuration)
 		s.profileLabels[revision.ID] = revision.Label
 	}
+	for _, revision := range v.SkillRevisions {
+		if revision.SHA256 != hash(revision.Configuration) || revision.Name != revision.Configuration.ID || revision.Configuration.Contract == nil || validateSkillContract(*revision.Configuration.Contract) != nil {
+			s.Close()
+			return nil, errors.New("skill revision integrity mismatch")
+		}
+	}
 	interrupted := false
 	for _, l := range v.Library {
 		if l.Status == "running" {
@@ -124,7 +132,7 @@ func NewService(o Options) (*Service, error) {
 			interrupted = true
 		}
 	}
-	if interrupted {
+	if interrupted && !maintenanceValid(v.Data) {
 		err = store.Change(0, "", "", "Прерванные попытки восстановлены как неизвестный исход", "", "server", func(d *Data) error {
 			for i := range d.Library {
 				if d.Library[i].Status == "running" {
@@ -380,11 +388,19 @@ func (s *Service) schedule() {
 	defer s.wg.Done()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+	lastRevision := 0
+	var deadline time.Time
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
+			revision, err := s.Store.Revision()
+			if err != nil || (revision == lastRevision && (deadline.IsZero() || time.Now().Before(deadline))) {
+				continue
+			}
+			lastRevision = revision
+			s.schedulerCycles.Add(1)
 			s.expireStudyBudgets()
 			s.expireWorkerLeases()
 			s.advanceCycles()
@@ -401,6 +417,9 @@ func (s *Service) schedule() {
 				continue
 			}
 			v, err := s.Store.Read()
+			if err == nil {
+				deadline = nextSchedulerDeadline(v.Data, time.Now())
+			}
 			if err == nil {
 				for id, cancel := range s.running {
 					if a := v.attempt(id); a != nil && a.Status == "interrupted" {
@@ -569,6 +588,10 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	if err != nil {
 		return err
 	}
+	files, err = prepareGoalFiles(d, a, filepath.Join(dir, "workspace"), files)
+	if err != nil {
+		return err
+	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -607,7 +630,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	}
 	visit(entity.ID)
 	materials := []map[string]string{}
-	for _, name := range []string{"TASK.md", "Goal.lean"} {
+	for _, name := range []string{"TASK.md", "Goal.lean", "Candidate.template.lean"} {
 		if content, readErr := readBoundedFile(filepath.Join(dir, "workspace", name), 65536); readErr == nil {
 			materials = append(materials, map[string]string{"path": name, "content": string(content)})
 		}
@@ -624,17 +647,18 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		}
 	}
 	contextData, _ := json.Marshal(struct {
-		Memory    []MemoryHit               `json:"research_memory,omitempty"`
-		ToolGoals map[string]leancheck.Goal `json:"tool_goals,omitempty"`
-		Entities  []Entity                  `json:"entities"`
-		Questions []Question                `json:"questions"`
-		Materials []map[string]string       `json:"materials"`
-		Previous  any                       `json:"previous_unverified,omitempty"`
-		Team      any                       `json:"team_materials,omitempty"`
-		Library   []Entity                  `json:"accepted_lemmas,omitempty"`
-		Modules   []map[string]any          `json:"lean_modules,omitempty"`
-		Review    any                       `json:"review_materials,omitempty"`
-	}{memoryForTarget(d, a.Target), toolGoals(entity, profile), relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
+		CandidateTemplate string                    `json:"candidate_template,omitempty"`
+		Memory            []MemoryHit               `json:"research_memory,omitempty"`
+		ToolGoals         map[string]leancheck.Goal `json:"tool_goals,omitempty"`
+		Entities          []Entity                  `json:"entities"`
+		Questions         []Question                `json:"questions"`
+		Materials         []map[string]string       `json:"materials"`
+		Previous          any                       `json:"previous_unverified,omitempty"`
+		Team              any                       `json:"team_materials,omitempty"`
+		Library           []Entity                  `json:"accepted_lemmas,omitempty"`
+		Modules           []map[string]any          `json:"lean_modules,omitempty"`
+		Review            any                       `json:"review_materials,omitempty"`
+	}{candidateTemplateFor(d, a), memoryForTarget(d, a.Target), attemptToolGoals(d, a, profile), relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
 	if a.RemoteWorker != "" {
 		selected := []Entity{}
 		for _, e := range relevant {
@@ -642,7 +666,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 				selected = append(selected, e)
 			}
 		}
-		contextData, _ = json.Marshal(map[string]any{"entities": selected, "questions": questionsFor(d, a.Target), "materials": materials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
+		contextData, _ = json.Marshal(map[string]any{"candidate_template": candidateTemplateFor(d, a), "entities": selected, "questions": questionsFor(d, a.Target), "materials": materials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
 	}
 	t := execution.Task{ID: task.ID, AttemptID: a.ID, Snapshot: inputSHA, LeaseEpoch: 1, Workspace: filepath.Join(dir, "workspace"), Objective: task.Objective, Context: string(contextData)}
 	_, ok := s.lookupProfile(a.Profile)

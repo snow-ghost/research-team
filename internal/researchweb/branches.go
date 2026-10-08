@@ -73,6 +73,9 @@ type BranchCommand struct {
 }
 
 func (s *Service) CreateBranch(r BranchRequest) error {
+	if err := validateTeamStrategy(r.Team); err != nil {
+		return err
+	}
 	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || r.Priority < 0 || r.Priority > 100 || !textOK(r.Rationale, 4000) {
 		return RuleError("Подтвердите ветвь, приоритет и основание выбора.")
 	}
@@ -283,7 +286,7 @@ func (s *Service) advanceBranches() {
 			}
 			method, _ := researchMethod(current.Method)
 			c := current.Configuration
-			team := ResearchTeam{ID: identifier("team"), Study: current.Study, Goal: current.Target, Profiles: c.Profiles, Workers: c.Workers, ProfileHashes: current.ProfileHashes, Workspace: c.Workspace, MaxAttempts: c.MaxAttempts, RequireLean: true, Status: "running", Stage: "planning", Current: map[string]string{}, OperatorNote: method.Procedure + " Основание выбора: " + current.Rationale, CreatedAt: time.Now().UTC(), Reason: "Выбрана ветвь: " + method.Label}
+			team := ResearchTeam{Strategy: c.Strategy, Methods: c.Methods, ID: identifier("team"), Study: current.Study, Goal: current.Target, Profiles: c.Profiles, Workers: c.Workers, ProfileHashes: current.ProfileHashes, Workspace: c.Workspace, MaxAttempts: c.MaxAttempts, RequireLean: true, Status: "running", Stage: "planning", Current: map[string]string{}, OperatorNote: method.Procedure + " Основание выбора: " + current.Rationale, CreatedAt: time.Now().UTC(), Reason: "Выбрана ветвь: " + method.Label}
 			d.Teams = append(d.Teams, team)
 			current.Team = team.ID
 			current.Status = "running"

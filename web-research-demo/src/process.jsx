@@ -107,6 +107,8 @@ export function TeamPanel({ live, study, all, onSelect }) {
                 workspace: v.workspace,
                 max_attempts: Number(v.max_attempts),
                 require_lean: v.lean === "on",
+                strategy: v.strategy,
+                methods: new FormData(e.currentTarget).getAll("methods"),
                 confirm: v.confirm === "on",
               };
               await live.command(
@@ -125,6 +127,22 @@ export function TeamPanel({ live, study, all, onSelect }) {
             });
           }}
         >
+          <label>
+            Распределение задач
+            <select name="strategy" defaultValue="fixed">
+              <option value="fixed">Фиксированные роли</option>
+              <option value="adaptive">Сначала контрпримеры</option>
+            </select>
+          </label>
+          <fieldset className="wide">
+            <legend>Методы исправления</legend>
+            {methods.map((m) => (
+              <label className="checkbox-label" key={m.id}>
+                <input name="methods" type="checkbox" value={m.id} />
+                {m.label}
+              </label>
+            ))}
+          </fieldset>
           <label>
             Порядок запуска
             <select

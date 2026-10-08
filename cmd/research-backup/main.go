@@ -20,7 +20,21 @@ func main() {
 	compose := flag.String("compose", "compose.yaml", "Compose file")
 	env := flag.String("compose-env", ".env.postgres", "Compose environment file")
 	restore := flag.String("restore", "", "Verified backup to restore into a new database and data directory")
+	portable := flag.String("portable-from", "", "Export a verified backup without operational configuration")
 	flag.Parse()
+	if *portable != "" {
+		if *output == "" || *restore != "" || *config != "" {
+			fmt.Fprintln(os.Stderr, "Pass only -portable-from and -out.")
+			os.Exit(2)
+		}
+		m, err := researchweb.ExportPortableBackup(*portable, *output)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		json.NewEncoder(os.Stdout).Encode(map[string]any{"revision": m.Revision, "files": len(m.Files), "tables": len(m.Tables), "restore_verified": m.RestoreVerified})
+		return
+	}
 	if *config == "" || (*output == "" && *restore == "") || (*output != "" && *restore != "") {
 		fmt.Fprintln(os.Stderr, "Pass -config and -out; stop the server first.")
 		os.Exit(2)

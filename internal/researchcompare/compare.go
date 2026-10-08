@@ -15,10 +15,12 @@ import (
 )
 
 type Case struct {
-	ID   string         `json:"id"`
-	Goal leancheck.Goal `json:"goal"`
+	Class string         `json:"class,omitempty"`
+	ID    string         `json:"id"`
+	Goal  leancheck.Goal `json:"goal"`
 }
 type Config struct {
+	Version   int               `json:"version,omitempty"`
 	Cases     []Case            `json:"cases"`
 	Universal execution.Profile `json:"universal"`
 	Proof     execution.Profile `json:"proof"`
@@ -33,6 +35,8 @@ type Outcome struct {
 	Evidence string `json:"evidence"`
 }
 type Run struct {
+	Repetition          int               `json:"repetition,omitempty"`
+	Class               string            `json:"class,omitempty"`
 	TimeIncomplete      bool              `json:"time_incomplete,omitempty"`
 	Case                string            `json:"case"`
 	Mode                string            `json:"mode"`
@@ -52,6 +56,7 @@ type Run struct {
 	ReviewAccepted      bool              `json:"review_accepted"`
 }
 type Report struct {
+	AuditSHA256         string      `json:"audit_sha256,omitempty"`
 	ResumedAt           []time.Time `json:"resumed_at,omitempty"`
 	Version             int         `json:"version"`
 	StartedAt           time.Time   `json:"started_at"`
@@ -67,6 +72,9 @@ type Runner struct {
 }
 
 func (c Config) Validate() error {
+	if c.Version != 0 && c.Version != 1 && c.Version != 2 {
+		return errors.New("unsupported comparison version")
+	}
 	if len(c.Cases) != 6 {
 		return errors.New("exactly six cases required")
 	}
@@ -121,6 +129,14 @@ func (c Config) Validate() error {
 }
 
 func RunComparison(ctx context.Context, c Config, directory string, r Runner) (Report, error) {
+	absolute, err := filepath.Abs(directory)
+	if err != nil {
+		return Report{}, err
+	}
+	directory = absolute
+	if c.Version == 2 {
+		return RunControlledComparison(ctx, c, directory, r)
+	}
 	report := Report{Version: 1, StartedAt: time.Now().UTC(), ConfigurationSHA256: leancheck.Digest(c), MaxRequests: 96, Runs: []Run{}}
 	if err := c.Validate(); err != nil {
 		return report, err
@@ -228,8 +244,22 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		if err := os.WriteFile(filepath.Join(work, "Goal.lean"), []byte(item.Goal.Source), 0600); err != nil {
 			return execution.Result{}, err
 		}
+		limit := 8
+		if c.Version == 2 {
+			limit = 6
+			remaining := limit - run.RequestUpperBound
+			if role != "review" {
+				remaining--
+			}
+			if p.Limits.MaxSteps > remaining {
+				p.Limits.MaxSteps = remaining
+			}
+			if p.Limits.MaxSteps < 1 {
+				return execution.Result{}, errors.New("comparison request budget exhausted")
+			}
+		}
 		run.RequestUpperBound += p.Limits.MaxSteps
-		if run.RequestUpperBound > 8 {
+		if run.RequestUpperBound > limit {
 			return execution.Result{}, errors.New("comparison request budget exhausted")
 		}
 		run.Profiles[role] = leancheck.Digest(p)
@@ -237,7 +267,9 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		if err := persist(*run); err != nil {
 			return execution.Result{}, err
 		}
-		contextData, _ := json.Marshal(map[string]any{"goal": item.Goal, "tool_goals": map[string]leancheck.Goal{"check_lean": item.Goal, "check_refutation": negative(item.Goal)}, "previous_unverified": previous})
+		positiveTemplate, _ := leancheck.CandidateTemplate(item.Goal)
+		negativeTemplate, _ := leancheck.CandidateTemplate(negative(item.Goal))
+		contextData, _ := json.Marshal(map[string]any{"goal": item.Goal, "candidate_templates": map[string]string{"proof": positiveTemplate, "refutation": negativeTemplate}, "tool_goals": map[string]leancheck.Goal{"check_lean": item.Goal, "check_refutation": negative(item.Goal)}, "previous_unverified": previous})
 		task := execution.Task{ID: item.ID + "-" + mode + "-" + role, AttemptID: item.ID + "-" + mode + "-" + role, Snapshot: leancheck.Digest(string(contextData)), LeaseEpoch: 1, Workspace: work, Objective: objective, Context: string(contextData)}
 		checks := 0
 		handlers := []execution.RuntimeTool{}
@@ -297,6 +329,9 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			}
 		}
 		run.MeasuredRequests += measured
+		if c.Version == 2 && measured > 0 && measured <= p.Limits.MaxSteps {
+			run.RequestUpperBound -= p.Limits.MaxSteps - measured
+		}
 		if measured == 0 {
 			run.UnknownRequestCount = true
 		}
@@ -327,9 +362,13 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		}
 		selected, err = parse(res.Candidate)
 	} else {
-		proof, e := invoke("proof", c.Proof, "Analyze and propose a proof of the exact goal, including assumptions and boundary cases. Return concise mathematical reasoning; no acceptance.", nil)
-		if e != nil {
-			return e
+		var proof execution.Result
+		if mode != "adaptive" {
+			var e error
+			proof, e = invoke("proof", c.Proof, "Analyze and propose a proof of the exact goal, including assumptions and boundary cases. Return concise mathematical reasoning; no acceptance.", nil)
+			if e != nil {
+				return e
+			}
 		}
 		counter, e := invoke("counter", c.Counter, "Independently search counterexamples. If found, give a formal refutation. Otherwise return inconclusive with evidence. "+outcomeFormat, nil)
 		if e != nil {
@@ -339,9 +378,15 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		if e != nil {
 			return e
 		}
-		if candidate.Outcome == "refutation" {
+		if candidate.Outcome == "refutation" && c.Version != 2 {
 			selected = candidate
 		} else {
+			if mode == "adaptive" && candidate.Outcome != "refutation" {
+				proof, e = invoke("proof", c.Proof, "Search a proof of the exact goal. Use induction, representation change, decomposition or specialization when justified; specify obligations. Return reasoning, not acceptance.", counter.Candidate)
+				if e != nil {
+					return e
+				}
+			}
 			formal, e := invoke("formalize", c.Formalize, "Formalize a proof or refutation. Treat prior reports as unverified and check assumptions. "+outcomeFormat, map[string]string{"proof": proof.Candidate, "counter": counter.Candidate})
 			if e != nil {
 				return e
@@ -364,14 +409,41 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 	if len(selected.Source) == 0 || len(selected.Source) > 64000 {
 		return errors.New("candidate source absent or oversized")
 	}
-	checkDir := filepath.Join(dir, "verification")
-	_ = os.Mkdir(checkDir, 0700)
-	limited, cancel := context.WithTimeout(ctx, 90*time.Second)
-	defer cancel()
-	verification, err := r.Checker.Check(limited, goal, selected.Source, checkDir)
-	run.Verification = &verification
-	if err != nil || verification.Status != "verified" || verification.GoalSHA256 != leancheck.Digest(goal) || verification.SourceSHA256 != leancheck.Digest(selected.Source) {
-		return errors.New("final Lean verification failed")
+	var verification leancheck.Report
+	for repair := 0; ; repair++ {
+		checkDir := filepath.Join(dir, fmt.Sprintf("verification-%d", repair))
+		_ = os.Mkdir(checkDir, 0700)
+		limited, cancel := context.WithTimeout(ctx, 90*time.Second)
+		verification, err = r.Checker.Check(limited, goal, selected.Source, checkDir)
+		cancel()
+		run.Verification = &verification
+		body, _ := json.Marshal(verification)
+		if e := os.WriteFile(filepath.Join(checkDir, "report.json"), body, 0600); e != nil {
+			return e
+		}
+		if err == nil && verification.Status == "verified" && verification.GoalSHA256 == leancheck.Digest(goal) && verification.SourceSHA256 == leancheck.Digest(selected.Source) && (c.Version != 2 || verification.AuditSHA256 == leancheck.AuditDigest()) {
+			break
+		}
+		if c.Version != 2 || run.RequestUpperBound >= 5 || ctx.Err() != nil {
+			return errors.New("final Lean verification failed")
+		}
+		profile := c.Formalize
+		if mode == "single" {
+			profile = c.Universal
+		}
+		result, e := invoke(fmt.Sprintf("repair-%d", repair), profile, "Repair the candidate using the native Lean diagnostic. Preserve the exact imported statement. Change method only with justification. "+outcomeFormat, map[string]any{"outcome": selected, "report": verification})
+		if e != nil {
+			return e
+		}
+		selected, err = parse(result.Candidate)
+		if err != nil || selected.Outcome == "inconclusive" || len(selected.Source) == 0 || len(selected.Source) > 64000 {
+			return errors.New("invalid repaired candidate")
+		}
+		run.Outcome = selected.Outcome
+		goal = item.Goal
+		if selected.Outcome == "refutation" {
+			goal = negative(goal)
+		}
 	}
 	review, e := invoke("review", c.Reviewer, `Independently review the exact goal, source, evidence and checker report. Return only JSON {"summary":"...","findings":[{"severity":"major|question|editorial","text":"..."}]}. Do not claim to have run tools.`, map[string]any{"goal": goal, "original_goal": item.Goal, "outcome": selected, "report": verification})
 	if e != nil {

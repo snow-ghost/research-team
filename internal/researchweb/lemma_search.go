@@ -12,14 +12,15 @@ type LemmaParameter struct {
 	Type string `json:"type"`
 }
 type LemmaSignature struct {
-	ID         string           `json:"id"`
-	Library    string           `json:"library"`
-	GoalSHA256 string           `json:"goal_sha256"`
-	Domain     string           `json:"domain"`
-	Parameters []LemmaParameter `json:"parameters"`
-	Conditions []string         `json:"conditions"`
-	Conclusion string           `json:"conclusion"`
-	CreatedAt  time.Time        `json:"created_at"`
+	Native     *leancheck.SignatureReport `json:"native,omitempty"`
+	ID         string                     `json:"id"`
+	Library    string                     `json:"library"`
+	GoalSHA256 string                     `json:"goal_sha256"`
+	Domain     string                     `json:"domain"`
+	Parameters []LemmaParameter           `json:"parameters"`
+	Conditions []string                   `json:"conditions"`
+	Conclusion string                     `json:"conclusion"`
+	CreatedAt  time.Time                  `json:"created_at"`
 }
 type SignatureRequest struct {
 	ExpectedRevision int            `json:"expected_revision"`
@@ -53,6 +54,9 @@ func normalized(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 func (s *Service) IndexLemma(r SignatureRequest) error {
 	q := r.Signature
+	if q.Native != nil {
+		return RuleError("Нативный отчет создается только проверяющей службой.")
+	}
 	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || !textOK(q.Domain, 200) || !textOK(q.Conclusion, 1000) || len(q.Parameters) > 16 || len(q.Conditions) > 16 {
 		return RuleError("Нужны область, параметры и заключение леммы.")
 	}

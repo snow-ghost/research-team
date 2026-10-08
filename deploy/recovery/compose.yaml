@@ -1,0 +1,24 @@
+name: research-team-recovery
+services:
+  postgres:
+    image: postgres:18.6-bookworm@sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650
+    environment:
+      POSTGRES_PASSWORD: ${RECOVERY_POSTGRES_PASSWORD:?Set a separate recovery password}
+    ports:
+      - "127.0.0.1:${RECOVERY_POSTGRES_PORT:-55435}:5432"
+    volumes:
+      - recovery_data:/var/lib/postgresql
+    networks:
+      - recovery
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    shm_size: 128mb
+    stop_grace_period: 30s
+networks:
+  recovery:
+    driver: bridge
+volumes:
+  recovery_data:

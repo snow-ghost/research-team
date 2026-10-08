@@ -1,0 +1,56 @@
+[
+  {
+    "id": "square-expansion",
+    "class": "polynomial",
+    "goal": {
+      "source": "import Mathlib\nnamespace TrialArithmetic\ndef Statement : Prop := forall n : Nat, (n + 1)^2 = n^2 + 2*n + 1\nend TrialArithmetic\n",
+      "declaration": "TrialArithmetic.Statement",
+      "candidate": "TrialArithmetic.candidate"
+    }
+  },
+  {
+    "id": "consecutive-product-even",
+    "class": "divisibility",
+    "goal": {
+      "source": "import Mathlib\nnamespace TrialDivisibility\ndef Statement : Prop := forall n : Nat, Dvd.dvd (2 : Nat) (n * (n + 1))\nend TrialDivisibility\n",
+      "declaration": "TrialDivisibility.Statement",
+      "candidate": "TrialDivisibility.candidate"
+    }
+  },
+  {
+    "id": "finite-set-counting",
+    "class": "finite_sets",
+    "goal": {
+      "source": "import Mathlib\nnamespace TrialSets\ndef Statement : Prop := forall s t : Finset Nat, (s ∪ t).card + (s ∩ t).card = s.card + t.card\nend TrialSets\n",
+      "declaration": "TrialSets.Statement",
+      "candidate": "TrialSets.candidate"
+    }
+  },
+  {
+    "id": "implication-composition",
+    "class": "propositional_logic",
+    "goal": {
+      "source": "import Mathlib\nnamespace TrialLogic\ndef Statement : Prop := forall P Q R : Prop, (P -> Q) -> (Q -> R) -> P -> R\nend TrialLogic\n",
+      "declaration": "TrialLogic.Statement",
+      "candidate": "TrialLogic.candidate"
+    }
+  },
+  {
+    "id": "injective-composition",
+    "class": "functions",
+    "goal": {
+      "source": "import Mathlib\nnamespace TrialFunctions\ndef Statement : Prop := forall f g : Nat -> Nat, Function.Injective f -> Function.Injective g -> Function.Injective (fun x => g (f x))\nend TrialFunctions\n",
+      "declaration": "TrialFunctions.Statement",
+      "candidate": "TrialFunctions.candidate"
+    }
+  },
+  {
+    "id": "false-successor-bound",
+    "class": "false_statement",
+    "goal": {
+      "source": "import Mathlib\nnamespace TrialFalse\ndef Statement : Prop := forall n : Nat, n + 1 <= n\nend TrialFalse\n",
+      "declaration": "TrialFalse.Statement",
+      "candidate": "TrialFalse.candidate"
+    }
+  }
+]

@@ -39,8 +39,12 @@ func (s *Service) SubmitRefutation(target string, r ProofSourceRequest) error {
 
 func (s *Service) queueRefutation(d *Data, attempt string) (string, error) {
 	a := d.attempt(attempt)
-	if a == nil || a.Status != "candidate" || d.task(a.TaskID) == nil || d.task(a.TaskID).Kind != "counterexample" {
+	if a == nil || a.Status != "candidate" || d.task(a.TaskID) == nil {
 		return "", RuleError("Нужна завершенная попытка проверки контрпримера.")
+	}
+	formalizer := a.Role == "formalize" && d.team(a.TeamID) != nil && d.team(a.TeamID).Refuting
+	if d.task(a.TaskID).Kind != "counterexample" && !formalizer {
+		return "", RuleError("Нужно задание контрпримеров или формализация отрицания.")
 	}
 	e := d.entity(a.Target)
 	if e == nil || e.FormalGoal == nil || e.Revision != a.TargetRevision {
@@ -56,8 +60,15 @@ func (s *Service) queueRefutation(d *Data, attempt string) (string, error) {
 		}
 	}
 	var report CounterReport
-	if decodeAgentReport(result.Candidate, &report) != nil || report.Outcome != "counterexample_candidate" || !textOK(report.Evidence, 4000) || !textOK(report.RefutationSource, 64000) {
-		return "", RuleError("Нужны описание контрпримера и исходник доказательства отрицания.")
+	if formalizer {
+		report.RefutationSource, err = leancheck.ExtractSource(result.Candidate)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		if decodeAgentReport(result.Candidate, &report) != nil || report.Outcome != "counterexample_candidate" || !textOK(report.Evidence, 4000) || !textOK(report.RefutationSource, 64000) {
+			return "", RuleError("Нужны описание контрпримера и исходник доказательства отрицания.")
+		}
 	}
 	id := identifier("verify")
 	v := Verification{ID: id, Attempt: a.ID, Target: a.Target, TargetRevision: a.TargetRevision, Purpose: "refutation", OriginalGoalSHA256: leancheck.Digest(*e.FormalGoal), Goal: refutationGoal(*e.FormalGoal), Source: report.RefutationSource, Status: "queued", CreatedAt: time.Now().UTC()}

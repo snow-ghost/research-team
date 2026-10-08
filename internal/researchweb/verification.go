@@ -251,7 +251,7 @@ func (s *Service) startChecks() {
 		return
 	}
 	view, err := s.Store.Read()
-	if err != nil {
+	if err != nil || view.Maintenance != nil {
 		return
 	}
 	for _, v := range view.Verifications {

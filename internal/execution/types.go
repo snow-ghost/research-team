@@ -36,9 +36,19 @@ type Profile struct {
 }
 
 type Skill struct {
-	ID           string `json:"id"`
-	Version      string `json:"version"`
-	Instructions string `json:"instructions"`
+	Contract     *SkillContract `json:"contract,omitempty"`
+	ID           string         `json:"id"`
+	Version      string         `json:"version"`
+	Instructions string         `json:"instructions"`
+}
+
+type SkillContract struct {
+	Preconditions []string `json:"preconditions"`
+	Inputs        []string `json:"inputs"`
+	Output        string   `json:"output"`
+	RequiredTools []string `json:"required_tools,omitempty"`
+	StopCriteria  []string `json:"stop_criteria"`
+	Examples      []string `json:"examples,omitempty"`
 }
 
 type Limits struct {

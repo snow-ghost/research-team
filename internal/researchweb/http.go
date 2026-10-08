@@ -240,11 +240,15 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 	h.json(w, map[string]any{"csrf": csrf, "operator": "operator"})
 }
 func bodyJSON(w http.ResponseWriter, r *http.Request, dest any) error {
+	return bodyJSONLimit(w, r, dest, 256<<10)
+}
+
+func bodyJSONLimit(w http.ResponseWriter, r *http.Request, dest any, limit int64) error {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
 		return RuleError("Требуется application/json.")
 	}
-	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 256<<10))
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
 		return ErrLimit
 	}
@@ -380,7 +384,7 @@ func (h *HTTP) view(w http.ResponseWriter) {
 func (h *HTTP) routes() {
 	h.mux.HandleFunc("POST /api/comparisons", func(w http.ResponseWriter, r *http.Request) {
 		var b ComparisonRequest
-		if err := bodyJSON(w, r, &b); err != nil {
+		if err := bodyJSONLimit(w, r, &b, 2<<20); err != nil {
 			h.fail(w, err)
 			return
 		}
@@ -415,6 +419,18 @@ func (h *HTTP) routes() {
 		}
 		h.json(w, map[string]any{"hits": hits})
 	})
+	h.mux.HandleFunc("POST /api/lemmas/inspect", func(w http.ResponseWriter, r *http.Request) {
+		var b InspectLemmaRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.InspectLemma(r.Context(), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("POST /api/lemmas/applications", func(w http.ResponseWriter, r *http.Request) {
 		var b ApplicabilityRequest
 		if err := bodyJSON(w, r, &b); err != nil {
@@ -442,6 +458,21 @@ func (h *HTTP) routes() {
 	h.mux.HandleFunc("GET /api/profile-templates", func(w http.ResponseWriter, r *http.Request) {
 		h.json(w, h.service.Options.Profiles)
 	})
+	h.mux.HandleFunc("GET /api/metrics/scheduler", func(w http.ResponseWriter, r *http.Request) {
+		h.json(w, h.service.SchedulerMetrics())
+	})
+	h.mux.HandleFunc("POST /api/maintenance", func(w http.ResponseWriter, r *http.Request) {
+		var b MaintenanceRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.PrepareMaintenance(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("POST /api/profiles", func(w http.ResponseWriter, r *http.Request) {
 		var b ProfileRequest
 		if err := bodyJSON(w, r, &b); err != nil {
@@ -449,6 +480,18 @@ func (h *HTTP) routes() {
 			return
 		}
 		if err := h.service.CreateProfile(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/skills", func(w http.ResponseWriter, r *http.Request) {
+		var b SkillRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.CreateSkill(b); err != nil {
 			h.fail(w, err)
 			return
 		}

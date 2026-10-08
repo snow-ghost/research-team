@@ -52,12 +52,13 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 		if s.Options.Checker == nil || e == nil || e.FormalGoal == nil {
 			return ctx, RuleError("Инструмент Lean требует закрепленную цель и проверяющую службу.")
 		}
-		if name == "check_refutation" && d.task(a.TaskID).Kind != "counterexample" {
+		negative := d.team(a.TeamID) != nil && d.team(a.TeamID).Refuting && a.Role == "formalize"
+		if name == "check_refutation" && d.task(a.TaskID).Kind != "counterexample" && !negative {
 			return ctx, RuleError("Проверка отрицания доступна только заданию контрпримеров.")
 		}
 		goal := *e.FormalGoal
 		purpose := "proof"
-		if name == "check_refutation" {
+		if name == "check_refutation" || negative {
 			goal = refutationGoal(goal)
 			purpose = "refutation"
 		}

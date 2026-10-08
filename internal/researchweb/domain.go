@@ -42,6 +42,9 @@ func applyAction(d *Data, a Action) error {
 		d.Entities = append(d.Entities, newEntity(goal, a.Title, "goal", id, a.Statement, a.Assumptions))
 	case "PAUSE":
 		d.Paused = !d.Paused
+		if !d.Paused {
+			d.Maintenance = nil
+		}
 	case "LEMMA":
 		found := false
 		for _, s := range d.Studies {

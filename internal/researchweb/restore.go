@@ -62,7 +62,7 @@ func RestorePostgres(ctx context.Context, c Config, lookup func(string) (string,
 	if err != nil {
 		return m, err
 	}
-	err = run(ctx, f, io.Discard, "pg_restore", "-U", "postgres", "--role="+dbConfig.User, "--no-owner", "--exit-on-error", "-d", dbConfig.Database)
+	err = run(ctx, f, io.Discard, "pg_restore", "-U", "postgres", "--role="+dbConfig.User, "--no-owner", "--no-privileges", "--exit-on-error", "-d", dbConfig.Database)
 	f.Close()
 	if err != nil {
 		return m, errors.New("restore failed; inspect the new isolated database")
@@ -73,7 +73,10 @@ func RestorePostgres(ctx context.Context, c Config, lookup func(string) (string,
 	}
 	defer db.Close()
 	tables, err := backupTables(ctx, db)
-	if err != nil || !reflect.DeepEqual(tables, m.Tables) {
+	if err != nil {
+		return m, errors.New("restored database verification connection or query unavailable")
+	}
+	if !reflect.DeepEqual(tables, m.Tables) {
 		return m, errors.New("restored database differs from manifest")
 	}
 	if err = os.MkdirAll(filepath.Dir(c.DataDir), 0700); err != nil {

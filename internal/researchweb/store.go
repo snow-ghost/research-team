@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"sync/atomic"
 
 	_ "modernc.org/sqlite"
 )
@@ -18,6 +19,8 @@ const maxState = 16 << 20
 var requestPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{8,100}$`)
 
 type Store struct {
+	reads   atomic.Int64
+	probes  atomic.Int64
 	pg      *postgresStore
 	db      *sql.DB
 	mu      sync.Mutex
@@ -100,6 +103,7 @@ func (s *Store) Close() error {
 	return err
 }
 func (s *Store) Read() (View, error) {
+	s.reads.Add(1)
 	if s.pg != nil {
 		return s.pg.Read()
 	}

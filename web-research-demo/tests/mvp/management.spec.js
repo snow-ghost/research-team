@@ -1,6 +1,71 @@
 import { test, expect } from "@playwright/test";
 import { ACCESS_KEY } from "../fixtures/constants.js";
 
+test("каталог навыков закрепляет версию в профиле", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Ключ доступа").fill(ACCESS_KEY);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page.getByRole("button", { name: "Исполнители", exact: true }).click();
+  const registry = page.getByRole("region", { name: "Каталог навыков" });
+  await registry.getByRole("button", { name: "Создать версию навыка" }).click();
+  const form = registry.getByRole("form", { name: "Создание навыка" });
+  await form.getByLabel("Имя", { exact: true }).fill("browser-induction");
+  await form.getByLabel("Название", { exact: true }).fill("Индукция");
+  await form.getByLabel("Инструкции").fill("Проверить базу и полный шаг.");
+  await form.getByLabel("Условия применения").fill("Натуральный параметр");
+  await form.getByLabel("Входные данные").fill("Закрепленная цель");
+  await form
+    .getByLabel("Критерии остановки")
+    .fill("Доказательство или исчерпание предела");
+  await form
+    .getByLabel("Формат результата")
+    .fill("Доказательство с предпосылками");
+  await form.getByLabel("Подтверждаю новую версию").check();
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 960 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBeTruthy();
+  }
+  await form.getByRole("button", { name: "Записать навык" }).click();
+  await expect(registry).toContainText("browser-induction@1");
+  const factory = page.getByRole("region", { name: "Фабрика агентов" });
+  await factory
+    .getByRole("button", { name: "Создать версию", exact: true })
+    .click();
+  const profile = factory.getByRole("form", { name: "Создание профиля" });
+  await profile
+    .getByLabel("Имя", { exact: true })
+    .first()
+    .fill("browser-pinned-skills");
+  await profile
+    .getByLabel("Название", { exact: true })
+    .fill("Исследователь с закрепленным навыком");
+  await profile.getByLabel("Версии из каталога навыков").check();
+  await profile.getByLabel("Индукция · browser-induction@1").check();
+  await profile.getByLabel("Подтверждаю модель, навыки и ограничения").check();
+  await profile
+    .getByRole("button", { name: "Создать версию", exact: true })
+    .click();
+  await expect(factory).toContainText("browser-pinned-skills@1");
+  const state = (
+    await (
+      await page.request.get("/api/bootstrap", {
+        headers: { Authorization: "Bearer " + ACCESS_KEY },
+      })
+    ).json()
+  ).state;
+  const saved = state.profile_revisions.find(
+    (r) => r.id === "browser-pinned-skills@1",
+  );
+  expect(saved.skill_refs).toEqual(["browser-induction@1"]);
+  expect(saved.configuration.skills[0].contract.preconditions).toEqual([
+    "Натуральный параметр",
+  ]);
+});
+
 test("историческое сравнение предупреждает о повторном аудите цели", async ({
   page,
 }) => {

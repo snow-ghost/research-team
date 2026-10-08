@@ -58,18 +58,19 @@ func BackupPostgres(ctx context.Context, c Config, lookup func(string) (string, 
 	if err != nil {
 		return m, err
 	}
+	held := maintenanceValid(v.Data)
 	for _, a := range v.Attempts {
-		if active(a.Status) {
+		if active(a.Status) && !held {
 			return m, errors.New("stop active attempts before backup")
 		}
 	}
 	for _, v := range v.Verifications {
-		if v.Status == "queued" || v.Status == "running" {
+		if v.Status == "running" || (v.Status == "queued" && !held) {
 			return m, errors.New("finish queued verifications before backup")
 		}
 	}
 	for _, l := range v.Library {
-		if l.Status == "queued" || l.Status == "running" {
+		if l.Status == "running" || (l.Status == "queued" && !held) {
 			return m, errors.New("finish queued library builds before backup")
 		}
 	}
@@ -261,7 +262,7 @@ func verifyBackupRestore(ctx context.Context, m BackupManifest, directory string
 	if err != nil {
 		return err
 	}
-	err = run(ctx, f, io.Discard, "pg_restore", "-U", "postgres", "--role="+config.User, "--no-owner", "--exit-on-error", "-d", target)
+	err = run(ctx, f, io.Discard, "pg_restore", "-U", "postgres", "--role="+config.User, "--no-owner", "--no-privileges", "--exit-on-error", "-d", target)
 	f.Close()
 	if err != nil {
 		return err

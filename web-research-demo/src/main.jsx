@@ -60,6 +60,7 @@ import {
 import { Connected } from "./connected.jsx";
 import { RuntimePanel } from "./runtime.jsx";
 import { ProfileFactory, StructuredLemmaSearch, ComparisonPanel } from "./research-management.jsx";
+import { SkillRegistry } from "./skills.jsx";
 import { CoddyPanel } from "./coddy.jsx";
 import {
   createInitialState,
@@ -973,6 +974,7 @@ function App({ live } = {}) {
         <div className="work-area">
           <div className="main-pane">
             {live && section === "executors" && <ProfileFactory live={live} />}
+            {live && section === "executors" && <SkillRegistry live={live} />}
             {live && section === "executors" && <ComparisonPanel live={live} />}
             {live && section === "library" && <StructuredLemmaSearch live={live} target={selected} />}
             {live && section === "executors" && (

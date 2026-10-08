@@ -84,22 +84,33 @@ func quiesce(o researchweb.Options) error {
 		idle := true
 		for _, a := range v.Attempts {
 			switch a.Status {
-			case "queued", "preparing", "running", "awaiting_worker", "cancelling":
+			case "preparing", "running", "awaiting_worker", "cancelling":
+				idle = false
+			}
+			if a.Status == "queued" && (a.RemoteOutcome != "not_started" || a.InputSHA256 != "") {
 				idle = false
 			}
 		}
 		for _, check := range v.Verifications {
-			if check.Status == "queued" || check.Status == "running" {
+			if check.Status == "running" {
 				idle = false
 			}
 		}
 		for _, l := range v.Library {
-			if l.Status == "queued" || l.Status == "running" {
+			if l.Status == "running" {
 				idle = false
 			}
 		}
 		if idle {
-			return nil
+			var id [16]byte
+			if _, err := rand.Read(id[:]); err != nil {
+				return err
+			}
+			_, err := request("POST", "maintenance", researchweb.MaintenanceRequest{ExpectedRevision: v.Revision, RequestID: "hold-" + hex.EncodeToString(id[:]), Confirm: true})
+			if errors.Is(err, researchweb.ErrConflict) {
+				continue
+			}
+			return err
 		}
 		select {
 		case <-ctx.Done():

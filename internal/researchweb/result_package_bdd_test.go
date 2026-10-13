@@ -50,6 +50,7 @@ func packageFixture(t *testing.T) (*Service, ResultPackage) {
 	v = waitTeam(t, s, stateOf(t, s).Teams[0].ID, "awaiting_review")
 	act(t, s, Action{Type: "PAUSE"})
 	act(t, s, Action{Type: "REVIEW", Target: goal, Decision: "accept", Text: "Fixture acceptance after exact review"})
+	v = waitTeam(t, s, v.Teams[0].ID, "completed")
 	p, err := s.ExportResultPackage(v.Results[0].ID)
 	if err != nil {
 		t.Fatal(err)

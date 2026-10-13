@@ -315,6 +315,18 @@ export function ComparisonPanel({ live }) {
     requires_review: "Требует рецензии",
     failed: "Ошибка",
     inconclusive: "Вывод не получен",
+    interrupted: "Прервано",
+  };
+  const mathematical = {
+    proof_verified: "Доказательство проверено",
+    refutation_verified: "Отрицание проверено",
+    inconclusive: "Вывод не получен",
+  };
+  const stageStatuses = {
+    candidate: "Кандидат",
+    failed: "Ошибка",
+    cancelled: "Отменено",
+    limit_reached: "Предел достигнут",
   };
   return (
     <section className="process-section" aria-label="Сравнение исполнителей">
@@ -362,10 +374,84 @@ export function ComparisonPanel({ live }) {
                         single: "Один исследователь",
                         team: "Фиксированная команда",
                         adaptive: "Адаптивная команда",
+                        demand: "Специалисты по необходимости",
                         lean: "Lean без модели",
                       }[r.mode] || r.mode}
                     </td>
-                    <td>{statuses[r.status] || r.status}</td>
+                    <td>
+                      {statuses[r.status] || r.status}
+                      {r.mathematical_status && (
+                        <p>
+                          {mathematical[r.mathematical_status] ||
+                            r.mathematical_status}
+                        </p>
+                      )}
+                      {r.verification && (
+                        <p>
+                          Lean:{" "}
+                          {r.verification.status === "verified"
+                            ? "проверено"
+                            : "не подтверждено"}
+                        </p>
+                      )}
+                      {!!r.stages?.length && (
+                        <details>
+                          <summary>Этапы</summary>
+                          {r.error && (
+                            <p className="usage-summary">{r.error}</p>
+                          )}
+                          {r.stages.map((stage, index) => (
+                            <div key={index}>
+                              <strong>
+                                {roles[
+                                  stage.role === "counter"
+                                    ? "counterexample"
+                                    : stage.role
+                                ] ||
+                                  (stage.role === "universal"
+                                    ? "Исследователь"
+                                    : stage.role)}
+                              </strong>
+                              <p>
+                                {stageStatuses[stage.status] || stage.status}
+                              </p>
+                              <p>
+                                Запросы: {stage.requests} · время:{" "}
+                                {stage.seconds.toFixed(1)} с
+                              </p>
+                              <p>
+                                Выходные токены:{" "}
+                                {stage.usage && !stage.usage.incomplete
+                                  ? stage.usage.output_tokens
+                                  : "не полностью измерено"}
+                              </p>
+                              {!!stage.provider_http_status && (
+                                <p>HTTP: {stage.provider_http_status}</p>
+                              )}
+                              {(stage.failure_code ||
+                                stage.finish_reason ||
+                                stage.limit_reason) && (
+                                <p className="usage-summary">
+                                  {[
+                                    stage.failure_code,
+                                    stage.finish_reason,
+                                    stage.limit_reason,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </p>
+                              )}
+                              <p className="usage-summary">
+                                Профиль: {stage.profile_sha256}
+                              </p>
+                              <p className="usage-summary">
+                                Результат: {stage.result_sha256}
+                              </p>
+                            </div>
+                          ))}
+                        </details>
+                      )}
+                    </td>
                     <td>
                       {r.unknown_request_count
                         ? "Не полностью измерено"

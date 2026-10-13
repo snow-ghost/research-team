@@ -121,3 +121,88 @@ test("подбор показывает открытую цель, повреж�
       await command("/actions", { type: "PAUSE" });
   }
 });
+
+test("сравнение разделяет результат Lean и отказ рецензии по этапам", async ({
+  page,
+}) => {
+  await page.route("**/api/bootstrap", async (route) => {
+    const response = await route.fetch();
+    const view = await response.json();
+    view.state.comparisons = [
+      {
+        id: "browser-demand-comparison",
+        created_at: "2026-10-13T18:00:00Z",
+        report: {
+          version: 3,
+          runs: [
+            {
+              case: "educational-case",
+              mode: "demand",
+              repetition: 1,
+              status: "failed",
+              mathematical_status: "proof_verified",
+              measured_requests: 2,
+              request_upper_bound: 2,
+              input_tokens: 20,
+              output_tokens: 64,
+              seconds: 2.5,
+              usage_incomplete: true,
+              verification: {
+                status: "verified",
+                audit_sha256: "a".repeat(64),
+              },
+              review_accepted: false,
+              error: "executor failed; see private result diagnostics",
+              stages: [
+                {
+                  role: "proof",
+                  status: "candidate",
+                  requests: 1,
+                  seconds: 1,
+                  usage: { output_tokens: 64 },
+                  profile_sha256: "b".repeat(64),
+                  result_sha256: "c".repeat(64),
+                },
+                {
+                  role: "review",
+                  status: "failed",
+                  failure_code: "execution_failed",
+                  provider_http_status: 429,
+                  requests: 1,
+                  seconds: 1.5,
+                  profile_sha256: "d".repeat(64),
+                  result_sha256: "e".repeat(64),
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    await route.fulfill({ response, json: view });
+  });
+  await page.goto("/");
+  await page.getByLabel("Ключ доступа").fill(ACCESS_KEY);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page.getByRole("button", { name: "Исполнители", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Сравнение исполнителей" });
+  await expect(panel).toContainText("Специалисты по необходимости");
+  await expect(panel).toContainText("Доказательство проверено");
+  await expect(panel).toContainText("Lean: проверено");
+  await panel.getByText("Этапы", { exact: true }).click();
+  await expect(panel).toContainText("HTTP: 429");
+  await expect(panel).toContainText("Выходные токены: не полностью измерено");
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 960 });
+    await panel.scrollIntoViewIfNeeded();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBeTruthy();
+    await page.screenshot({
+      path: `test-results/comparison-stages-${width}.png`,
+      fullPage: true,
+    });
+  }
+});

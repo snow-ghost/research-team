@@ -70,11 +70,26 @@ func (s *Service) PublishLemma(r PublishRequest) error {
 			return err
 		}
 		id := identifier("library")
+		module := "ResearchLemma_" + strings.TrimPrefix(id, "library-")
+		for _, result := range d.Results {
+			if result.ID == e.ResearchResult && result.Transfer != nil && result.Transfer.Module != nil {
+				original := result.Transfer.Module
+				if original.SourceSHA256 != leancheck.Digest(source) {
+					return RuleError("Исходник переносимого модуля изменился.")
+				}
+				id, module = original.ID, original.Module
+				for _, existing := range d.Library {
+					if existing.ID == id {
+						return RuleError("Переносимый модуль с этим идентификатором уже записан; нужна отдельная проверка неудачной сборки.")
+					}
+				}
+			}
+		}
 		env := *s.Options.Lean
 		if v.Environment != nil {
 			env = *v.Environment
 		}
-		d.Library = append(d.Library, LibraryEntry{ID: id, Lemma: e.ID, LemmaRevision: e.Revision, Result: e.ResearchResult, Module: "ResearchLemma_" + strings.TrimPrefix(id, "library-"), Source: source, Goal: v.Goal, Candidate: v.Source, Environment: env, Status: "queued", CreatedAt: time.Now().UTC()})
+		d.Library = append(d.Library, LibraryEntry{ID: id, Lemma: e.ID, LemmaRevision: e.Revision, Result: e.ResearchResult, Module: module, Source: source, Goal: v.Goal, Candidate: v.Source, Environment: env, Status: "queued", CreatedAt: time.Now().UTC()})
 		return nil
 	})
 }

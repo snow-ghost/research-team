@@ -53,6 +53,8 @@ type SkillContract struct {
 }
 
 type SkillApplicability struct {
+	Priority                    int      `json:"priority,omitempty"`
+	ExclusiveGroup              string   `json:"exclusive_group,omitempty"`
 	Roles                       []string `json:"roles,omitempty"`
 	Methods                     []string `json:"methods,omitempty"`
 	RequireFormalGoal           bool     `json:"require_formal_goal,omitempty"`

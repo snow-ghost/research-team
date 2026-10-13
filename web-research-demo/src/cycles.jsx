@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ResearchMethodSelect } from "./assignment.jsx";
 import { Play, Pause, Square, Plus, BookOpen, CircleAlert } from "lucide-react";
 
 export const cycleStates = {
@@ -58,6 +59,7 @@ export function CyclePanel({ live, study, all, onSelect }) {
                 profile: v.profile,
                 workspace: v.workspace,
                 max_attempts: Number(v.max_attempts),
+                method: v.method || "",
                 confirm: v.confirm === "on",
               });
               setCreating(false);
@@ -113,6 +115,7 @@ export function CyclePanel({ live, study, all, onSelect }) {
               required
             />
           </label>
+          <ResearchMethodSelect live={live} />
           <label className="checkbox wide">
             <input name="confirm" type="checkbox" required />
             Разрешаю автоматические запуски в пределах числа попыток и возможные

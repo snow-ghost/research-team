@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Link, BookOpen, GitBranch, Download, Check, Plus } from "lucide-react";
+import {
+  Link,
+  BookOpen,
+  GitBranch,
+  Download,
+  Upload,
+  Check,
+  Plus,
+} from "lucide-react";
 
 const labels = {
   ready: "Проверки связаны",
@@ -26,6 +34,7 @@ const download = (entry) => {
 export function EvidencePanel({ live, study, selected }) {
   const { state } = live.data;
   const [error, setError] = useState(""),
+    [importOpen, setImportOpen] = useState(false),
     [open, setOpen] = useState(false),
     [observation, setObservation] = useState(null);
   const target =
@@ -85,6 +94,58 @@ export function EvidencePanel({ live, study, selected }) {
           Связать проверки
         </button>
       </div>
+      <button
+        className="button secondary"
+        disabled={live.busy || !state.paused}
+        onClick={() => setImportOpen(!importOpen)}
+      >
+        <Upload size={15} />
+        Перенести пакет результата
+      </button>
+      {importOpen && (
+        <form
+          className="runtime-form"
+          aria-label="Перенос результата"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setError("");
+            const file = e.currentTarget.elements.package.files[0];
+            try {
+              if (!file || file.size > 16 * 1024 * 1024)
+                throw Error("Размер пакета превышает 16 МиБ.");
+              const value = JSON.parse(await file.text());
+              await live.command("/results/import", {
+                package: value,
+                confirm: true,
+              });
+              setImportOpen(false);
+            } catch (err) {
+              setError(err.message);
+            }
+          }}
+        >
+          <label>
+            Пакет результата
+            <input
+              name="package"
+              type="file"
+              accept="application/json,.json"
+              required
+            />
+          </label>
+          <label className="checkbox-label">
+            <input type="checkbox" required />
+            Подтверждаю перенос и новую проверку Lean
+          </label>
+          <button
+            className="button secondary"
+            disabled={live.busy || !state.paused}
+          >
+            <Upload size={15} />
+            Перенести
+          </button>
+        </form>
+      )}
       {error && (
         <p role="alert" className="api-error">
           {error}
@@ -185,6 +246,45 @@ export function EvidencePanel({ live, study, selected }) {
             <br />
             Контрпримеры: {r.counter_attempt}
           </p>
+          {r.transfer ? (
+            <p>
+              Перенос: {r.transfer.package_sha256}
+              <br />
+              Исходная приемка:{" "}
+              {r.transfer.source_status === "accepted"
+                ? "выполнена в исходной области"
+                : "не выполнена"}
+              <br />
+              Исходные снимки и сокращенные копии имеют отдельные контрольные
+              суммы.
+            </p>
+          ) : (
+            <button
+              className="button secondary"
+              disabled={live.busy || !["ready", "accepted"].includes(r.status)}
+              onClick={async () => {
+                setError("");
+                try {
+                  const value = await live.get(`/results/${r.id}/package`);
+                  const url = URL.createObjectURL(
+                    new Blob([JSON.stringify(value, null, 2)], {
+                      type: "application/json",
+                    }),
+                  );
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = r.id + "-package.json";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+            >
+              <Download size={15} />
+              Пакет результата
+            </button>
+          )}
           <p>{r.review.summary}</p>
           <small>
             Цель: {r.binding.goal_sha256}

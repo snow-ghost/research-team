@@ -37,23 +37,24 @@ type CounterReport struct {
 	Evidence         string `json:"evidence"`
 }
 type ResearchResult struct {
-	FindingIDs          []string       `json:"finding_ids,omitempty"`
-	ID                  string         `json:"id"`
-	Target              string         `json:"target"`
-	TargetRevision      int            `json:"target_revision"`
-	Binding             ProofBinding   `json:"binding"`
-	Author              string         `json:"author"`
-	EnvironmentSHA256   string         `json:"environment_sha256"`
-	ReviewAttempt       string         `json:"review_attempt"`
-	CounterAttempt      string         `json:"counter_attempt"`
-	ReviewResultSHA256  string         `json:"review_result_sha256"`
-	CounterResultSHA256 string         `json:"counter_result_sha256"`
-	ReviewBindingMethod string         `json:"review_binding_method"`
-	Review              ReviewReport   `json:"review"`
-	Counter             CounterReport  `json:"counter"`
-	DependencyRevisions map[string]int `json:"dependency_revisions,omitempty"`
-	Status              string         `json:"status"`
-	CreatedAt           time.Time      `json:"created_at"`
+	Transfer            *ResultTransfer `json:"transfer,omitempty"`
+	FindingIDs          []string        `json:"finding_ids,omitempty"`
+	ID                  string          `json:"id"`
+	Target              string          `json:"target"`
+	TargetRevision      int             `json:"target_revision"`
+	Binding             ProofBinding    `json:"binding"`
+	Author              string          `json:"author"`
+	EnvironmentSHA256   string          `json:"environment_sha256"`
+	ReviewAttempt       string          `json:"review_attempt"`
+	CounterAttempt      string          `json:"counter_attempt"`
+	ReviewResultSHA256  string          `json:"review_result_sha256"`
+	CounterResultSHA256 string          `json:"counter_result_sha256"`
+	ReviewBindingMethod string          `json:"review_binding_method"`
+	Review              ReviewReport    `json:"review"`
+	Counter             CounterReport   `json:"counter"`
+	DependencyRevisions map[string]int  `json:"dependency_revisions,omitempty"`
+	Status              string          `json:"status"`
+	CreatedAt           time.Time       `json:"created_at"`
 }
 type ResultRequest struct {
 	ExpectedRevision int    `json:"expected_revision"`

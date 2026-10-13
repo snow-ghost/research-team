@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { CyclePanel } from "./cycles.jsx";
 import { EvidencePanel } from "./evidence.jsx";
 import { MemoryPanel } from "./research-progress.jsx";
+import { ResearchMethodSelect } from "./assignment.jsx";
 import {
   TeamPanel,
   FormalGoalPanel,
@@ -300,11 +301,13 @@ export function RuntimePanel({
                 workspace: values.workspace,
                 remote_worker: values.remote_worker || "",
                 review_verification: values.review_verification || "",
+                method: values.method || "",
                 confirm: values.confirm === "on",
               }),
             );
           }}
         >
+          <ResearchMethodSelect live={live} />
           {state.tasks.find((t) => t.id === launch)?.kind === "review" && (
             <label>
               Проверенный исходник
@@ -440,6 +443,80 @@ export function RuntimePanel({
                 Входной снимок v{a.input_snapshot} · Удаленный исход:{" "}
                 {a.remote_outcome}
               </small>
+              {!!a.skill_selections?.length && (
+                <details>
+                  <summary>Назначение навыков</summary>
+                  {a.skill_selections.map((s) => (
+                    <p key={s.id}>
+                      {s.id}: {s.selected ? "назначен" : "не назначен"}.{" "}
+                      {s.reason}
+                    </p>
+                  ))}
+                </details>
+              )}
+              {a.remote_worker &&
+                ["interrupted", "cancelled"].includes(a.status) &&
+                !a.team_id &&
+                !a.cycle_id &&
+                !state.attempts.some(
+                  (next) => next.parent_attempt === a.id,
+                ) && (
+                  <form
+                    className="runtime-form"
+                    aria-label="Новое удаленное назначение"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const f = Object.fromEntries(
+                        new FormData(e.currentTarget),
+                      );
+                      act(() =>
+                        live.command(`/attempts/${a.id}/reassign`, {
+                          worker: f.worker,
+                          confirm: true,
+                        }),
+                      );
+                    }}
+                  >
+                    <label>
+                      Исполнитель
+                      <select name="worker" required>
+                        {(live.data.workers || [])
+                          .filter(
+                            (w) =>
+                              w.available &&
+                              w.profiles.includes(a.profile) &&
+                              state.bindings?.some(
+                                (b) =>
+                                  b.kind === "worker" &&
+                                  b.connector === w.id &&
+                                  b.study ===
+                                    state.entities.find(
+                                      (e) => e.id === a.target,
+                                    )?.study &&
+                                  b.enabled,
+                              ),
+                          )
+                          .map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.label || w.id}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <label className="checkbox-label">
+                      <input type="checkbox" required />
+                      Подтверждаю новое назначение и возможное повторное
+                      выполнение
+                    </label>
+                    <button
+                      className="button secondary"
+                      disabled={live.busy || state.paused}
+                    >
+                      <RotateCcw size={15} />
+                      Назначить заново
+                    </button>
+                  </form>
+                )}
             </div>
             <div className="row-actions">
               <button
@@ -450,17 +527,21 @@ export function RuntimePanel({
               >
                 <ScrollText size={16} />
               </button>
-              {!running(a.status) && a.result_sha256 && !a.team_id && (
-                <button
-                  className="icon-button"
-                  title="Продолжить попытку"
-                  aria-label="Продолжить попытку"
-                  onClick={() => setResume(a)}
-                >
-                  <RotateCcw size={16} />
-                </button>
-              )}
+              {!running(a.status) &&
+                a.result_sha256 &&
+                !a.team_id &&
+                !a.imported_package_sha256 && (
+                  <button
+                    className="icon-button"
+                    title="Продолжить попытку"
+                    aria-label="Продолжить попытку"
+                    onClick={() => setResume(a)}
+                  >
+                    <RotateCcw size={16} />
+                  </button>
+                )}
               {a.status === "candidate" &&
+                !a.imported_package_sha256 &&
                 state.entities.find((e) => e.id === a.target)?.formal_goal && (
                   <button
                     className="icon-button"

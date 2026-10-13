@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { ResearchMethodSelect } from "./assignment.jsx";
 import { Plus, Save, Play, Search, Trash2, GitBranch } from "lucide-react";
 import { api } from "./api.js";
 
@@ -502,6 +503,7 @@ export function PlanningPanel({ live, study }) {
             });
           }}
         >
+          <ResearchMethodSelect live={live} />
           <label>
             Цель
             <select name="target" required>
@@ -907,6 +909,7 @@ export function StructuredLemmaSearch({ live, target }) {
         </button>
       </form>
       {searched && !hits.length && <p role="status">Леммы не найдены.</p>}
+      <NativeLemmaMatching live={live} target={target} />
       {hits.map((h) => (
         <div className="team-row" key={h.signature.id}>
           <strong>
@@ -987,6 +990,161 @@ export function StructuredLemmaSearch({ live, target }) {
           </form>
         </div>
       ))}
+    </section>
+  );
+}
+
+function NativeLemmaMatching({ live, target }) {
+  const state = live.data.state;
+  const [error, setError] = useState("");
+  const [matchTarget, setMatchTarget] = useState(target);
+  useEffect(() => setMatchTarget(target), [target]);
+  const libraries = (state.library || []).filter((l) => l.status === "ready");
+  const open = state.entities.filter(
+    (e) => e.formal_goal && !["accepted", "refuted"].includes(e.status),
+  );
+  const selectedTarget = open.some((e) => e.id === matchTarget)
+    ? matchTarget
+    : open[0]?.id || "";
+  const matches = (state.lemma_matches || [])
+    .filter((m) => m.target === selectedTarget)
+    .slice(-20)
+    .reverse();
+  const statuses = {
+    verified: "Терм проверен Lean",
+    obligations: "Недостающие условия",
+    no_match: "Типы не совпали",
+    candidate_failed: "Терм не прошел проверку",
+    failed: "Проверка не завершена",
+  };
+  return (
+    <section className="process-section" aria-label="Подбор типов Lean">
+      <h3>Подбор типов Lean</h3>
+      {error && (
+        <p className="api-error" role="alert">
+          {error}
+        </p>
+      )}
+      <form
+        className="runtime-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setError("");
+          const f = Object.fromEntries(new FormData(e.currentTarget));
+          try {
+            await live.command("/lemmas/match", {
+              target: f.target,
+              library: f.library,
+            });
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
+      >
+        <label>
+          Цель
+          <select
+            name="target"
+            required
+            value={selectedTarget}
+            onChange={(e) => setMatchTarget(e.target.value)}
+          >
+            {open.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Лемма
+          <select name="library" required>
+            {libraries.map((l) => (
+              <option key={l.id} value={l.id}>
+                {state.entities.find((e) => e.id === l.lemma)?.title ||
+                  l.module}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="button secondary"
+          disabled={
+            live.busy ||
+            !libraries.length ||
+            !open.length ||
+            !live.data.lean?.configured
+          }
+        >
+          <Search size={15} />
+          Подобрать подстановку
+        </button>
+      </form>
+      {matches.map((m) => {
+        const current =
+          state.entities.find((e) => e.id === m.target)?.revision ===
+          m.target_revision;
+        return (
+          <div className="team-row" key={m.id}>
+            <strong>{statuses[m.report.status] || m.report.status}</strong>
+            <p>{state.library.find((l) => l.id === m.library)?.module}</p>
+            {!!m.report.bindings.length && (
+              <dl>
+                {m.report.bindings.map((b, i) => (
+                  <React.Fragment key={i}>
+                    <dt>{b.name}</dt>
+                    <dd>
+                      <code>{b.term}</code>
+                    </dd>
+                  </React.Fragment>
+                ))}
+              </dl>
+            )}
+            {m.report.missing.map((b, i) => (
+              <p key={i}>
+                {b.name}: <code>{b.type}</code>
+              </p>
+            ))}
+            {m.report.diagnostics && (
+              <details>
+                <summary>Диагностика Lean</summary>
+                <pre>{m.report.diagnostics}</pre>
+              </details>
+            )}
+            {m.application ? (
+              <p>Создано обязательство: {m.application}</p>
+            ) : !current ? (
+              <p>Версия цели изменена</p>
+            ) : (
+              ["verified", "obligations"].includes(m.report.status) && (
+                <form
+                  className="runtime-form"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setError("");
+                    try {
+                      await live.command(`/lemmas/matches/${m.id}/apply`, {
+                        confirm: true,
+                      });
+                    } catch (err) {
+                      setError(err.message);
+                    }
+                  }}
+                >
+                  <label className="checkbox-label">
+                    <input type="checkbox" required />
+                    Подтверждаю создание обязательств
+                  </label>
+                  <button className="button secondary" disabled={live.busy}>
+                    <Plus size={15} />
+                    Создать обязательства
+                  </button>
+                </form>
+              )
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 }

@@ -63,6 +63,8 @@ export function SkillRegistry({ live }) {
                       "counterexample",
                       "formalize",
                       "review",
+                      "decompose",
+                      "answer",
                     ].filter((r) => f[`role_${r}`] === "on"),
                     require_formal_goal: f.require_formal_goal === "on",
                     require_verified_candidate:
@@ -70,6 +72,8 @@ export function SkillRegistry({ live }) {
                     require_accepted_dependencies:
                       f.require_accepted_dependencies === "on",
                     min_remaining_attempts: Number(f.min_remaining_attempts),
+                    priority: Number(f.priority),
+                    exclusive_group: f.exclusive_group,
                   },
                 },
                 confirm: f.confirm === "on",
@@ -139,6 +143,8 @@ export function SkillRegistry({ live }) {
               counterexample: "Контрпримеры",
               formalize: "Формализация",
               review: "Рецензия",
+              decompose: "План исследования",
+              answer: "Ответ на вопрос",
             }).map(([r, label]) => (
               <label className="checkbox-label" key={r}>
                 <input type="checkbox" name={`role_${r}`} />
@@ -146,6 +152,25 @@ export function SkillRegistry({ live }) {
               </label>
             ))}
           </fieldset>
+          <label>
+            Приоритет выбора
+            <input
+              name="priority"
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={0}
+              required
+            />
+          </label>
+          <label>
+            Группа выбора
+            <input
+              name="exclusive_group"
+              pattern="[a-z][a-z0-9-]{0,47}"
+              maxLength={48}
+            />
+          </label>
           <label>
             Минимальный остаток попыток
             <input

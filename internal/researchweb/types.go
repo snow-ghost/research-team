@@ -97,6 +97,9 @@ type Application struct {
 	State         string `json:"state"`
 }
 type Attempt struct {
+	ImportedPackageSHA256 string             `json:"imported_package_sha256,omitempty"`
+	SkillSelections       []SkillSelection   `json:"skill_selections,omitempty"`
+	AssignmentMethod      string             `json:"assignment_method,omitempty"`
 	ReviewRubric          string             `json:"review_rubric,omitempty"`
 	ProfileConfiguration  *execution.Profile `json:"profile_configuration,omitempty"`
 	ReservedModelRequests int                `json:"reserved_model_requests,omitempty"`
@@ -133,6 +136,7 @@ type Delegation struct {
 	Target string `json:"target"`
 }
 type Data struct {
+	LemmaMatches     []NativeLemmaMatch `json:"lemma_matches,omitempty"`
 	Maintenance      *MaintenanceHold   `json:"maintenance,omitempty"`
 	SkillRevisions   []SkillRevision    `json:"skill_revisions,omitempty"`
 	Comparisons      []ComparisonRecord `json:"comparisons,omitempty"`

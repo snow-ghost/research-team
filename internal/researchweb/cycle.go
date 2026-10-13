@@ -6,21 +6,24 @@ import (
 )
 
 type Cycle struct {
-	ID               string    `json:"id"`
-	Study            string    `json:"study"`
-	Goal             string    `json:"goal"`
-	Profile          string    `json:"profile"`
-	ProfileSHA       string    `json:"profile_sha256"`
-	Workspace        string    `json:"workspace"`
-	MaxAttempts      int       `json:"max_attempts"`
-	UsedAttempts     int       `json:"used_attempts"`
-	Status           string    `json:"status"`
-	Reason           string    `json:"reason"`
-	CurrentAttempt   string    `json:"current_attempt,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	AcceptedSnapshot int       `json:"accepted_snapshot,omitempty"`
+	Method           string           `json:"method,omitempty"`
+	SkillSelections  []SkillSelection `json:"skill_selections,omitempty"`
+	ID               string           `json:"id"`
+	Study            string           `json:"study"`
+	Goal             string           `json:"goal"`
+	Profile          string           `json:"profile"`
+	ProfileSHA       string           `json:"profile_sha256"`
+	Workspace        string           `json:"workspace"`
+	MaxAttempts      int              `json:"max_attempts"`
+	UsedAttempts     int              `json:"used_attempts"`
+	Status           string           `json:"status"`
+	Reason           string           `json:"reason"`
+	CurrentAttempt   string           `json:"current_attempt,omitempty"`
+	CreatedAt        time.Time        `json:"created_at"`
+	AcceptedSnapshot int              `json:"accepted_snapshot,omitempty"`
 }
 type CycleRequest struct {
+	Method           string `json:"method,omitempty"`
 	ExpectedRevision int    `json:"expected_revision"`
 	RequestID        string `json:"request_id"`
 	Study            string `json:"study"`
@@ -84,6 +87,11 @@ func (s *Service) StartCycle(r CycleRequest) error {
 	if r.MaxAttempts < 1 || r.MaxAttempts > 20 {
 		return RuleError("Число попыток должно быть от 1 до 20.")
 	}
+	if r.Method != "" {
+		if _, ok := researchMethod(r.Method); !ok {
+			return RuleError("Неизвестный метод исследования.")
+		}
+	}
 	if err := s.validateExecutor(r.Profile, r.Workspace); err != nil {
 		return err
 	}
@@ -109,7 +117,7 @@ func (s *Service) StartCycle(r CycleRequest) error {
 			if goal == nil || d.effective(goal.ID, map[string]bool{}) == "accepted" || goal.Status == "refuted" {
 				return RuleError("Нужна открытая цель исследования.")
 			}
-			d.Cycles = append(d.Cycles, Cycle{ID: identifier("cycle"), Study: study.ID, Goal: study.Goal, Profile: r.Profile,
+			d.Cycles = append(d.Cycles, Cycle{ID: identifier("cycle"), Study: study.ID, Goal: study.Goal, Profile: r.Profile, Method: r.Method,
 				ProfileSHA: hash(s.profile(r.Profile)), Workspace: r.Workspace, MaxAttempts: r.MaxAttempts,
 				Status: "running", Reason: "Выбор следующего обязательства.", CreatedAt: time.Now().UTC()})
 			return nil
@@ -326,6 +334,11 @@ func (s *Service) advanceCycle(d *Data, c *Cycle) error {
 		return set("blocked", "Исполнитель или каталог недоступен.")
 	}
 	p := s.profile(c.Profile)
+	selections := selectAssignmentSkills(d, skillFacts{Target: target.ID, Role: "proof", Method: c.Method, Remaining: min(remainingStudyAttempts(d, target.ID), c.MaxAttempts-c.UsedAttempts)}, &p)
+	c.SkillSelections = selections
+	if len(selections) > 0 && len(p.Skills) == 0 {
+		return set("blocked", "Условия всех навыков выбранного профиля не выполнены; запуск не назначен.")
+	}
 	reservation, err := s.reserveStudyBudget(d, target.ID, p)
 	if err != nil {
 		return set("blocked", err.Error())
@@ -337,7 +350,7 @@ func (s *Service) advanceCycle(d *Data, c *Cycle) error {
 	task.Attempt = id
 	task.Agent = c.Profile
 	d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: task.ID, Target: target.ID, TargetRevision: target.Revision,
-		CycleID: c.ID, Profile: c.Profile, ProfileConfiguration: &p, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: c.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
+		CycleID: c.ID, Profile: c.Profile, ProfileConfiguration: &p, SkillSelections: selections, AssignmentMethod: c.Method, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: c.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
 		InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 	c.UsedAttempts++
 	c.CurrentAttempt = id

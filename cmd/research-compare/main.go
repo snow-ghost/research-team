@@ -16,7 +16,7 @@ func main() {
 	config := flag.String("config", "", "Private comparison configuration")
 	server := flag.String("server-config", "", "Trusted server configuration for credential references")
 	out := flag.String("out", "", "New private result directory")
-	confirm := flag.Bool("confirm", false, "Authorize the configured comparison (v1: 96, v2: 216 requests)")
+	confirm := flag.Bool("confirm", false, "Authorize the configured comparison (v1: 96, v2/v3: 216 requests)")
 	resume := flag.Bool("resume", false, "Continue only unstarted runs; interrupted requests are held and never replayed")
 	flag.Parse()
 	if !*confirm || *config == "" || *server == "" || *out == "" {

@@ -382,6 +382,62 @@ func (h *HTTP) view(w http.ResponseWriter) {
 	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
 }
 func (h *HTTP) routes() {
+	h.mux.HandleFunc("POST /api/attempts/{id}/reassign", func(w http.ResponseWriter, r *http.Request) {
+		var body ReassignWorkerRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ReassignWorker(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/results/{id}/package", func(w http.ResponseWriter, r *http.Request) {
+		p, err := h.service.ExportResultPackage(r.PathValue("id"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, p)
+	})
+	h.mux.HandleFunc("POST /api/results/import", func(w http.ResponseWriter, r *http.Request) {
+		var body ImportResultPackageRequest
+		if err := bodyJSONLimit(w, r, &body, maxResultPackage); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ImportResultPackage(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/lemmas/match", func(w http.ResponseWriter, r *http.Request) {
+		var body MatchLemmaRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.MatchLemma(r.Context(), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/lemmas/matches/{id}/apply", func(w http.ResponseWriter, r *http.Request) {
+		var body ApplyMatchRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ApplyLemmaMatch(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("POST /api/comparisons", func(w http.ResponseWriter, r *http.Request) {
 		var b ComparisonRequest
 		if err := bodyJSONLimit(w, r, &b, 2<<20); err != nil {

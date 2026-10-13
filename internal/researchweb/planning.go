@@ -15,6 +15,7 @@ type ProposedStrategy struct {
 }
 
 type PlanningRequest struct {
+	Method           string `json:"method,omitempty"`
 	ExpectedRevision int    `json:"expected_revision"`
 	RequestID        string `json:"request_id"`
 	Target           string `json:"target"`
@@ -38,6 +39,10 @@ func (s *Service) RequestPlanning(r PlanningRequest) error {
 		if d.Paused || e == nil || e.FormalGoal == nil || e.Status == "accepted" || e.Status == "refuted" {
 			return RuleError("Нужна открытая формальная цель и разрешенные запуски.")
 		}
+		selections, err := selectStandaloneSkills(d, e.ID, "decompose", r.Method, "", &p)
+		if err != nil {
+			return err
+		}
 		reservation, err := s.reserveStudyBudget(d, e.ID, p)
 		if err != nil {
 			return err
@@ -46,7 +51,7 @@ func (s *Service) RequestPlanning(r PlanningRequest) error {
 		t := &d.Tasks[len(d.Tasks)-1]
 		id := identifier("run")
 		t.Attempt, t.Agent = id, p.ID
-		d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: t.ID, Target: e.ID, TargetRevision: e.Revision, Profile: p.ID, ProfileConfiguration: &p, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
+		d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: t.ID, Target: e.ID, TargetRevision: e.Revision, Profile: p.ID, ProfileConfiguration: &p, SkillSelections: selections, AssignmentMethod: r.Method, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 		return nil
 	})
 }

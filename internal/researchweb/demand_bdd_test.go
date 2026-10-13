@@ -87,8 +87,13 @@ func TestSkillSelectionBDD_ConditionsAreServerFactsAndInstructionsCannotGrantToo
 		{ID: "other-method", Version: "1", Instructions: "read", Contract: &execution.SkillContract{Applicability: &execution.SkillApplicability{Methods: []string{"representation"}}}},
 	}}
 	choices := selectTeamSkills(&d, &tm, "proof", &p)
-	if len(p.Skills) != 1 || len(choices) != 4 || !choices[0].Selected || choices[1].Selected || choices[2].Selected || choices[3].Selected {
+	if len(p.Skills) != 1 || len(choices) != 4 || p.Skills[0].ID != "plain" {
 		t.Fatal("unchecked conditions granted a skill", choices)
+	}
+	for _, c := range choices {
+		if c.Selected != (c.ID == "plain@1") {
+			t.Fatal("unchecked selection", choices)
+		}
 	}
 }
 

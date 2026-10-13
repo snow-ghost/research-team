@@ -9,7 +9,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type modelExecutor struct {
@@ -96,8 +98,18 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 		record(ctx, &result, Event{Type: "model_requested", Step: step})
 		result.RemoteOutcome = "unknown"
 		result.Usage = nil
+		started := time.Now()
 		reply, err := e.complete(ctx, messages)
 		if err != nil {
+			d := Diagnostic{Source: "model", Stage: "completion", Kind: "transport_or_protocol_error", Message: Preview(redactDiagnostic(err.Error(), e.token), diagnosticTextLimit), ElapsedMilliseconds: time.Since(started).Milliseconds()}
+			if strings.HasPrefix(err.Error(), "model returned HTTP ") {
+				d.Kind = "http_error"
+				if status, parseErr := strconv.Atoi(strings.TrimPrefix(err.Error(), "model returned HTTP ")); parseErr == nil {
+					d.Data, _ = json.Marshal(map[string]int{"http_status": status})
+				}
+				result.RemoteOutcome = "response_received"
+			}
+			addDiagnostic(ctx, &result, d)
 			return result, err
 		}
 		result.RemoteOutcome = "response_received"

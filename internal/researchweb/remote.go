@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/snow-ghost/research-team/internal/execution"
+	"github.com/snow-ghost/research-team/internal/leancheck"
 )
 
 var errWorkerQueued = errors.New("waiting for assigned worker")
@@ -32,6 +33,83 @@ type WorkerRequest struct {
 	Epoch     uint64            `json:"epoch,omitempty"`
 	Snapshot  string            `json:"snapshot,omitempty"`
 	Result    *execution.Result `json:"result,omitempty"`
+}
+
+type ReassignWorkerRequest struct {
+	ExpectedRevision int    `json:"expected_revision"`
+	RequestID        string `json:"request_id"`
+	Worker           string `json:"worker"`
+	Confirm          bool   `json:"confirm"`
+}
+
+// Unknown work is retained and charged. Reassignment creates a separately authorized attempt.
+func (s *Service) ReassignWorker(id string, r ReassignWorkerRequest) error {
+	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) {
+		return RuleError("Подтвердите новое назначение и возможное повторное выполнение.")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(struct {
+		ID      string
+		Request ReassignWorkerRequest
+	}{id, r}), "Повторно назначено удаленное задание", id, "operator", func(d *Data) error {
+		old := d.attempt(id)
+		if d.Paused || d.Maintenance != nil || old == nil || old.RemoteWorker == "" || (old.Status != "interrupted" && old.Status != "cancelled") || old.TeamID != "" || old.CycleID != "" || old.ImportedPackageSHA256 != "" {
+			return RuleError("Новое назначение доступно остановленной отдельной попытке при разрешенных запусках.")
+		}
+		target := d.entity(old.Target)
+		task := d.task(old.TaskID)
+		if target == nil || task == nil || target.Revision != old.TargetRevision || target.Status == "accepted" || target.Status == "refuted" || target.Status == "challenged" {
+			return RuleError("Версия цели изменилась или закрыта.")
+		}
+		for _, a := range d.Attempts {
+			if a.ParentAttempt == old.ID || a.Target == old.Target && active(a.Status) {
+				return RuleError("Для попытки уже создано продолжение или выполняется другое задание.")
+			}
+		}
+		if err := s.validateAssignment(old.Profile, old.Workspace, r.Worker); err != nil {
+			return err
+		}
+		if err := s.workerScope(*d, r.Worker, old.Profile, target.ID); err != nil {
+			return err
+		}
+		input, err := s.readInput(*old)
+		if err != nil {
+			return err
+		}
+		previous := input.entity(target.ID)
+		if previous == nil || (previous.FormalGoal == nil) != (target.FormalGoal == nil) || previous.FormalGoal != nil && leancheck.Digest(*previous.FormalGoal) != leancheck.Digest(*target.FormalGoal) {
+			return RuleError("Исходная формальная цель не совпадает.")
+		}
+		p := s.profile(old.Profile)
+		if old.Limits != nil {
+			p.Limits = *old.Limits
+		}
+		verification := ""
+		if old.ProofBinding != nil {
+			bound := d.verification(old.ProofBinding.Verification)
+			if bound == nil || !verifiedReportMatches(*bound) || !verificationMatches(d, *bound) || bound.Report.GoalSHA256 != old.ProofBinding.GoalSHA256 || bound.Report.SourceSHA256 != old.ProofBinding.SourceSHA256 {
+				return RuleError("Привязка исходной рецензии устарела.")
+			}
+			verification = bound.ID
+		}
+		selections, err := selectStandaloneSkills(d, target.ID, task.Kind, old.AssignmentMethod, verification, &p)
+		if err != nil {
+			return err
+		}
+		reservation, err := s.reserveStudyBudget(d, target.ID, p)
+		if err != nil {
+			return err
+		}
+		objective, title, kind := task.Objective, task.Title, task.Kind
+		d.addTask(target.ID, title, kind, objective)
+		nextTask := &d.Tasks[len(d.Tasks)-1]
+		next := identifier("run")
+		nextTask.Attempt = next
+		nextTask.Agent = p.ID
+		d.Attempts = append(d.Attempts, Attempt{ID: next, TaskID: nextTask.ID, Target: target.ID, TargetRevision: target.Revision, ParentAttempt: old.ID, ProofBinding: old.ProofBinding, ReviewOf: old.ReviewOf, ReviewRubric: old.ReviewRubric, Profile: p.ID, ProfileConfiguration: &p, SkillSelections: selections, AssignmentMethod: old.AssignmentMethod, Workspace: old.Workspace, RemoteWorker: r.Worker, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Status: "queued", CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
+		return nil
+	})
 }
 
 func validateWorkers(workers []WorkerConfig) error {

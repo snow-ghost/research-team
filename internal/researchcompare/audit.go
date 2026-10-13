@@ -63,8 +63,8 @@ func AuditComparison(dir string) (AuditReport, error) {
 	if err := read("report.json", &report); err != nil {
 		return AuditReport{}, err
 	}
-	if report.Version != 2 {
-		return AuditReport{}, fmt.Errorf("artifact audit requires comparison version 2")
+	if report.Version != 2 && report.Version != 3 {
+		return AuditReport{}, fmt.Errorf("artifact audit requires comparison version 2 or 3")
 	}
 	if len(report.Runs) > 96 {
 		return AuditReport{}, fmt.Errorf("too many runs")
@@ -93,6 +93,16 @@ func AuditComparison(dir string) (AuditReport, error) {
 			}
 			if r.Status != "candidate" {
 				key := r.Status + ":" + r.FailureCode
+				for _, diagnostic := range r.Diagnostics {
+					if diagnostic.Source == "model" && diagnostic.Kind == "http_error" {
+						var code struct {
+							Status int `json:"http_status"`
+						}
+						if json.Unmarshal(diagnostic.Data, &code) == nil && code.Status > 0 {
+							key = fmt.Sprintf("provider_http_%d", code.Status)
+						}
+					}
+				}
 				if r.Status == "limit_reached" {
 					// The historical record does not distinguish output and tool-step limits.
 					key = "limit_unspecified"

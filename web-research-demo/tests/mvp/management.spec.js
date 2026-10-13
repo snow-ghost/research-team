@@ -21,6 +21,8 @@ test("каталог навыков закрепляет версию в про�
     .getByLabel("Формат результата")
     .fill("Доказательство с предпосылками");
   await form.getByLabel("Подтверждаю новую версию").check();
+  await form.getByLabel("Приоритет выбора").fill("75");
+  await form.getByLabel("Группа выбора", { exact: true }).fill("proof-method");
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 960 });
     expect(
@@ -64,6 +66,12 @@ test("каталог навыков закрепляет версию в про�
   expect(saved.configuration.skills[0].contract.preconditions).toEqual([
     "Натуральный параметр",
   ]);
+  expect(saved.configuration.skills[0].contract.applicability.priority).toBe(
+    75,
+  );
+  expect(
+    saved.configuration.skills[0].contract.applicability.exclusive_group,
+  ).toBe("proof-method");
 });
 
 test("историческое сравнение предупреждает о повторном аудите цели", async ({

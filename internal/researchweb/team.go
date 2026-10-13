@@ -733,7 +733,7 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 	}
 	d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: task.ID, Target: target.ID, TargetRevision: target.Revision,
 		TeamID: team.ID, Role: role, ReviewOf: reviewOf, ParentAttempt: parent, Profile: profile, RemoteWorker: team.Workers[role], Workspace: team.Workspace,
-		Status: "queued", ProfileConfiguration: &p, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
+		Status: "queued", ProfileConfiguration: &p, SkillSelections: selections, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 	if role == "review" && team.Strategy == "demand" {
 		d.Attempts[len(d.Attempts)-1].ReviewRubric = proofreview.Rubric
 	}

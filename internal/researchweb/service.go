@@ -34,6 +34,7 @@ type Service struct {
 	closeErr        error
 }
 type RunRequest struct {
+	Method             string            `json:"method,omitempty"`
 	ReviewVerification string            `json:"review_verification,omitempty"`
 	RemoteWorker       string            `json:"remote_worker,omitempty"`
 	Limits             *execution.Limits `json:"limits,omitempty"`
@@ -345,6 +346,10 @@ func (s *Service) Start(r RunRequest) error {
 				return err
 			}
 		}
+		selections, err := selectStandaloneSkills(d, item.ID, t.Kind, r.Method, r.ReviewVerification, &profile)
+		if err != nil {
+			return err
+		}
 		reservation, err := s.reserveStudyBudget(d, item.ID, profile)
 		if err != nil {
 			return err
@@ -353,7 +358,7 @@ func (s *Service) Start(r RunRequest) error {
 		t.Attempt = id
 		t.Agent = r.Profile
 		d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: t.ID, Target: item.ID, TargetRevision: item.Revision,
-			Profile: r.Profile, ProfileConfiguration: &profile, RemoteWorker: r.RemoteWorker, Limits: &profile.Limits, ProofBinding: binding, ReviewOf: reviewOf, ReservedOutputTokens: reservation, ReservedModelRequests: profile.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
+			Profile: r.Profile, ProfileConfiguration: &profile, SkillSelections: selections, AssignmentMethod: r.Method, RemoteWorker: r.RemoteWorker, Limits: &profile.Limits, ProofBinding: binding, ReviewOf: reviewOf, ReservedOutputTokens: reservation, ReservedModelRequests: profile.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(),
 			InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
 		return nil
 	})
@@ -666,9 +671,18 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 				selected = append(selected, e)
 			}
 		}
-		contextData, _ = json.Marshal(map[string]any{"candidate_template": candidateTemplateFor(d, a), "entities": selected, "questions": questionsFor(d, a.Target), "materials": materials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
+		workerMaterials := []map[string]string{}
+		for _, material := range materials {
+			if material["path"] == "TASK.md" || material["path"] == "Goal.lean" {
+				workerMaterials = append(workerMaterials, material)
+			}
+		}
+		contextData, _ = json.Marshal(map[string]any{"candidate_template": candidateTemplateFor(d, a), "entities": selected, "questions": questionsFor(d, a.Target), "materials": workerMaterials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
 	}
 	t := execution.Task{ID: task.ID, AttemptID: a.ID, Snapshot: inputSHA, LeaseEpoch: 1, Workspace: filepath.Join(dir, "workspace"), Objective: task.Objective, Context: string(contextData)}
+	if method, ok := researchMethod(a.AssignmentMethod); ok {
+		t.Objective += " Метод: " + method.Label + ". " + method.Procedure
+	}
 	_, ok := s.lookupProfile(a.Profile)
 	if !ok {
 		return errors.New("profile unavailable")

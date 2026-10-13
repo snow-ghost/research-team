@@ -23,6 +23,9 @@ type BudgetRequest struct {
 }
 
 type BudgetObservation struct {
+	ImportedAttempts        int          `json:"imported_attempts,omitempty"`
+	ImportedModelRequests   int          `json:"imported_model_requests,omitempty"`
+	ImportedOutputTokens    int64        `json:"imported_output_tokens,omitempty"`
 	KnownModelRequests      int          `json:"known_model_requests"`
 	ChargedModelRequests    int          `json:"charged_model_requests"`
 	ReservedModelRequests   int          `json:"reserved_model_requests"`
@@ -87,6 +90,20 @@ func (s *Service) observeBudget(d *Data, study string) BudgetObservation {
 	for _, a := range d.Attempts {
 		e := d.entity(a.Target)
 		if e == nil || e.Study != study {
+			continue
+		}
+		if a.ImportedPackageSHA256 != "" {
+			o.ImportedAttempts++
+			if result, err := s.readResult(a); err == nil {
+				for _, event := range result.Events {
+					if event.Type == "model_requested" {
+						o.ImportedModelRequests++
+					}
+				}
+				if result.Usage != nil {
+					o.ImportedOutputTokens += result.Usage.OutputTokens
+				}
+			}
 			continue
 		}
 		o.Attempts++

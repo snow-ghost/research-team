@@ -12,6 +12,7 @@ import (
 
 	"github.com/snow-ghost/research-team/internal/execution"
 	"github.com/snow-ghost/research-team/internal/leancheck"
+	"github.com/snow-ghost/research-team/internal/proofreview"
 )
 
 type Case struct {
@@ -35,27 +36,30 @@ type Outcome struct {
 	Evidence string `json:"evidence"`
 }
 type Run struct {
-	Repetition          int               `json:"repetition,omitempty"`
-	Class               string            `json:"class,omitempty"`
-	TimeIncomplete      bool              `json:"time_incomplete,omitempty"`
-	Case                string            `json:"case"`
-	Mode                string            `json:"mode"`
-	GoalSHA256          string            `json:"goal_sha256"`
-	Status              string            `json:"status"`
-	Outcome             string            `json:"outcome,omitempty"`
-	RequestUpperBound   int               `json:"request_upper_bound"`
-	MeasuredRequests    int               `json:"measured_requests"`
-	UnknownRequestCount bool              `json:"unknown_request_count"`
-	InputTokens         int64             `json:"input_tokens"`
-	OutputTokens        int64             `json:"output_tokens"`
-	UsageIncomplete     bool              `json:"usage_incomplete"`
-	Seconds             float64           `json:"seconds"`
-	Error               string            `json:"error,omitempty"`
-	Profiles            map[string]string `json:"profiles"`
-	Verification        *leancheck.Report `json:"verification,omitempty"`
-	ReviewAccepted      bool              `json:"review_accepted"`
+	Stages              []StageObservation `json:"stages,omitempty"`
+	MathematicalStatus  string             `json:"mathematical_status,omitempty"`
+	Repetition          int                `json:"repetition,omitempty"`
+	Class               string             `json:"class,omitempty"`
+	TimeIncomplete      bool               `json:"time_incomplete,omitempty"`
+	Case                string             `json:"case"`
+	Mode                string             `json:"mode"`
+	GoalSHA256          string             `json:"goal_sha256"`
+	Status              string             `json:"status"`
+	Outcome             string             `json:"outcome,omitempty"`
+	RequestUpperBound   int                `json:"request_upper_bound"`
+	MeasuredRequests    int                `json:"measured_requests"`
+	UnknownRequestCount bool               `json:"unknown_request_count"`
+	InputTokens         int64              `json:"input_tokens"`
+	OutputTokens        int64              `json:"output_tokens"`
+	UsageIncomplete     bool               `json:"usage_incomplete"`
+	Seconds             float64            `json:"seconds"`
+	Error               string             `json:"error,omitempty"`
+	Profiles            map[string]string  `json:"profiles"`
+	Verification        *leancheck.Report  `json:"verification,omitempty"`
+	ReviewAccepted      bool               `json:"review_accepted"`
 }
 type Report struct {
+	PolicySHA256        string      `json:"policy_sha256,omitempty"`
 	AuditSHA256         string      `json:"audit_sha256,omitempty"`
 	ResumedAt           []time.Time `json:"resumed_at,omitempty"`
 	Version             int         `json:"version"`
@@ -72,7 +76,7 @@ type Runner struct {
 }
 
 func (c Config) Validate() error {
-	if c.Version != 0 && c.Version != 1 && c.Version != 2 {
+	if c.Version != 0 && c.Version != 1 && c.Version != 2 && c.Version != 3 {
 		return errors.New("unsupported comparison version")
 	}
 	if len(c.Cases) != 6 {
@@ -125,6 +129,9 @@ func (c Config) Validate() error {
 	if c.Reviewer.ID == c.Universal.ID || c.Reviewer.ID == c.Formalize.ID {
 		return errors.New("common reviewer must be independent")
 	}
+	if c.Version == 3 && (kind != "model" || c.Reviewer.ID == c.Proof.ID || c.Reviewer.ID == c.Counter.ID) {
+		return errors.New("version 3 requires model executors and a separate reviewer for every source author")
+	}
 	return c.Lean.Validate()
 }
 
@@ -134,7 +141,7 @@ func RunComparison(ctx context.Context, c Config, directory string, r Runner) (R
 		return Report{}, err
 	}
 	directory = absolute
-	if c.Version == 2 {
+	if c.Version == 2 || c.Version == 3 {
 		return RunControlledComparison(ctx, c, directory, r)
 	}
 	report := Report{Version: 1, StartedAt: time.Now().UTC(), ConfigurationSHA256: leancheck.Digest(c), MaxRequests: 96, Runs: []Run{}}
@@ -245,7 +252,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			return execution.Result{}, err
 		}
 		limit := 8
-		if c.Version == 2 {
+		if c.Version >= 2 {
 			limit = 6
 			remaining := limit - run.RequestUpperBound
 			if role != "review" {
@@ -317,6 +324,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		if err != nil {
 			return execution.Result{}, errors.New("executor configuration rejected")
 		}
+		started := time.Now()
 		result, err := executor.Run(execution.WithTools(ctx, handlers...), task)
 		body, _ := json.Marshal(result)
 		if os.WriteFile(filepath.Join(work, "result.json"), body, 0600) != nil {
@@ -329,7 +337,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			}
 		}
 		run.MeasuredRequests += measured
-		if c.Version == 2 && measured > 0 && measured <= p.Limits.MaxSteps {
+		if c.Version >= 2 && measured > 0 && measured <= p.Limits.MaxSteps {
 			run.RequestUpperBound -= p.Limits.MaxSteps - measured
 		}
 		if measured == 0 {
@@ -341,6 +349,12 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			run.UsageIncomplete = run.UsageIncomplete || result.Usage.Incomplete
 		} else {
 			run.UsageIncomplete = true
+		}
+		if c.Version == 3 {
+			run.Stages = append(run.Stages, observeStage(role, result, started, p))
+			if saveErr := persist(*run); saveErr != nil {
+				return result, saveErr
+			}
 		}
 		if err != nil {
 			return result, errors.New("executor failed; see private result diagnostics")
@@ -361,6 +375,53 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			return e
 		}
 		selected, err = parse(res.Candidate)
+	} else if mode == "demand" {
+		proof, e := invoke("proof", c.Proof, "Research the exact goal and return a complete candidate if possible. "+outcomeFormat, nil)
+		if e != nil {
+			return e
+		}
+		proposed, e := parse(proof.Candidate)
+		if e != nil {
+			return e
+		}
+		var native *leancheck.Report
+		if proposed.Outcome != "inconclusive" && len(proposed.Source) > 0 && len(proposed.Source) <= 64000 {
+			g := item.Goal
+			if proposed.Outcome == "refutation" {
+				g = negative(g)
+			}
+			work := filepath.Join(dir, "first-proof-verification")
+			if e := os.Mkdir(work, 0700); e != nil {
+				return e
+			}
+			checked, checkErr := r.Checker.Check(ctx, g, proposed.Source, work)
+			body, _ := json.Marshal(checked)
+			if e := os.WriteFile(filepath.Join(work, "report.json"), body, 0600); e != nil {
+				return e
+			}
+			native = &checked
+			if checkErr == nil && checked.Status == "verified" && checked.GoalSHA256 == leancheck.Digest(g) && checked.SourceSHA256 == leancheck.Digest(proposed.Source) && checked.AuditSHA256 == leancheck.AuditDigest() {
+				selected = proposed
+			}
+		}
+		counter, e := invoke("counter", c.Counter, "Check boundary cases and premises; seek a refutation of the exact original claim. Do not accept the prior report automatically. "+outcomeFormat, map[string]any{"first_candidate": proposed, "native_report": native})
+		if e != nil {
+			return e
+		}
+		counterOutcome, e := parse(counter.Candidate)
+		if e != nil {
+			return e
+		}
+		if selected.Outcome == "proof" && counterOutcome.Outcome == "refutation" {
+			return errors.New("counterexample conflicts with the verified proof; audit required")
+		}
+		if selected.Outcome == "" {
+			formal, e := invoke("formalize", c.Formalize, "Formalize the exact goal or its negation using the prior candidate and native diagnostic. "+outcomeFormat, map[string]any{"first_candidate": proposed, "native_report": native, "counter": counterOutcome})
+			if e != nil {
+				return e
+			}
+			selected, err = parse(formal.Candidate)
+		}
 	} else {
 		var proof execution.Result
 		if mode != "adaptive" {
@@ -378,7 +439,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		if e != nil {
 			return e
 		}
-		if candidate.Outcome == "refutation" && c.Version != 2 {
+		if candidate.Outcome == "refutation" && c.Version < 2 {
 			selected = candidate
 		} else {
 			if mode == "adaptive" && candidate.Outcome != "refutation" {
@@ -400,6 +461,9 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 	run.Outcome = selected.Outcome
 	if selected.Outcome == "inconclusive" {
 		run.Status = "inconclusive"
+		if c.Version == 3 {
+			run.MathematicalStatus = "inconclusive"
+		}
 		return nil
 	}
 	goal := item.Goal
@@ -421,10 +485,10 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		if e := os.WriteFile(filepath.Join(checkDir, "report.json"), body, 0600); e != nil {
 			return e
 		}
-		if err == nil && verification.Status == "verified" && verification.GoalSHA256 == leancheck.Digest(goal) && verification.SourceSHA256 == leancheck.Digest(selected.Source) && (c.Version != 2 || verification.AuditSHA256 == leancheck.AuditDigest()) {
+		if err == nil && verification.Status == "verified" && verification.GoalSHA256 == leancheck.Digest(goal) && verification.SourceSHA256 == leancheck.Digest(selected.Source) && (c.Version < 2 || verification.AuditSHA256 == leancheck.AuditDigest()) {
 			break
 		}
-		if c.Version != 2 || run.RequestUpperBound >= 5 || ctx.Err() != nil {
+		if c.Version < 2 || run.RequestUpperBound >= 5 || ctx.Err() != nil {
 			return errors.New("final Lean verification failed")
 		}
 		profile := c.Formalize
@@ -445,19 +509,21 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			goal = negative(goal)
 		}
 	}
-	review, e := invoke("review", c.Reviewer, `Independently review the exact goal, source, evidence and checker report. Return only JSON {"summary":"...","findings":[{"severity":"major|question|editorial","text":"..."}]}. Do not claim to have run tools.`, map[string]any{"goal": goal, "original_goal": item.Goal, "outcome": selected, "report": verification})
+	objective := `Independently review the exact goal, source, evidence and checker report. Return only JSON {"summary":"...","findings":[{"severity":"major|question|editorial","text":"..."}]}. Do not claim to have run tools.`
+	if c.Version == 3 {
+		objective = proofreview.Instructions
+		run.MathematicalStatus = selected.Outcome + "_verified"
+	}
+	review, e := invoke("review", c.Reviewer, objective, map[string]any{"goal": goal, "original_goal": item.Goal, "outcome": selected, "report": verification})
 	if e != nil {
 		return e
 	}
-	var findings struct {
-		Summary  string `json:"summary"`
-		Findings []struct {
-			Severity string `json:"severity"`
-			Text     string `json:"text"`
-		} `json:"findings"`
-	}
+	var findings proofreview.Report
 	if execution.DecodeAgentReport(review.Candidate, &findings) != nil || findings.Summary == "" || len(findings.Findings) > 100 {
 		return errors.New("invalid independent review")
+	}
+	if c.Version == 3 && (findings.Rubric != proofreview.Rubric || proofreview.Validate(findings) != nil) {
+		return errors.New("invalid version 3 review rubric")
 	}
 	for _, f := range findings.Findings {
 		if (f.Severity != "major" && f.Severity != "question" && f.Severity != "editorial") || f.Text == "" {

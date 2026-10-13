@@ -37,6 +37,7 @@ type postgresStore struct {
 type collectionSpec struct{ field, table string }
 
 var collections = []collectionSpec{
+	{"lemma_matches", "lemma_matches"},
 	{"skill_revisions", "research_skill_revisions"},
 	{"comparisons", "research_comparisons"},
 	{"lemma_signatures", "lemma_signatures"},
@@ -359,6 +360,9 @@ func (p *postgresStore) Snapshot(revision int) (Data, error) {
 }
 
 func validateState(d Data) error {
+	if len(d.LemmaMatches) > 500 {
+		return ErrLimit
+	}
 	if len(d.SkillRevisions) > 300 {
 		return ErrLimit
 	}

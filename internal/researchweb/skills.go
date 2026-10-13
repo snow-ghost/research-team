@@ -29,6 +29,9 @@ type SkillRequest struct {
 }
 
 func validateSkillContract(c execution.SkillContract) error {
+	if err := validateSkillApplicability(c.Applicability); err != nil {
+		return err
+	}
 	if len(c.Preconditions) == 0 || len(c.Inputs) == 0 || len(c.StopCriteria) == 0 || !textOK(c.Output, 4000) {
 		return RuleError("Нужны условия применения, входы, результат и критерии остановки.")
 	}

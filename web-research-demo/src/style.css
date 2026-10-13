@@ -2009,3 +2009,12 @@ td small {
   overflow-wrap: anywhere;
   font: inherit;
 }
+.proof-progress-table {
+  min-width: 960px;
+  table-layout: fixed;
+}
+.proof-progress-table th:first-child { width: 230px; }
+.proof-progress-table th:nth-child(2) { width: 145px; }
+.proof-progress-table th:nth-child(3) { width: 130px; }
+.proof-progress-table th:last-child { width: 100px; }
+.proof-progress-table td:nth-child(3) { white-space: nowrap; }

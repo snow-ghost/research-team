@@ -110,7 +110,7 @@ func (s *Service) bindRefutationReview(d *Data, id, reviewID string) error {
 		return err
 	}
 	var report ReviewReport
-	if !s.safeResultContent(*review, result) || decodeAgentReport(result.Candidate, &report) != nil || !textOK(report.Summary, 4000) || report.Findings == nil || len(report.Findings) > 50 {
+	if !s.safeResultContent(*review, result) || decodeAgentReport(result.Candidate, &report) != nil || !validAttemptReview(*review, report) {
 		return RuleError("Некорректная рецензия отрицания.")
 	}
 	for _, f := range report.Findings {
@@ -124,7 +124,7 @@ func (s *Service) bindRefutationReview(d *Data, id, reviewID string) error {
 			}
 		}
 		if !exists {
-			d.Findings = append(d.Findings, Finding{ID: identifier("F"), Target: e.ID, Text: f.Text, SourceTextSHA256: hash(f.Text), Severity: f.Severity, State: "open", Revision: e.Revision, ReviewAttempt: review.ID})
+			d.Findings = append(d.Findings, reviewFinding(identifier("F"), e, review.ID, f))
 		}
 	}
 	e.RefutationVerification, e.RefutationReview = v.ID, review.ID

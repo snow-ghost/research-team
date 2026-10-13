@@ -116,6 +116,15 @@ func TestModelBDD_RejectUntrustedCallsAndIncompleteReplies(t *testing.T) {
 			if !errors.Is(err, tt.want) || result.Candidate != "" {
 				t.Fatalf("result=%+v error=%v", result, err)
 			}
+			if tt.name == "truncated_reply" || tt.name == "step_limit" {
+				found := false
+				for _, event := range result.Events {
+					found = found || (tt.name == "truncated_reply" && event.Type == "model_finish" && event.Status == "length") || (tt.name == "step_limit" && event.Type == "limit_reason" && event.Status == "tool_or_step_limit")
+				}
+				if !found {
+					t.Fatal("specific model limit reason was not recorded")
+				}
+			}
 		})
 	}
 }

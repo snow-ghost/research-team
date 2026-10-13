@@ -927,6 +927,16 @@ export function StructuredLemmaSearch({ live, target }) {
                   target: f.target,
                   library: h.signature.library,
                   substitution: f.substitution,
+                  native_check: f.native_check === "on",
+                  arguments:
+                    f.native_check === "on"
+                      ? (h.signature.native?.binders || [])
+                          .map((b) => ({
+                            name: b.name,
+                            term: f[`arg_${b.name}`]?.trim(),
+                          }))
+                          .filter((b) => b.term)
+                      : [],
                   confirm: f.confirm === "on",
                 }),
               );
@@ -952,6 +962,20 @@ export function StructuredLemmaSearch({ live, target }) {
               Подстановка
               <textarea name="substitution" required />
             </label>
+            <label className="checkbox-label wide">
+              <input
+                type="checkbox"
+                name="native_check"
+                disabled={!h.signature.native || !live.data.lean?.configured}
+              />
+              Проверить предложенную подстановку средствами Lean
+            </label>
+            {(h.signature.native?.binders || []).map((b) => (
+              <label key={b.name}>
+                {b.name}: {b.type}
+                <input name={`arg_${b.name}`} maxLength={1000} />
+              </label>
+            ))}
             <label className="checkbox-label wide">
               <input type="checkbox" name="confirm" required />
               Подтверждаю создание обязательства Lean

@@ -7,10 +7,10 @@ import (
 )
 
 func validateTeamStrategy(r TeamRequest) error {
-	if r.Strategy != "" && r.Strategy != "fixed" && r.Strategy != "adaptive" {
+	if r.Strategy != "" && r.Strategy != "fixed" && r.Strategy != "adaptive" && r.Strategy != "demand" {
 		return RuleError("Неизвестный порядок работы команды.")
 	}
-	if r.Strategy == "adaptive" && !r.RequireLean {
+	if (r.Strategy == "adaptive" || r.Strategy == "demand") && !r.RequireLean {
 		return RuleError("Адаптивный цикл требует закрепленной цели Lean.")
 	}
 	if len(r.Methods) > len(researchMethods) {

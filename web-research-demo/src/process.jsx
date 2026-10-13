@@ -16,6 +16,7 @@ import {
 import { BranchList, RefutationActions } from "./research-progress.jsx";
 import { PlanningPanel } from "./research-management.jsx";
 import { verificationCurrent } from "./proof-state.js";
+import { ProofProgressPanel } from "./proof-progress.jsx";
 
 const roles = {
   proof: "Поиск доказательства",
@@ -90,6 +91,7 @@ export function TeamPanel({ live, study, all, onSelect }) {
       )}
       {!all && study && <StudyBudgetPanel live={live} study={study} />}
       {!all && study && <PlanningPanel live={live} study={study} />}
+      <ProofProgressPanel live={live} study={study} onSelect={onSelect} />
       {open && (
         <form
           className="runtime-form"
@@ -132,6 +134,7 @@ export function TeamPanel({ live, study, all, onSelect }) {
             <select name="strategy" defaultValue="fixed">
               <option value="fixed">Фиксированные роли</option>
               <option value="adaptive">Сначала контрпримеры</option>
+              <option value="demand">Сначала один исследователь</option>
             </select>
           </label>
           <fieldset className="wide">
@@ -302,6 +305,27 @@ export function TeamPanel({ live, study, all, onSelect }) {
             </span>
           </div>
           <p>{t.reason}</p>
+          {!!t.decisions?.length && (
+            <details>
+              <summary>Назначения и выбор навыков</summary>
+              {t.decisions.map((d) => (
+                <div key={d.attempt || `${d.role}:${d.created_at}`}>
+                  <strong>
+                    {roles[d.role]} · {d.method || "Метод не ограничен"}
+                  </strong>
+                  <p>{d.reason}</p>
+                  <ul>
+                    {(d.skills || []).map((s) => (
+                      <li key={s.id}>
+                        {s.id}: {s.selected ? "Выбран" : "Не выбран"}.{" "}
+                        {s.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </details>
+          )}
           {t.status === "blocked" &&
             ["exploring", "review", "refutation_review"].includes(t.stage) && (
               <button
@@ -1021,6 +1045,8 @@ export function JournalPanel({ live, attempt, onClose }) {
                 attempt_started: "Начало",
                 model_requested: "Запрос модели",
                 model_response: "Ответ модели",
+                model_finish: "Причина завершения ответа",
+                limit_reason: "Причина достижения предела",
                 assistant_message: "Материал агента",
                 tool_started: "Вызов инструмента",
                 tool_completed: "Результат инструмента",

@@ -120,6 +120,7 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 			return result, ErrProtocol
 		}
 		choice := reply.Choices[0]
+		record(ctx, &result, Event{Type: "model_finish", Step: step, Status: choice.FinishReason})
 		m := choice.Message
 		if m.Content != "" {
 			result.Partial = e.redact(m.Content)
@@ -143,6 +144,7 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 			return result, ErrProtocol
 		}
 		if toolCount+len(m.ToolCalls) > e.profile.Limits.MaxToolCalls || step == e.profile.Limits.MaxSteps {
+			record(ctx, &result, Event{Type: "limit_reason", Step: step, Status: "tool_or_step_limit"})
 			return result, ErrLimit
 		}
 		// Validate the whole batch before executing any call.

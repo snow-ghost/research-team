@@ -77,6 +77,9 @@ type Question struct {
 	AnswerAttempt string `json:"answerAttempt,omitempty"`
 }
 type Finding struct {
+	Category         string `json:"category,omitempty"`
+	Evidence         string `json:"evidence,omitempty"`
+	Location         string `json:"location,omitempty"`
 	SourceTextSHA256 string `json:"source_text_sha256,omitempty"`
 	ReviewAttempt    string `json:"review_attempt,omitempty"`
 	ID               string `json:"id"`
@@ -94,6 +97,7 @@ type Application struct {
 	State         string `json:"state"`
 }
 type Attempt struct {
+	ReviewRubric          string             `json:"review_rubric,omitempty"`
 	ProfileConfiguration  *execution.Profile `json:"profile_configuration,omitempty"`
 	ReservedModelRequests int                `json:"reserved_model_requests,omitempty"`
 	StopCause             string             `json:"stop_cause,omitempty"`

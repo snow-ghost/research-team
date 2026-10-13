@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/snow-ghost/research-team/internal/leancheck"
+	"github.com/snow-ghost/research-team/internal/proofreview"
 )
 
 type ProofBinding struct {
@@ -28,14 +29,8 @@ func reviewMaterials(d Data, a Attempt) any {
 	return map[string]any{"proof_binding": a.ProofBinding, "goal": v.Goal, "source": v.Source, "report": v.Report, "author": author, "origin": v.Origin, "purpose": v.Purpose, "original_goal_sha256": v.OriginalGoalSHA256}
 }
 
-type ReviewReport struct {
-	Summary  string          `json:"summary"`
-	Findings []ReviewFinding `json:"findings"`
-}
-type ReviewFinding struct {
-	Severity string `json:"severity"`
-	Text     string `json:"text"`
-}
+type ReviewReport = proofreview.Report
+type ReviewFinding = proofreview.Finding
 type CounterReport struct {
 	RefutationSource string `json:"refutation_source,omitempty"`
 	Outcome          string `json:"outcome"`
@@ -154,7 +149,7 @@ func (s *Service) bindResult(d *Data, r ResultRequest) error {
 	}
 	var report ReviewReport
 	var checked CounterReport
-	if decodeAgentReport(rr.Candidate, &report) != nil || !textOK(report.Summary, 4000) || report.Findings == nil || len(report.Findings) > 50 {
+	if decodeAgentReport(rr.Candidate, &report) != nil || !validAttemptReview(*review, report) {
 		return RuleError("Некорректная рецензия.")
 	}
 	for _, f := range report.Findings {
@@ -184,7 +179,7 @@ func (s *Service) bindResult(d *Data, r ResultRequest) error {
 		}
 		if found == "" {
 			found = identifier("F")
-			d.Findings = append(d.Findings, Finding{ID: found, Target: e.ID, Text: f.Text, SourceTextSHA256: hash(f.Text), Severity: f.Severity, State: "open", Revision: e.Revision, ReviewAttempt: review.ID})
+			d.Findings = append(d.Findings, reviewFinding(found, e, review.ID, f))
 		}
 		findingIDs = append(findingIDs, found)
 	}

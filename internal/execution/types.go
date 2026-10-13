@@ -43,12 +43,22 @@ type Skill struct {
 }
 
 type SkillContract struct {
-	Preconditions []string `json:"preconditions"`
-	Inputs        []string `json:"inputs"`
-	Output        string   `json:"output"`
-	RequiredTools []string `json:"required_tools,omitempty"`
-	StopCriteria  []string `json:"stop_criteria"`
-	Examples      []string `json:"examples,omitempty"`
+	Applicability *SkillApplicability `json:"applicability,omitempty"`
+	Preconditions []string            `json:"preconditions"`
+	Inputs        []string            `json:"inputs"`
+	Output        string              `json:"output"`
+	RequiredTools []string            `json:"required_tools,omitempty"`
+	StopCriteria  []string            `json:"stop_criteria"`
+	Examples      []string            `json:"examples,omitempty"`
+}
+
+type SkillApplicability struct {
+	Roles                       []string `json:"roles,omitempty"`
+	Methods                     []string `json:"methods,omitempty"`
+	RequireFormalGoal           bool     `json:"require_formal_goal,omitempty"`
+	RequireVerifiedCandidate    bool     `json:"require_verified_candidate,omitempty"`
+	RequireAcceptedDependencies bool     `json:"require_accepted_dependencies,omitempty"`
+	MinRemainingAttempts        int      `json:"min_remaining_attempts,omitempty"`
 }
 
 type Limits struct {

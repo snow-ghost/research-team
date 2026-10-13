@@ -49,6 +49,20 @@ func TestLibraryBDD_RealModuleImportAndTampering(t *testing.T) {
 	if err != nil || verified.Status != "verified" {
 		t.Fatal("import did not verify", verified, err)
 	}
+	application := Goal{Source: "import " + module + "\nnamespace Application\ndef Statement : Prop := 0 + (2 : Nat) = 2\nend Application\n", Declaration: "Application.Statement", Candidate: "Application.candidate"}
+	for _, tc := range []struct {
+		term  string
+		valid bool
+	}{{"2", true}, {"True", false}, {"3", false}} {
+		candidate, err := ApplicationSource(application, goal.Candidate, signature.Binders, []Argument{{Name: signature.Binders[0].Name, Term: tc.term}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, _ := (DockerChecker{Config: cfg}).Check(context.Background(), application, candidate, t.TempDir())
+		if (r.Status == "verified") != tc.valid {
+			t.Fatalf("unverified substitution accepted: %s %+v", tc.term, r)
+		}
+	}
 	if err = os.WriteFile(filepath.Join(dir, "checked", module+".olean"), []byte("tampered"), 0600); err != nil {
 		t.Fatal(err)
 	}

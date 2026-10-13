@@ -42,12 +42,14 @@ type LemmaMatch struct {
 	Applicability     string         `json:"applicability"`
 }
 type ApplicabilityRequest struct {
-	ExpectedRevision int    `json:"expected_revision"`
-	RequestID        string `json:"request_id"`
-	Target           string `json:"target"`
-	Library          string `json:"library"`
-	Substitution     string `json:"substitution"`
-	Confirm          bool   `json:"confirm"`
+	NativeCheck      bool                 `json:"native_check,omitempty"`
+	Arguments        []leancheck.Argument `json:"arguments,omitempty"`
+	ExpectedRevision int                  `json:"expected_revision"`
+	RequestID        string               `json:"request_id"`
+	Target           string               `json:"target"`
+	Library          string               `json:"library"`
+	Substitution     string               `json:"substitution"`
+	Confirm          bool                 `json:"confirm"`
 }
 
 func normalized(s string) string { return strings.Join(strings.Fields(s), " ") }
@@ -155,6 +157,9 @@ func (s *Service) SearchLemmas(q LemmaQuery) ([]LemmaMatch, error) {
 }
 
 func (s *Service) CreateApplicability(r ApplicabilityRequest) error {
+	if len(r.Arguments) > 16 || (len(r.Arguments) > 0 && !r.NativeCheck) || (r.NativeCheck && s.Options.Lean == nil) {
+		return RuleError("Подстановки требуют нативной проверки Lean.")
+	}
 	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || !textOK(r.Substitution, 4000) {
 		return RuleError("Подтвердите проверку переноса и описание подстановки.")
 	}
@@ -179,6 +184,28 @@ func (s *Service) CreateApplicability(r ApplicabilityRequest) error {
 			goal := *target.FormalGoal
 			// The obligation keeps the exact target proposition; annotations cannot weaken it.
 			goal.Source = "import " + l.Module + "\n" + goal.Source
+			applicationSource := ""
+			if r.NativeCheck {
+				if l.Report == nil || l.Report.AuditSHA256 != leancheck.AuditDigest() {
+					return RuleError("Лемма требует актуальной проверки программы аудита.")
+				}
+				var signature *LemmaSignature
+				for i := len(d.LemmaSignatures) - 1; i >= 0; i-- {
+					sig := &d.LemmaSignatures[i]
+					if sig.Library == l.ID && sig.GoalSHA256 == leancheck.Digest(l.Goal) && sig.Native != nil && sig.Native.Status == "verified" && sig.Native.ArtifactSHA256 == l.Report.ArtifactSHA256 && sig.Native.InspectorSHA256 == leancheck.InspectorDigest() {
+						signature = sig
+						break
+					}
+				}
+				if signature == nil {
+					return RuleError("Сначала извлеките нативные параметры принятой леммы.")
+				}
+				var err error
+				applicationSource, err = leancheck.ApplicationSource(goal, l.Goal.Candidate, signature.Native.Binders, r.Arguments)
+				if err != nil {
+					return RuleError("Некорректная предложенная подстановка.")
+				}
+			}
 			obligation := newEntity(id, "Перенос леммы: "+target.Title, "application", target.Study, target.Statement, target.Assumptions)
 			obligation.FormalGoal = &goal
 			obligation.Dependencies = []string{l.Lemma}
@@ -191,6 +218,11 @@ func (s *Service) CreateApplicability(r ApplicabilityRequest) error {
 			d.Applications = append(d.Applications, Application{ID: id, Lemma: l.Lemma, LemmaRevision: l.LemmaRevision, Target: target.ID, State: "candidate"})
 			d.WorkLinks = append(d.WorkLinks, [2]string{target.ID, id}, [2]string{id, l.Lemma})
 			d.addTask(id, "Проверить перенос леммы", "formalize", "Докажи точную формальную цель с помощью принятой леммы "+l.Goal.Candidate+". Предложенная оператором подстановка не проверена: "+r.Substitution)
+			if r.NativeCheck {
+				e := d.entity(id)
+				env, pins := s.libraryEnvironment(d, e)
+				d.Verifications = append(d.Verifications, Verification{ID: identifier("verify"), Target: id, TargetRevision: e.Revision, SubmittedRevision: e.Revision, Origin: "submitted", Author: "procedure:lemma-application@1", Basis: "Подстановка " + hash(r.Arguments) + "; исходная цель " + leancheck.Digest(*target.FormalGoal), Goal: goal, Source: applicationSource, Environment: env, LibraryPins: pins, DependencyRevisions: map[string]int{l.Lemma: l.LemmaRevision}, Status: "queued", CreatedAt: time.Now().UTC()})
+			}
 			return nil
 		}
 		return RuleError("Лемма не найдена.")

@@ -518,6 +518,38 @@ func (h *HTTP) routes() {
 		h.json(w, map[string]any{"hits": hits})
 	})
 	h.mux.HandleFunc("GET /api/research-methods", func(w http.ResponseWriter, r *http.Request) { h.json(w, researchMethods) })
+	h.mux.HandleFunc("POST /api/research-pilots", func(w http.ResponseWriter, r *http.Request) {
+		var b PilotRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.CreatePilot(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/studies/{id}/proof-progress", func(w http.ResponseWriter, r *http.Request) {
+		progress, err := h.service.ProofProgress(r.PathValue("id"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, progress)
+	})
+	h.mux.HandleFunc("POST /api/entities/{id}/tactics", func(w http.ResponseWriter, r *http.Request) {
+		var b TacticRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.QueueTactics(r.PathValue("id"), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("POST /api/branches", func(w http.ResponseWriter, r *http.Request) {
 		var b BranchRequest
 		if err := bodyJSON(w, r, &b); err != nil {

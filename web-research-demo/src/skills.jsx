@@ -57,6 +57,20 @@ export function SkillRegistry({ live }) {
                     "check_lean",
                     "check_refutation",
                   ].filter((t) => f[t] === "on"),
+                  applicability: {
+                    roles: [
+                      "proof",
+                      "counterexample",
+                      "formalize",
+                      "review",
+                    ].filter((r) => f[`role_${r}`] === "on"),
+                    require_formal_goal: f.require_formal_goal === "on",
+                    require_verified_candidate:
+                      f.require_verified_candidate === "on",
+                    require_accepted_dependencies:
+                      f.require_accepted_dependencies === "on",
+                    min_remaining_attempts: Number(f.min_remaining_attempts),
+                  },
                 },
                 confirm: f.confirm === "on",
               });
@@ -106,6 +120,43 @@ export function SkillRegistry({ live }) {
               </label>
             ))}
           </fieldset>
+          <label className="checkbox-label wide">
+            <input name="require_formal_goal" type="checkbox" />
+            Закрепленная цель Lean
+          </label>
+          <label className="checkbox-label wide">
+            <input name="require_verified_candidate" type="checkbox" />
+            Проверенный кандидат
+          </label>
+          <label className="checkbox-label wide">
+            <input name="require_accepted_dependencies" type="checkbox" />
+            Принятые основания
+          </label>
+          <fieldset className="wide">
+            <legend>Роли</legend>
+            {Object.entries({
+              proof: "Доказательство",
+              counterexample: "Контрпримеры",
+              formalize: "Формализация",
+              review: "Рецензия",
+            }).map(([r, label]) => (
+              <label className="checkbox-label" key={r}>
+                <input type="checkbox" name={`role_${r}`} />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+          <label>
+            Минимальный остаток попыток
+            <input
+              name="min_remaining_attempts"
+              type="number"
+              min="0"
+              max="20"
+              defaultValue="0"
+              required
+            />
+          </label>
           <label className="checkbox-label wide">
             <input name="confirm" type="checkbox" required />
             Подтверждаю новую версию

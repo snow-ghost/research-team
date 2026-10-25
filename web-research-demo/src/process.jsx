@@ -467,6 +467,7 @@ export function TeamPanel({ live, study, all, onSelect }) {
                 max_attempts: Number(v.max_attempts),
                 role_limits: limits,
                 note: v.note,
+                note_kind: v.note_kind,
               });
               setResume(null);
             });
@@ -525,6 +526,16 @@ export function TeamPanel({ live, study, all, onSelect }) {
               )
             );
           })}
+          <label>
+            Вид уточнения
+            <select name="note_kind" defaultValue="unspecified">
+              <option value="unspecified">Не указан</option>
+              <option value="operational">Организационная заметка</option>
+              <option value="mathematical_hint">
+                Математическая подсказка
+              </option>
+            </select>
+          </label>
           <label className="wide">
             Уточнение команде
             <textarea
@@ -809,6 +820,9 @@ export function FormalGoalPanel({ live, selected, study }) {
             try {
               await live.command("/entities/" + entity.id + "/formal-goal", {
                 libraries: new FormData(e.currentTarget).getAll("libraries"),
+                required_libraries: new FormData(e.currentTarget).getAll(
+                  "required_libraries",
+                ),
                 goal: {
                   source: v.source,
                   declaration: v.declaration,
@@ -855,16 +869,34 @@ export function FormalGoalPanel({ live, selected, study }) {
                   ?.status === "accepted",
             )
             .map((l) => (
-              <label className="checkbox wide" key={l.id}>
-                <input
-                  name="libraries"
-                  type="checkbox"
-                  value={l.id}
-                  defaultChecked={entity.dependencies.includes(l.lemma)}
-                />
-                {live.data.state.entities.find((e) => e.id === l.lemma)?.title}{" "}
-                · версия {l.lemma_revision}
-              </label>
+              <div className="wide audit-library-choice" key={l.id}>
+                <label className="checkbox wide">
+                  <input
+                    name="libraries"
+                    type="checkbox"
+                    value={l.id}
+                    defaultChecked={entity.dependencies.includes(l.lemma)}
+                  />
+                  {
+                    live.data.state.entities.find((e) => e.id === l.lemma)
+                      ?.title
+                  }{" "}
+                  · версия {l.lemma_revision}
+                </label>
+                <label className="checkbox wide">
+                  <input
+                    name="required_libraries"
+                    type="checkbox"
+                    value={l.id}
+                    defaultChecked={entity.required_libraries?.includes(l.id)}
+                  />
+                  Обязательная ссылка в доказательстве:{" "}
+                  {
+                    live.data.state.entities.find((e) => e.id === l.lemma)
+                      ?.title
+                  }
+                </label>
+              </div>
             ))}
           <button className="button primary" disabled={live.busy}>
             <ShieldCheck size={15} />

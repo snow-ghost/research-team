@@ -37,6 +37,7 @@ func researchMethod(id string) (ResearchMethod, bool) {
 }
 
 type ResearchBranch struct {
+	Basis          *MethodBasis      `json:"basis,omitempty"`
 	Plan           string            `json:"plan,omitempty"`
 	ID             string            `json:"id"`
 	Study          string            `json:"study"`
@@ -121,7 +122,9 @@ func (s *Service) CreateBranch(r BranchRequest) error {
 		c.RequestID = ""
 		c.Confirm = true
 		_, libraryPins := s.libraryEnvironment(d, e)
-		d.Branches = append(d.Branches, ResearchBranch{ID: identifier("branch"), Study: c.Study, Target: target, TargetRevision: e.Revision, GoalSHA256: leancheck.Digest(*e.FormalGoal), Method: r.Method, Rationale: r.Rationale, Priority: r.Priority, Status: "ready", Reason: "Ветвь разрешена оператором.", Configuration: c, ProfileHashes: pins, LibraryPins: libraryPins, CreatedAt: time.Now().UTC()})
+		method, _ := researchMethod(r.Method)
+		basis := &MethodBasis{Source: "operator", Method: r.Method, Procedure: method.Procedure, Rationale: r.Rationale, ConfirmedAt: time.Now().UTC()}
+		d.Branches = append(d.Branches, ResearchBranch{Basis: basis, ID: identifier("branch"), Study: c.Study, Target: target, TargetRevision: e.Revision, GoalSHA256: leancheck.Digest(*e.FormalGoal), Method: r.Method, Rationale: r.Rationale, Priority: r.Priority, Status: "ready", Reason: "Ветвь разрешена оператором.", Configuration: c, ProfileHashes: pins, LibraryPins: libraryPins, CreatedAt: time.Now().UTC()})
 		return nil
 	})
 }
@@ -291,7 +294,11 @@ func (s *Service) advanceBranches() {
 			}
 			method, _ := researchMethod(current.Method)
 			c := current.Configuration
-			team := ResearchTeam{Strategy: c.Strategy, Methods: c.Methods, ID: identifier("team"), Study: current.Study, Goal: current.Target, Profiles: c.Profiles, Workers: c.Workers, ProfileHashes: current.ProfileHashes, Workspace: c.Workspace, MaxAttempts: c.MaxAttempts, RequireLean: true, Status: "running", Stage: "planning", Current: map[string]string{}, OperatorNote: method.Procedure + " Основание выбора: " + current.Rationale, CreatedAt: time.Now().UTC(), Reason: "Выбрана ветвь: " + method.Label}
+			basis := current.Basis
+			if basis == nil {
+				basis = &MethodBasis{Source: "legacy_unclassified", Method: current.Method, Procedure: method.Procedure, Rationale: current.Rationale, Plan: current.Plan}
+			}
+			team := ResearchTeam{MethodBasis: basis, Strategy: c.Strategy, Methods: c.Methods, ID: identifier("team"), Study: current.Study, Goal: current.Target, Profiles: c.Profiles, Workers: c.Workers, ProfileHashes: current.ProfileHashes, Workspace: c.Workspace, MaxAttempts: c.MaxAttempts, RequireLean: true, Status: "running", Stage: "planning", Current: map[string]string{}, CreatedAt: time.Now().UTC(), Reason: "Выбрана ветвь: " + method.Label}
 			team.FormatRepairLimit = c.FormatRepairLimit
 			d.Teams = append(d.Teams, team)
 			current.Team = team.ID

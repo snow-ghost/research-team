@@ -31,6 +31,7 @@ type Study struct {
 	Formula      string       `json:"formula"`
 }
 type Entity struct {
+	RequiredLibraries      []string        `json:"required_libraries,omitempty"`
 	RefutationVerification string          `json:"refutation_verification,omitempty"`
 	RefutationReview       string          `json:"refutation_review,omitempty"`
 	FormalGoal             *leancheck.Goal `json:"formal_goal,omitempty"`
@@ -98,6 +99,7 @@ type Application struct {
 	State         string `json:"state"`
 }
 type Attempt struct {
+	MissingMaterials      []string           `json:"missing_materials,omitempty"`
 	ImportedPackageSHA256 string             `json:"imported_package_sha256,omitempty"`
 	SkillSelections       []SkillSelection   `json:"skill_selections,omitempty"`
 	AssignmentMethod      string             `json:"assignment_method,omitempty"`

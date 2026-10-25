@@ -39,6 +39,16 @@ test("учебное исследование показывает зависи�
   });
   await expect(panel.locator("tbody tr")).toHaveCount(5);
   await expect(panel).toContainText("Не принято основание");
+  const audit = page.getByRole("region", {
+    name: "Аудит исследования",
+    exact: true,
+  });
+  await expect(audit).toBeVisible();
+  await expect(audit.getByLabel("Утверждение для аудита")).toHaveValue(
+    study.goal,
+  );
+  await expect(audit.getByLabel("Дерево оснований")).toContainText("Композиция инъективных отображений");
+  await expect(audit).toContainText("Проверки не назначены");
   await page
     .getByRole("button", { name: "Создать команду", exact: true })
     .click();
@@ -64,6 +74,13 @@ test("учебное исследование показывает зависи�
       path: `test-results/proof-progress-${width}.png`,
       fullPage: true,
     });
+    await audit.scrollIntoViewIfNeeded();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBeTruthy();
+    await page.screenshot({ path: `test-results/research-audit-${width}.png` });
   }
   expect(errors).toEqual([]);
 });

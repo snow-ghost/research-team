@@ -54,6 +54,10 @@ func BackupPostgres(ctx context.Context, c Config, lookup func(string) (string, 
 		return m, err
 	}
 	defer store.Close()
+	var schema string
+	if err := store.pg.conn.QueryRowContext(ctx, "SELECT current_schema()").Scan(&schema); err != nil || schema != "public" {
+		return m, errors.New("backup supports only the public schema; custom search_path is not supported")
+	}
 	v, err := store.Read()
 	if err != nil {
 		return m, err
@@ -86,6 +90,9 @@ func BackupPostgres(ctx context.Context, c Config, lookup func(string) (string, 
 	m.Tables, err = backupTables(ctx, store.pg.conn)
 	if err != nil {
 		return m, err
+	}
+	if len(m.Tables) == 0 {
+		return m, errors.New("backup requires a non-empty public schema")
 	}
 	dsn, _ := lookup(c.Database.DSNEnv)
 	dbConfig, err := pgx.ParseConfig(dsn)

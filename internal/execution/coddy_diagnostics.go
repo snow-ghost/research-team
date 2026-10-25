@@ -17,6 +17,12 @@ const diagnosticTextLimit = 4096
 
 // Diagnostics are operator artifacts, never proof content or model context.
 type Diagnostic struct {
+	Usage               *Usage          `json:"usage,omitempty"`
+	RequestStep         int             `json:"request_step,omitempty"`
+	Transmission        string          `json:"transmission,omitempty"`
+	HTTPStatus          int             `json:"http_status,omitempty"`
+	FinishReason        string          `json:"finish_reason,omitempty"`
+	UsageKnown          bool            `json:"usage_known,omitempty"`
 	Source              string          `json:"source"`
 	Stage               string          `json:"stage"`
 	Kind                string          `json:"kind"`

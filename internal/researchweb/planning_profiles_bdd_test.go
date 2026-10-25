@@ -118,6 +118,14 @@ func TestPlanningBDD_ProposalNeedsConfirmationAndCoverage(t *testing.T) {
 	if len(v.Teams) != 1 || v.Teams[0].Goal != v.Proposals[0].Children[0] {
 		t.Fatal("dependent high-priority branch ran before its lemma", v.Teams)
 	}
+	team := v.Teams[0]
+	if team.OperatorNote != "" || team.MethodBasis == nil || team.MethodBasis.Source != "planner" || team.MethodBasis.Attempt != a.ID || team.MethodBasis.ResultSHA256 != a.ResultSHA256 || team.MethodBasis.Plan != proposal.ID {
+		t.Fatal("planner rationale misattributed to operator", team)
+	}
+	context := s.teamContext(v.Data, Attempt{TeamID: team.ID}).(map[string]any)
+	if context["operator_note"] != "" || context["method_basis"] == nil {
+		t.Fatal("context merged note and plan", context)
+	}
 }
 
 func TestPlanningBDD_InvalidStrategiesRejected(t *testing.T) {

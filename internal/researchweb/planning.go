@@ -102,7 +102,9 @@ func (s *Service) planBranches(d *Data, p *Decomposition, c TeamRequest) error {
 		}
 		c.Study, c.Target, c.ExpectedRevision, c.RequestID, c.Confirm = e.Study, e.ID, 0, "", true
 		_, libraryPins := s.libraryEnvironment(d, e)
-		d.Branches = append(d.Branches, ResearchBranch{ID: identifier("branch"), Plan: p.ID, Study: e.Study, Target: e.ID, TargetRevision: e.Revision, GoalSHA256: leancheck.Digest(*e.FormalGoal), Method: strategy.Method, Rationale: strategy.Rationale, Priority: strategy.Priority, Status: "ready", Reason: "План подтвержден оператором; ожидание оснований.", Configuration: c, ProfileHashes: pins, LibraryPins: libraryPins, CreatedAt: time.Now().UTC()})
+		method, _ := researchMethod(strategy.Method)
+		basis := &MethodBasis{Source: "planner", Method: strategy.Method, Procedure: method.Procedure, Rationale: strategy.Rationale, Plan: p.ID, Attempt: p.Attempt, ResultSHA256: p.ResultSHA256, ConfirmedAt: time.Now().UTC()}
+		d.Branches = append(d.Branches, ResearchBranch{Basis: basis, ID: identifier("branch"), Plan: p.ID, Study: e.Study, Target: e.ID, TargetRevision: e.Revision, GoalSHA256: leancheck.Digest(*e.FormalGoal), Method: strategy.Method, Rationale: strategy.Rationale, Priority: strategy.Priority, Status: "ready", Reason: "План подтвержден оператором; ожидание оснований.", Configuration: c, ProfileHashes: pins, LibraryPins: libraryPins, CreatedAt: time.Now().UTC()})
 	}
 	return nil
 }

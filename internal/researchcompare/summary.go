@@ -20,6 +20,7 @@ type ModeSummary struct {
 	Seconds           float64 `json:"seconds"`
 }
 type ComparisonSummary struct {
+	Simulation         bool                   `json:"simulation,omitempty"`
 	ReportSHA256       string                 `json:"report_object_sha256"`
 	RecordedRuns       int                    `json:"recorded_runs"`
 	TerminalRuns       int                    `json:"terminal_runs"`
@@ -35,11 +36,22 @@ type ComparisonSummary struct {
 // Pair by the same goal and repetition, excluding missing or externally interrupted arms.
 func Summarize(r Report) (ComparisonSummary, error) {
 	s := ComparisonSummary{ReportSHA256: leancheck.Digest(r), RecordedRuns: len(r.Runs), ExpectedRuns: 48, All: map[string]ModeSummary{}, Paired: map[string]ModeSummary{}, ExcludedGroups: []string{}}
-	if (r.Version != 2 && r.Version != 3) || r.MaxRequests != 216 {
+	s.Simulation = r.Simulation
+	maxRequests := 216
+	if r.Version == 4 {
+		maxRequests, s.ExpectedRuns = 432, 96
+		if r.PolicySHA256 != EvaluationPolicyDigest() || r.EvaluationSet == nil || r.CaseSetSHA256 != leancheck.Digest(*r.EvaluationSet) {
+			return s, fmt.Errorf("evaluation policy or case set missing")
+		}
+		if _, err := PrepareEvaluation(*r.EvaluationSet); err != nil {
+			return s, err
+		}
+	}
+	if (r.Version != 2 && r.Version != 3 && r.Version != 4) || r.MaxRequests != maxRequests {
 		return s, fmt.Errorf("summary requires controlled comparison")
 	}
 	third := "adaptive"
-	if r.Version == 3 {
+	if r.Version >= 3 {
 		third = "demand"
 	}
 	modes := []string{"single", "team", third, "lean"}
@@ -68,6 +80,15 @@ func Summarize(r Report) (ComparisonSummary, error) {
 	}
 	requests := 0
 	for _, run := range r.Runs {
+		if r.Version == 4 {
+			valid := false
+			for _, c := range r.EvaluationSet.Cases {
+				valid = valid || c.ID == run.Case && c.Class == run.Class && leancheck.Digest(c.Goal) == run.GoalSHA256
+			}
+			if !valid {
+				return s, fmt.Errorf("run does not match evaluation manifest")
+			}
+		}
 		if !slices.Contains(modes, run.Mode) || run.Repetition < 1 || run.Repetition > 2 || run.RequestUpperBound < 0 || run.RequestUpperBound > 6 || run.MeasuredRequests < 0 || run.MeasuredRequests > run.RequestUpperBound || run.Seconds < 0 || run.InputTokens < 0 || run.OutputTokens < 0 || (run.Mode == "lean" && run.RequestUpperBound != 0) {
 			return s, fmt.Errorf("invalid comparison measurements")
 		}
@@ -121,6 +142,6 @@ func Summarize(r Report) (ComparisonSummary, error) {
 		}
 	}
 	slices.Sort(s.ExcludedGroups)
-	s.Complete = len(r.Runs) == 48 && s.TerminalRuns == 48 && len(groups) == 12
+	s.Complete = len(r.Runs) == s.ExpectedRuns && s.TerminalRuns == s.ExpectedRuns && len(groups) == s.ExpectedRuns/4
 	return s, nil
 }

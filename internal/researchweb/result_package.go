@@ -38,43 +38,49 @@ type TransferredModule struct {
 }
 
 type ResultPackage struct {
-	Version           int                `json:"version"`
-	SHA256            string             `json:"sha256"`
-	ExportedAt        time.Time          `json:"exported_at"`
-	SourceRevision    int                `json:"source_revision"`
-	SourceStateSHA256 string             `json:"source_state_sha256"`
-	Study             Study              `json:"study"`
-	Target            Entity             `json:"target"`
-	Verification      Verification       `json:"verification"`
-	Result            ResearchResult     `json:"result"`
-	Attempts          []PackageAttempt   `json:"attempts"`
-	Findings          []Finding          `json:"findings"`
-	History           []History          `json:"history"`
-	Decisions         []TeamDecision     `json:"decisions,omitempty"`
-	Memory            []MemoryEntry      `json:"memory,omitempty"`
-	OperatorNotes     []string           `json:"operator_notes,omitempty"`
-	Module            *TransferredModule `json:"module,omitempty"`
+	IncompleteAttempts []IncompleteAttempt `json:"incomplete_attempts,omitempty"`
+	MethodBases        []MethodBasis       `json:"method_bases,omitempty"`
+	TypedOperatorNotes []OperatorNote      `json:"typed_operator_notes,omitempty"`
+	Version            int                 `json:"version"`
+	SHA256             string              `json:"sha256"`
+	ExportedAt         time.Time           `json:"exported_at"`
+	SourceRevision     int                 `json:"source_revision"`
+	SourceStateSHA256  string              `json:"source_state_sha256"`
+	Study              Study               `json:"study"`
+	Target             Entity              `json:"target"`
+	Verification       Verification        `json:"verification"`
+	Result             ResearchResult      `json:"result"`
+	Attempts           []PackageAttempt    `json:"attempts"`
+	Findings           []Finding           `json:"findings"`
+	History            []History           `json:"history"`
+	Decisions          []TeamDecision      `json:"decisions,omitempty"`
+	Memory             []MemoryEntry       `json:"memory,omitempty"`
+	OperatorNotes      []string            `json:"operator_notes,omitempty"`
+	Module             *TransferredModule  `json:"module,omitempty"`
 }
 
 type ResultTransfer struct {
-	PackageSHA256       string             `json:"package_sha256"`
-	ExportedAt          time.Time          `json:"exported_at"`
-	ImportedAt          time.Time          `json:"imported_at"`
-	SourceRevision      int                `json:"source_revision"`
-	SourceStateSHA256   string             `json:"source_state_sha256"`
-	SourceStatus        string             `json:"source_status"`
-	OriginalReport      leancheck.Report   `json:"original_report"`
-	OriginalInputSHA256 map[string]string  `json:"original_input_sha256"`
-	ScopedInputSHA256   map[string]string  `json:"scoped_input_sha256"`
-	JournalSHA256       map[string]string  `json:"journal_sha256"`
-	SourceProfileSHA256 map[string]string  `json:"source_profile_sha256"`
-	SourceModels        map[string]string  `json:"source_models,omitempty"`
-	SourceExecutorKinds map[string]string  `json:"source_executor_kinds,omitempty"`
-	Module              *TransferredModule `json:"module,omitempty"`
-	History             []History          `json:"history"`
-	Decisions           []TeamDecision     `json:"decisions,omitempty"`
-	Memory              []MemoryEntry      `json:"memory,omitempty"`
-	OperatorNotes       []string           `json:"operator_notes,omitempty"`
+	IncompleteAttempts  []IncompleteAttempt `json:"incomplete_attempts,omitempty"`
+	MethodBases         []MethodBasis       `json:"method_bases,omitempty"`
+	TypedOperatorNotes  []OperatorNote      `json:"typed_operator_notes,omitempty"`
+	PackageSHA256       string              `json:"package_sha256"`
+	ExportedAt          time.Time           `json:"exported_at"`
+	ImportedAt          time.Time           `json:"imported_at"`
+	SourceRevision      int                 `json:"source_revision"`
+	SourceStateSHA256   string              `json:"source_state_sha256"`
+	SourceStatus        string              `json:"source_status"`
+	OriginalReport      leancheck.Report    `json:"original_report"`
+	OriginalInputSHA256 map[string]string   `json:"original_input_sha256"`
+	ScopedInputSHA256   map[string]string   `json:"scoped_input_sha256"`
+	JournalSHA256       map[string]string   `json:"journal_sha256"`
+	SourceProfileSHA256 map[string]string   `json:"source_profile_sha256"`
+	SourceModels        map[string]string   `json:"source_models,omitempty"`
+	SourceExecutorKinds map[string]string   `json:"source_executor_kinds,omitempty"`
+	Module              *TransferredModule  `json:"module,omitempty"`
+	History             []History           `json:"history"`
+	Decisions           []TeamDecision      `json:"decisions,omitempty"`
+	Memory              []MemoryEntry       `json:"memory,omitempty"`
+	OperatorNotes       []string            `json:"operator_notes,omitempty"`
 }
 
 type ImportResultPackageRequest struct {
@@ -147,19 +153,39 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 	p.Study.Budget = nil
 	p.Verification.Environment = nil
 	ids := map[string]bool{}
+	incompleteIDs := map[string]bool{}
+	required := map[string]bool{}
+	for _, id := range []string{check.Attempt, result.ReviewAttempt, result.CounterAttempt} {
+		if id != "" {
+			required[id] = true
+		}
+	}
 	var visit func(string) error
 	visit = func(id string) error {
-		if id == "" || ids[id] {
+		if id == "" || ids[id] || incompleteIDs[id] {
 			return nil
-		}
-		if len(ids) >= 8 {
-			return ErrLimit
 		}
 		a := v.attempt(id)
 		if a == nil || a.Target != e.ID || active(a.Status) || a.ImportedPackageSHA256 != "" {
 			return RuleError("Все попытки пакета должны быть завершены в исходной области.")
 		}
-		ids[id] = true
+		if a.InputSHA256 == "" && a.RemoteOutcome == "not_started" {
+			if len(incompleteIDs) >= 64 {
+				return ErrLimit
+			}
+			x, err := s.incompleteAttempt(v, *a, required)
+			if err != nil {
+				return err
+			}
+			p.Version = 2
+			p.IncompleteAttempts = append(p.IncompleteAttempts, x)
+			incompleteIDs[id] = true
+		} else {
+			if len(ids) >= 8 {
+				return ErrLimit
+			}
+			ids[id] = true
+		}
 		return visit(a.ParentAttempt)
 	}
 	for _, id := range []string{check.Attempt, result.ReviewAttempt, result.CounterAttempt} {
@@ -180,9 +206,6 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 		}
 		if a.ProfileConfiguration == nil {
 			return p, RuleError("Для экспорта нужен закрепленный исходный профиль попытки.")
-		}
-		if a.InputSHA256 == "" && a.RemoteOutcome == "not_started" {
-			return p, RuleError("История содержит попытку, остановленную до записи полного входа и журнала. Перенос неполной истории отдельным пакетом пока не поддерживается; материалы остаются в исходной базе.")
 		}
 		input, readErr := s.readInput(a)
 		if readErr != nil {
@@ -218,8 +241,15 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 			p.Findings = append(p.Findings, f)
 		}
 	}
+	allIDs := map[string]bool{}
+	for id := range ids {
+		allIDs[id] = true
+	}
+	for _, x := range p.IncompleteAttempts {
+		allIDs[x.Attempt.ID] = true
+	}
 	for _, h := range v.History {
-		if h.Target == e.ID || ids[h.Target] {
+		if h.Target == e.ID || allIDs[h.Target] {
 			p.History = append(p.History, h)
 		}
 	}
@@ -234,6 +264,12 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 		if included && team.OperatorNote != "" {
 			p.OperatorNotes = append(p.OperatorNotes, team.OperatorNote)
 		}
+		if included {
+			if team.MethodBasis != nil {
+				p.MethodBases = append(p.MethodBases, *team.MethodBasis)
+			}
+			p.TypedOperatorNotes = append(p.TypedOperatorNotes, team.Notes...)
+		}
 	}
 	for _, m := range v.Memory {
 		if m.Target == e.ID {
@@ -245,6 +281,9 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 			p.Module = &TransferredModule{ID: l.ID, Module: l.Module, SourceSHA256: leancheck.Digest(l.Source), ArtifactSHA256: l.Report.ArtifactSHA256}
 		}
 	}
+	if len(p.MethodBases) > 0 || len(p.TypedOperatorNotes) > 0 {
+		p.Version = 2
+	}
 	p.SHA256 = packageDigest(p)
 	return p, validateResultPackage(p)
 }
@@ -254,7 +293,7 @@ func validateResultPackage(p ResultPackage) error {
 	if err != nil || len(body) > maxResultPackage {
 		return ErrLimit
 	}
-	if p.Version != 1 || p.SHA256 != packageDigest(p) || !requestPattern.MatchString(p.Target.ID) || !requestPattern.MatchString(p.Study.ID) || !requestPattern.MatchString(p.Result.ID) || !requestPattern.MatchString(p.Verification.ID) || p.Target.Study != p.Study.ID || p.SourceRevision < 1 || p.Target.FormalGoal == nil || p.Target.ResearchResult != p.Result.ID || p.Result.Target != p.Target.ID || p.Result.TargetRevision != p.Target.Revision || p.Result.ReviewBindingMethod != "typed_binding" || p.Result.Transfer != nil || !slices.Contains([]string{"ready", "accepted"}, p.Result.Status) || !verifiedReportMatches(p.Verification) || p.Verification.Report.AuditSHA256 != leancheck.AuditDigest() || p.Verification.Target != p.Target.ID || p.Verification.TargetRevision != p.Target.Revision || p.Result.Author != p.Target.ProofAuthor || leancheck.Digest(*p.Target.FormalGoal) != leancheck.Digest(p.Verification.Goal) || p.Result.Binding != (ProofBinding{p.Verification.ID, p.Verification.Report.GoalSHA256, p.Verification.Report.SourceSHA256}) || p.Result.EnvironmentSHA256 != p.Verification.Report.EnvironmentSHA256 || len(p.Attempts) < 2 || len(p.Attempts) > 8 || len(p.Findings) > 100 || len(p.History) > 100 || len(p.Decisions) > 100 || len(p.Target.Dependencies) > 16 {
+	if (p.Version != 1 && p.Version != 2) || p.SHA256 != packageDigest(p) || !requestPattern.MatchString(p.Target.ID) || !requestPattern.MatchString(p.Study.ID) || !requestPattern.MatchString(p.Result.ID) || !requestPattern.MatchString(p.Verification.ID) || p.Target.Study != p.Study.ID || p.SourceRevision < 1 || p.Target.FormalGoal == nil || p.Target.ResearchResult != p.Result.ID || p.Result.Target != p.Target.ID || p.Result.TargetRevision != p.Target.Revision || p.Result.ReviewBindingMethod != "typed_binding" || p.Result.Transfer != nil || !slices.Contains([]string{"ready", "accepted"}, p.Result.Status) || !verifiedReportMatches(p.Verification) || p.Verification.Report.AuditSHA256 != leancheck.AuditDigest() || p.Verification.Target != p.Target.ID || p.Verification.TargetRevision != p.Target.Revision || p.Result.Author != p.Target.ProofAuthor || leancheck.Digest(*p.Target.FormalGoal) != leancheck.Digest(p.Verification.Goal) || p.Result.Binding != (ProofBinding{p.Verification.ID, p.Verification.Report.GoalSHA256, p.Verification.Report.SourceSHA256}) || p.Result.EnvironmentSHA256 != p.Verification.Report.EnvironmentSHA256 || len(p.Attempts) < 2 || len(p.Attempts) > 8 || len(p.Findings) > 100 || len(p.History) > 100 || len(p.Decisions) > 100 || len(p.Target.Dependencies) > 16 {
 		return RuleError("Нарушена структура или контрольная сумма пакета результата.")
 	}
 	if proofreview.Validate(p.Result.Review) != nil || p.Result.Counter.Outcome != "none_found" {
@@ -307,6 +346,9 @@ func validateResultPackage(p ResultPackage) error {
 	}
 	if !seen[p.Result.ReviewAttempt] || !seen[p.Result.CounterAttempt] || (p.Verification.Attempt != "" && !seen[p.Verification.Attempt]) {
 		return RuleError("Пакет не содержит обязательные попытки.")
+	}
+	if err := validateIncomplete(p, seen); err != nil {
+		return err
 	}
 	for _, m := range p.Memory {
 		if m.Target != p.Target.ID {
@@ -405,6 +447,11 @@ func (s *Service) ImportResultPackage(r ImportResultPackageRequest) error {
 				return RuleError("Идентификатор попытки уже существует.")
 			}
 		}
+		for _, packet := range p.IncompleteAttempts {
+			if d.attempt(packet.Attempt.ID) != nil || d.task(packet.Task.ID) != nil {
+				return RuleError("Идентификатор неполной истории уже существует.")
+			}
+		}
 		for _, f := range p.Findings {
 			for _, old := range d.Findings {
 				if old.ID == f.ID {
@@ -422,6 +469,7 @@ func (s *Service) ImportResultPackage(r ImportResultPackageRequest) error {
 			d.study(p.Study.ID).Goal = p.Target.ID
 		}
 		transfer := ResultTransfer{PackageSHA256: p.SHA256, ExportedAt: p.ExportedAt, ImportedAt: time.Now().UTC(), SourceRevision: p.SourceRevision, SourceStateSHA256: p.SourceStateSHA256, SourceStatus: p.Target.Status, OriginalReport: *p.Verification.Report, OriginalInputSHA256: map[string]string{}, ScopedInputSHA256: map[string]string{}, JournalSHA256: map[string]string{}, SourceProfileSHA256: map[string]string{}, Module: p.Module, History: p.History, Decisions: p.Decisions}
+		transfer.IncompleteAttempts, transfer.MethodBases, transfer.TypedOperatorNotes = p.IncompleteAttempts, p.MethodBases, p.TypedOperatorNotes
 		transfer.Memory = p.Memory
 		transfer.OperatorNotes = p.OperatorNotes
 		transfer.SourceModels = map[string]string{}
@@ -462,6 +510,27 @@ func (s *Service) ImportResultPackage(r ImportResultPackageRequest) error {
 			task.CycleID = ""
 			task.State = a.Status
 			d.Tasks = append(d.Tasks, task)
+		}
+		for _, packet := range p.IncompleteAttempts {
+			a := packet.Attempt
+			dir := filepath.Join(s.Options.Config.DataDir, "attempts", a.ID)
+			if err := os.Mkdir(dir, 0700); err != nil {
+				return errors.New("incomplete history destination must be new")
+			}
+			created = append(created, dir)
+			for name, body := range incompleteFiles(packet) {
+				if err := atomicFile(filepath.Join(dir, name), body); err != nil {
+					return err
+				}
+			}
+			a.ImportedPackageSHA256, a.TeamID, a.CycleID, a.RemoteWorker = p.SHA256, "", "", ""
+			a.LeaseExpires, a.LeaseDeadline = nil, nil
+			a.MissingMaterials = slices.Clone(packet.Missing)
+			d.Attempts = append(d.Attempts, a)
+			task := packet.Task
+			task.CycleID, task.State = "", a.Status
+			d.Tasks = append(d.Tasks, task)
+			transfer.SourceProfileSHA256[a.ID] = packet.SourceProfileSHA256
 		}
 		e := p.Target
 		e.Status = "in_review"

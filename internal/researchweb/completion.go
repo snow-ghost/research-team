@@ -52,6 +52,9 @@ func stopClosedStudies(d *Data) {
 }
 
 type StudyCompletion struct {
+	MathematicalHints          int               `json:"mathematical_hints"`
+	UnclassifiedNotes          int               `json:"unclassified_notes"`
+	PlannerMethods             int               `json:"planner_methods"`
 	PauseOnReady               bool              `json:"pause_on_ready"`
 	SearchSuspended            bool              `json:"search_suspended"`
 	Revision                   int               `json:"revision"`
@@ -113,8 +116,23 @@ func (s *Service) StudyCompletion(id string) (StudyCompletion, error) {
 		}
 	}
 	for _, t := range v.Teams {
-		if t.Study == id && t.OperatorNote != "" {
+		if t.Study != id {
+			continue
+		}
+		if t.MethodBasis != nil && t.MethodBasis.Source == "planner" {
+			out.PlannerMethods++
+		}
+		if len(t.Notes) == 0 && t.OperatorNote != "" {
+			out.UnclassifiedNotes++
+		}
+		for _, note := range t.Notes {
 			out.OperatorNotes++
+			if note.Kind == "mathematical_hint" {
+				out.MathematicalHints++
+			}
+			if note.Kind == "unspecified" {
+				out.UnclassifiedNotes++
+			}
 		}
 	}
 	return out, nil

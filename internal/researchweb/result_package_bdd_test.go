@@ -5,7 +5,6 @@ package researchweb
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -59,7 +58,7 @@ func packageFixture(t *testing.T) (*Service, ResultPackage) {
 	return s, p
 }
 
-func TestResultPackageBDD_UnstartedIncompleteHistoryReturnsRuleErrorNotStorageFailure(t *testing.T) {
+func TestResultPackageBDD_UnstartedIncompleteHistoryTransfersWithoutInventingArtifacts(t *testing.T) {
 	s, p := packageFixture(t)
 	profile := s.profile("proof")
 	if err := s.Store.Change(0, "", "", "Preparation failure without artifacts", p.Target.ID, "test", func(d *Data) error {
@@ -70,10 +69,65 @@ func TestResultPackageBDD_UnstartedIncompleteHistoryReturnsRuleErrorNotStorageFa
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := s.ExportResultPackage(p.Result.ID)
-	var rule RuleError
-	if !errors.As(err, &rule) {
-		t.Fatal("incomplete input reported as storage failure", err)
+	p, err := s.ExportResultPackage(p.Result.ID)
+	if err != nil || p.Version != 2 || len(p.IncompleteAttempts) != 1 || len(p.IncompleteAttempts[0].Missing) != 3 {
+		t.Fatal("incomplete history not described", p, err)
+	}
+	dest := packageDestination(t, "verified")
+	if err := dest.ImportResultPackage(ImportResultPackageRequest{ExpectedRevision: stateOf(t, dest).Revision, RequestID: identifier("cmd"), Package: p, Confirm: true}); err != nil {
+		t.Fatal(err)
+	}
+	v := waitVerification(t, dest, p.Verification.ID)
+	x := p.IncompleteAttempts[0]
+	a := v.attempt(x.Attempt.ID)
+	if a == nil || len(a.MissingMaterials) != 3 || a.Status != "failed" || a.RemoteOutcome != "not_started" || v.entity(p.Target.ID).Status != "in_review" {
+		t.Fatal("history or acceptance boundary lost", a)
+	}
+	for _, name := range []string{"input.json", "result.json", "events.jsonl"} {
+		if _, err := os.Stat(filepath.Join(dest.Options.Config.DataDir, "attempts", a.ID, name)); !os.IsNotExist(err) {
+			t.Fatal("missing artifact fabricated", name, err)
+		}
+	}
+	if _, err := dest.readInput(*a); err == nil {
+		t.Fatal("missing input hidden")
+	}
+	if _, err := dest.Journal(a.ID, 0); err == nil {
+		t.Fatal("missing journal hidden")
+	}
+	bad := p
+	bad.IncompleteAttempts = append([]IncompleteAttempt{}, p.IncompleteAttempts...)
+	bad.IncompleteAttempts[0].Attempt.RemoteOutcome = "unknown"
+	bad.SHA256 = packageDigest(bad)
+	if err := validateResultPackage(bad); err == nil {
+		t.Fatal("unknown remote attempt treated as unstarted")
+	}
+	for _, mutation := range []string{"candidate", "missing_list", "journal_hash", "duplicate_task", "required_attempt", "raw_profile"} {
+		t.Run(mutation, func(t *testing.T) {
+			body, _ := json.Marshal(p)
+			var bad ResultPackage
+			_ = json.Unmarshal(body, &bad)
+			x := &bad.IncompleteAttempts[0]
+			switch mutation {
+			case "candidate":
+				x.Attempt.Status = "candidate"
+			case "missing_list":
+				x.Missing = nil
+			case "journal_hash":
+				x.JournalSHA256 = "fabricated"
+			case "duplicate_task":
+				x.Task.ID = bad.Attempts[0].Attempt.TaskID
+				x.Attempt.TaskID = x.Task.ID
+			case "required_attempt":
+				x.Attempt.ID = bad.Result.ReviewAttempt
+				x.Task.Attempt = x.Attempt.ID
+			case "raw_profile":
+				x.Attempt.ProfileConfiguration = &profile
+			}
+			bad.SHA256 = packageDigest(bad)
+			if err := validateResultPackage(bad); err == nil {
+				t.Fatal("invalid history accepted", mutation)
+			}
+		})
 	}
 }
 

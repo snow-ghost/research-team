@@ -10,6 +10,8 @@ import (
 )
 
 type ResearchTeam struct {
+	MethodBasis       *MethodBasis                `json:"method_basis,omitempty"`
+	Notes             []OperatorNote              `json:"operator_notes,omitempty"`
 	FormatRepairLimit int                         `json:"format_repair_limit,omitempty"`
 	FormatRepairsUsed int                         `json:"format_repairs_used,omitempty"`
 	Decisions         []TeamDecision              `json:"decisions,omitempty"`
@@ -56,6 +58,7 @@ type TeamRequest struct {
 	Confirm           bool              `json:"confirm"`
 }
 type TeamCommand struct {
+	NoteKind         string                      `json:"note_kind,omitempty"`
 	Note             string                      `json:"note,omitempty"`
 	RoleLimits       map[string]execution.Limits `json:"role_limits,omitempty"`
 	MaxAttempts      int                         `json:"max_attempts,omitempty"`
@@ -167,6 +170,9 @@ func (s *Service) StartTeam(r TeamRequest) error {
 	})
 }
 func (s *Service) ControlTeam(id string, r TeamCommand) error {
+	if r.NoteKind != "" && r.NoteKind != "operational" && r.NoteKind != "mathematical_hint" && r.NoteKind != "unspecified" {
+		return RuleError("Неизвестный вид заметки оператора.")
+	}
 	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || len(r.Note) > 4000 {
 		return RuleError("Нужны снимок и идентификатор команды.")
 	}
@@ -180,6 +186,7 @@ func (s *Service) ControlTeam(id string, r TeamCommand) error {
 		if team == nil || (!teamActive(team.Status) && team.Status != "interrupted") {
 			return RuleError("Команда уже завершена.")
 		}
+		recordOperatorNote(team, r)
 		switch r.Kind {
 		case "pause":
 			team.Status = "paused"
@@ -805,6 +812,11 @@ func (s *Service) teamContext(d Data, a Attempt) any {
 		out["proof_binding"] = a.ProofBinding
 	}
 	out["operator_note"] = team.OperatorNote
+	out["operator_notes"] = team.Notes
+	out["method_basis"] = team.MethodBasis
+	if team.OperatorNote != "" && len(team.Notes) == 0 {
+		out["operator_note_origin"] = "legacy_unclassified"
+	}
 	if parent := d.attempt(a.ParentAttempt); parent != nil && parent.Target == a.Target && parent.TargetRevision == a.TargetRevision {
 		if r, err := s.readResult(*parent); err == nil && repairableSkillFailure(r) && s.safeResultContent(*parent, r) {
 			out["format_repair"] = map[string]any{"attempt": parent.ID, "candidate": execution.Preview(r.Candidate, 32000), "checks": r.SkillChecks, "instruction": "Исправь форму ответа по обязательным проверкам навыка. Не считай предыдущий ответ доказанным результатом."}
@@ -828,6 +840,15 @@ func (s *Service) teamContext(d Data, a Attempt) any {
 	}
 	if e := d.entity(a.Target); e != nil && e.FormalGoal != nil {
 		out["formal_goal"] = e.FormalGoal
+		required := []map[string]string{}
+		for _, id := range e.RequiredLibraries {
+			for _, l := range d.Library {
+				if l.ID == id {
+					required = append(required, map[string]string{"library": id, "module": l.Module, "declaration": l.Goal.Candidate})
+				}
+			}
+		}
+		out["required_proof_references"] = required
 	}
 	if v := d.verification(team.Verification); v != nil {
 		out["lean_verification"] = v.Report

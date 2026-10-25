@@ -5,11 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -99,15 +97,22 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 		result.RemoteOutcome = "unknown"
 		result.Usage = nil
 		started := time.Now()
-		reply, err := e.complete(ctx, messages)
+		trace := &modelTrace{stage: "preparation"}
+		reply, err := e.complete(ctx, messages, trace)
+		stage, transmission, category, httpStatus := trace.observation()
 		if err != nil {
-			d := Diagnostic{Source: "model", Stage: "completion", Kind: "transport_or_protocol_error", Message: Preview(redactDiagnostic(err.Error(), e.token), diagnosticTextLimit), ElapsedMilliseconds: time.Since(started).Milliseconds()}
-			if strings.HasPrefix(err.Error(), "model returned HTTP ") {
-				d.Kind = "http_error"
-				if status, parseErr := strconv.Atoi(strings.TrimPrefix(err.Error(), "model returned HTTP ")); parseErr == nil {
-					d.Data, _ = json.Marshal(map[string]int{"http_status": status})
-				}
+			if category == "" {
+				category = "protocol_error"
+			}
+			d := Diagnostic{Source: "model", Stage: stage, Kind: category, RequestStep: step, Transmission: transmission, HTTPStatus: httpStatus, Message: Preview(redactDiagnostic(err.Error(), e.token), diagnosticTextLimit), ElapsedMilliseconds: time.Since(started).Milliseconds()}
+			if httpStatus != 0 {
+				d.Data, _ = json.Marshal(map[string]int{"http_status": httpStatus})
+			}
+			if transmission == "response_received" {
 				result.RemoteOutcome = "response_received"
+			}
+			if transmission == "not_sent" && step == 1 {
+				result.RemoteOutcome = "not_started"
 			}
 			addDiagnostic(ctx, &result, d)
 			return result, err
@@ -116,6 +121,7 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 		if reply.Usage == nil || reply.Usage.Input == nil || reply.Usage.Output == nil {
 			usageKnown = false
 		} else if *reply.Usage.Input < 0 || *reply.Usage.Output < 0 || *reply.Usage.Input > 1000000000 || *reply.Usage.Output > 1000000000 {
+			addDiagnostic(ctx, &result, Diagnostic{Source: "model", Stage: "response_body", Kind: "invalid_usage", RequestStep: step, Transmission: transmission, HTTPStatus: httpStatus})
 			return result, ErrProtocol
 		} else {
 			totalUsage.InputTokens += *reply.Usage.Input
@@ -127,12 +133,21 @@ func (e *modelExecutor) Run(ctx context.Context, task Task) (result Result, err 
 		} else {
 			result.Usage = nil
 		}
+		finishReason := ""
+		if len(reply.Choices) == 1 {
+			finishReason = safeFinishReason(reply.Choices[0].FinishReason)
+		}
+		var measuredUsage *Usage
+		if reply.Usage != nil && reply.Usage.Input != nil && reply.Usage.Output != nil {
+			measuredUsage = &Usage{Source: "provider_response", InputTokens: *reply.Usage.Input, OutputTokens: *reply.Usage.Output}
+		}
+		addDiagnostic(ctx, &result, Diagnostic{Source: "model", Stage: "response_body", Kind: "completion_received", RequestStep: step, Transmission: transmission, HTTPStatus: httpStatus, FinishReason: finishReason, UsageKnown: measuredUsage != nil, Usage: measuredUsage, ElapsedMilliseconds: time.Since(started).Milliseconds()})
 		record(ctx, &result, Event{Type: "model_response", Step: step, Usage: result.Usage})
 		if len(reply.Choices) != 1 {
 			return result, ErrProtocol
 		}
 		choice := reply.Choices[0]
-		record(ctx, &result, Event{Type: "model_finish", Step: step, Status: choice.FinishReason})
+		record(ctx, &result, Event{Type: "model_finish", Step: step, Status: safeFinishReason(choice.FinishReason)})
 		m := choice.Message
 		if m.Content != "" {
 			result.Partial = e.redact(m.Content)
@@ -220,7 +235,7 @@ func (e *modelExecutor) redact(s string) string {
 	return s
 }
 
-func (e *modelExecutor) complete(ctx context.Context, messages []message) (completion, error) {
+func (e *modelExecutor) complete(ctx context.Context, messages []message, trace *modelTrace) (completion, error) {
 	payload := map[string]any{"model": e.profile.Model.Model, "messages": messages, "stream": false}
 	field := e.profile.Model.TokenLimitField
 	if field == "" {
@@ -252,7 +267,7 @@ func (e *modelExecutor) complete(ctx context.Context, messages []message) (compl
 	if err != nil || len(body) > 4*maxPayload {
 		return completion{}, ErrLimit
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(trace.context(ctx), http.MethodPost, e.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return completion{}, errors.New("cannot construct model request")
 	}
@@ -262,24 +277,36 @@ func (e *modelExecutor) complete(ctx context.Context, messages []message) (compl
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {
-		if ctx.Err() != nil {
-			return completion{}, ctx.Err()
-		}
-		return completion{}, errors.New("model transport failed; remote outcome unknown")
+		return completion{}, trace.transportError(err)
 	}
 	defer resp.Body.Close()
+	trace.mu.Lock()
+	trace.responseHeaders, trace.status, trace.stage = true, resp.StatusCode, "response_headers"
+	trace.mu.Unlock()
 	if resp.StatusCode != http.StatusOK {
 		// Error bodies may echo authorization or private source material.
-		return completion{}, fmt.Errorf("model returned HTTP %d", resp.StatusCode)
+		trace.mu.Lock()
+		trace.category = "http_error"
+		trace.mu.Unlock()
+		return completion{}, &completionError{category: "http_error", stage: "response_headers", status: resp.StatusCode}
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(e.profile.Limits.MaxOutputBytes)+1))
+	trace.mu.Lock()
+	trace.stage = "response_body"
+	trace.mu.Unlock()
 	if err != nil {
+		trace.mu.Lock()
+		trace.category = "response_interrupted"
+		trace.mu.Unlock()
 		if ctx.Err() != nil {
 			return completion{}, ctx.Err()
 		}
 		return completion{}, errors.New("model response interrupted")
 	}
 	if len(data) > e.profile.Limits.MaxOutputBytes {
+		trace.mu.Lock()
+		trace.category = "output_bytes_limit"
+		trace.mu.Unlock()
 		return completion{}, ErrLimit
 	}
 	var reply completion

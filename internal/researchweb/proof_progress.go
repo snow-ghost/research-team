@@ -1,14 +1,17 @@
 package researchweb
 
 type ProofProgressNode struct {
-	ID           string   `json:"id"`
-	Title        string   `json:"title"`
-	Kind         string   `json:"kind"`
-	Status       string   `json:"status"`
-	Native       string   `json:"native"`
-	Dependencies []string `json:"dependencies"`
-	Blockers     []string `json:"blockers"`
-	Modules      []string `json:"modules"`
+	Checks       []ProofCheckView `json:"checks"`
+	Branches     []BranchTrace    `json:"branches"`
+	Attempts     []AttemptTrace   `json:"attempts"`
+	ID           string           `json:"id"`
+	Title        string           `json:"title"`
+	Kind         string           `json:"kind"`
+	Status       string           `json:"status"`
+	Native       string           `json:"native"`
+	Dependencies []string         `json:"dependencies"`
+	Blockers     []string         `json:"blockers"`
+	Modules      []string         `json:"modules"`
 }
 
 type ProofProgress struct {
@@ -33,6 +36,7 @@ func (s *Service) ProofProgress(study string) (ProofProgress, error) {
 			continue
 		}
 		n := ProofProgressNode{ID: e.ID, Title: e.Title, Kind: e.Kind, Status: v.effective(e.ID, map[string]bool{}), Native: "none", Dependencies: e.Dependencies, Blockers: []string{}, Modules: []string{}}
+		n.Checks, n.Branches, n.Attempts = proofAudit(&v.Data, e)
 		if e.FormalGoal == nil {
 			n.Blockers = append(n.Blockers, "Не закреплена формальная цель.")
 		}

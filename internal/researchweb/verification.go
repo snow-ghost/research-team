@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,10 +34,11 @@ type Verification struct {
 	FinishedAt          *time.Time        `json:"finished_at,omitempty"`
 }
 type FormalGoalRequest struct {
-	Libraries        []string       `json:"libraries,omitempty"`
-	ExpectedRevision int            `json:"expected_revision"`
-	RequestID        string         `json:"request_id"`
-	Goal             leancheck.Goal `json:"goal"`
+	RequiredLibraries []string       `json:"required_libraries,omitempty"`
+	Libraries         []string       `json:"libraries,omitempty"`
+	ExpectedRevision  int            `json:"expected_revision"`
+	RequestID         string         `json:"request_id"`
+	Goal              leancheck.Goal `json:"goal"`
 }
 type VerifyRequest struct {
 	ExpectedRevision int    `json:"expected_revision"`
@@ -141,7 +143,7 @@ func (d *Data) verification(id string) *Verification {
 	return nil
 }
 func (s *Service) SetFormalGoal(target string, r FormalGoalRequest) error {
-	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || len(r.Libraries) > 16 {
+	if r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || len(r.Libraries) > 16 || len(r.RequiredLibraries) > 16 {
 		return RuleError("Нужны снимок и идентификатор команды.")
 	}
 	if err := r.Goal.Validate(); err != nil {
@@ -153,7 +155,8 @@ func (s *Service) SetFormalGoal(target string, r FormalGoalRequest) error {
 			return RuleError("Нужна открытая версия утверждения.")
 		}
 		addedDependency := false
-		for _, id := range r.Libraries {
+		selectedIDs := append(append([]string{}, r.Libraries...), r.RequiredLibraries...)
+		for _, id := range selectedIDs {
 			var selected *LibraryEntry
 			for i := range d.Library {
 				if d.Library[i].ID == id {
@@ -175,10 +178,11 @@ func (s *Service) SetFormalGoal(target string, r FormalGoalRequest) error {
 				addedDependency = true
 			}
 		}
-		if !addedDependency && e.FormalGoal != nil && leancheck.Digest(*e.FormalGoal) == leancheck.Digest(r.Goal) {
+		if !addedDependency && e.FormalGoal != nil && leancheck.Digest(*e.FormalGoal) == leancheck.Digest(r.Goal) && slices.Equal(e.RequiredLibraries, r.RequiredLibraries) {
 			return nil
 		}
 		e.FormalGoal = &r.Goal
+		e.RequiredLibraries = slices.Clone(r.RequiredLibraries)
 		e.RefutationVerification, e.RefutationReview = "", ""
 		e.Revision++
 		e.Status = "open"
@@ -373,6 +377,11 @@ func verificationMatches(d *Data, v Verification) bool {
 			}
 		}
 		if !found {
+			return false
+		}
+	}
+	if v.Report != nil && v.Report.Status == "verified" && v.Purpose != "refutation" {
+		if len(missingRequiredLemmas(d, e, v.LibraryPins, v.Report)) != 0 {
 			return false
 		}
 	}

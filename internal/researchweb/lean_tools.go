@@ -71,7 +71,7 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 			goal = refutationGoal(goal)
 			purpose = "refutation"
 		}
-		environment, _ := s.libraryEnvironment(&d, e)
+		environment, pins := s.libraryEnvironment(&d, e)
 		checker := s.Options.Checker
 		if environment != nil {
 			pinned := *environment
@@ -108,7 +108,11 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 			if writeErr := atomicFile(filepath.Join(dir, "report.json"), body); writeErr != nil {
 				return "", writeErr
 			}
-			response, _ := json.Marshal(map[string]any{"check": check.ID, "purpose": purpose, "report": check.Report, "accepted": false, "remaining_checks": 4 - checks})
+			missing := []string{}
+			if purpose != "refutation" {
+				missing = missingRequiredLemmas(&d, e, pins, &check.Report)
+			}
+			response, _ := json.Marshal(map[string]any{"check": check.ID, "purpose": purpose, "report": check.Report, "missing_required_libraries": missing, "accepted": false, "remaining_checks": 4 - checks})
 			if len(response) > 60000 {
 				return fmt.Sprintf(`{"check":%q,"status":"failed","reason":"report_limit"}`, check.ID), execution.ErrLimit
 			}

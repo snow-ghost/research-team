@@ -63,7 +63,7 @@ func AuditComparison(dir string) (AuditReport, error) {
 	if err := read("report.json", &report); err != nil {
 		return AuditReport{}, err
 	}
-	if report.Version != 2 && report.Version != 3 {
+	if report.Version != 2 && report.Version != 3 && report.Version != 4 {
 		return AuditReport{}, fmt.Errorf("artifact audit requires comparison version 2 or 3")
 	}
 	if len(report.Runs) > 96 {

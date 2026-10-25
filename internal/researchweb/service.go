@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -775,6 +776,9 @@ func questionsFor(d Data, target string) []Question {
 }
 func (s *Service) readResult(a Attempt) (execution.Result, error) {
 	var r execution.Result
+	if slices.Contains(a.MissingMaterials, "result") {
+		return r, RuleError("Результат отсутствовал в исходной истории отказа подготовки.")
+	}
 	if a.ResultSHA256 == "" {
 		return r, RuleError("Результат еще не сохранен.")
 	}
@@ -792,6 +796,9 @@ func (s *Service) safeResultContent(a Attempt, result execution.Result) bool {
 	return p.External == nil || p.External.Provider != "coddy-agent" || result.ContentPolicy == execution.CoddyContentPolicy
 }
 func (s *Service) readInput(a Attempt) (Data, error) {
+	if slices.Contains(a.MissingMaterials, "scoped_input") {
+		return Data{}, RuleError("В перенесенной истории вход не был записан до отказа подготовки.")
+	}
 	var input struct {
 		Research Data `json:"research"`
 	}

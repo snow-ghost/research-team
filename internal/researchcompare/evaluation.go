@@ -26,8 +26,12 @@ type EvaluationPlan struct {
 
 const evaluationPolicy = "research-evaluation-plan@1;single,team,demand,lean;paired-goals;2-repetitions;6-requests-per-arm;32768-output;900-seconds-per-arm;common-reviewer;no-cross-arm-context;no-interrupted-replay;operator-acceptance-separate;provider,format,native,review,operator,usage-separate"
 
+func EvaluationPolicyDigest() string {
+	return leancheck.Digest([]string{evaluationPolicy, DemandPolicyDigest(), leancheck.DependencyDigest()})
+}
+
 func PrepareEvaluation(set EvaluationSet) (EvaluationPlan, error) {
-	p := EvaluationPlan{Status: "prepared_not_authorized", CaseSetSHA256: leancheck.Digest(set), PolicySHA256: leancheck.Digest(evaluationPolicy)}
+	p := EvaluationPlan{Status: "prepared_not_authorized", CaseSetSHA256: leancheck.Digest(set), PolicySHA256: EvaluationPolicyDigest()}
 	if set.Version != 1 || set.Repetitions != 2 || len(set.Cases) != 12 {
 		return p, fmt.Errorf("expected 12 cases and two repetitions")
 	}

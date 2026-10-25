@@ -22,13 +22,25 @@ type ComparisonRequest struct {
 }
 
 func (s *Service) ImportComparison(r ComparisonRequest) error {
+	if r.Report.Simulation {
+		return RuleError("Имитированный опыт не является отчетом живого сравнения.")
+	}
+	if r.Report.Version == 4 {
+		if summary, err := researchcompare.Summarize(r.Report); err != nil || !summary.Complete {
+			return RuleError("Нужен полный отчет с закрепленным набором двенадцати задач.")
+		}
+	}
 	version2 := r.Report.Version == 2
-	version3 := r.Report.Version == 3
+	version3 := r.Report.Version == 3 || r.Report.Version == 4
 	maxRequests, count, perRun := 96, 12, 8
 	if version2 || version3 {
 		maxRequests, count, perRun = 216, 48, 6
 	}
-	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || (r.Report.Version != 1 && !version2 && !version3) || (version3 && r.Report.PolicySHA256 != researchcompare.DemandPolicyDigest()) || r.Report.MaxRequests != maxRequests || len(r.Report.Runs) != count || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(r.Report.ConfigurationSHA256) {
+	policy, casesCount := researchcompare.DemandPolicyDigest(), 6
+	if r.Report.Version == 4 {
+		maxRequests, count, casesCount, policy = 432, 96, 12, researchcompare.EvaluationPolicyDigest()
+	}
+	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || (r.Report.Version != 1 && !version2 && !version3) || (version3 && r.Report.PolicySHA256 != policy) || r.Report.MaxRequests != maxRequests || len(r.Report.Runs) != count || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(r.Report.ConfigurationSHA256) || r.Report.Version == 4 && !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(r.Report.CaseSetSHA256) {
 		return RuleError("Нужен завершенный отчет сравнения согласованного набора.")
 	}
 	seen := map[string]bool{}
@@ -61,7 +73,7 @@ func (s *Service) ImportComparison(r ComparisonRequest) error {
 		cases[run.Case] = run.GoalSHA256
 		requests += run.RequestUpperBound
 	}
-	if len(cases) != 6 || requests > maxRequests {
+	if len(cases) != casesCount || requests > maxRequests {
 		return RuleError("Нарушен состав или бюджет сравнения.")
 	}
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Записан отчет сравнения", "", "operator", func(d *Data) error {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Plus, FlaskConical, ChevronRight } from "lucide-react";
 import { api } from "./api.js";
+import { ResearchAudit } from "./proof-audit.jsx";
 
 const statusNames = {
   open: "Открыто",
@@ -159,7 +160,9 @@ export function ProofProgressPanel({ live, study, onSelect }) {
                 Исходники исполнителей: {completion.executor_sources}.
                 Представленные исходники: {completion.submitted_sources}.
                 Перенесенные: {completion.imported_sources}. Заметки оператора:{" "}
-                {completion.operator_notes}.
+                {completion.operator_notes}. Математических подсказок:{" "}
+                {completion.mathematical_hints || 0}. Неклассифицированных
+                заметок: {completion.unclassified_notes || 0}.
               </p>
             </div>
           )}
@@ -230,6 +233,12 @@ export function ProofProgressPanel({ live, study, onSelect }) {
               </tbody>
             </table>
           </div>
+          <ResearchAudit
+            key={study}
+            progress={progress}
+            state={live.data.state}
+            onSelect={onSelect}
+          />
         </>
       )}
     </section>

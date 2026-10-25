@@ -77,6 +77,22 @@ test("отдельный файл проходит Lean и получает то
   const verification = view.state.verifications.find(
     (v) => v.target === target && v.status === "verified",
   );
+  expect(verification.report.dependencies.procedure_sha256).toMatch(
+    /^[a-f0-9]{64}$/,
+  );
+  const audit = page.getByRole("region", {
+    name: "Аудит исследования",
+    exact: true,
+  });
+  const auditCheck = audit
+    .locator(".proof-audit-check")
+    .filter({ hasText: verification.id });
+  await auditCheck.locator(":scope > summary").click();
+  await expect(auditCheck).toContainText(verification.report.source_sha256);
+  await auditCheck.getByText("Точный исходник Lean", { exact: true }).click();
+  await expect(auditCheck).toContainText(
+    "theorem Candidate : Statement := by trivial",
+  );
   const taskResponse = await page.request.post("/api/actions", {
     headers,
     data: {

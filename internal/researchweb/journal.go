@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -112,6 +113,9 @@ func (s *Service) Journal(id string, after int) ([]JournalEvent, error) {
 	}
 	if view.attempt(id) == nil {
 		return nil, RuleError("Попытка не найдена.")
+	}
+	if slices.Contains(view.attempt(id).MissingMaterials, "journal") {
+		return nil, RuleError("Журнал отсутствовал в исходной истории отказа подготовки.")
 	}
 	body, err := readBoundedFile(filepath.Join(s.Options.Config.DataDir, "attempts", id, "events.jsonl"), 4<<20)
 	if os.IsNotExist(err) {

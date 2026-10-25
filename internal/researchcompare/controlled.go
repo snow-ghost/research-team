@@ -39,9 +39,20 @@ func saveReport(dir string, report Report) error {
 // Version 2 freezes the audit and uses one wall-clock and request budget per arm.
 func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner) (Report, error) {
 	report := Report{Version: 2, StartedAt: time.Now().UTC(), ConfigurationSHA256: leancheck.Digest(c), AuditSHA256: leancheck.AuditDigest(), MaxRequests: 216, Runs: []Run{}}
-	if c.Version == 3 {
-		report.Version = 3
+	if c.Version >= 3 {
+		report.Version = c.Version
 		report.PolicySHA256 = DemandPolicyDigest()
+	}
+	if c.Version == 4 {
+		report.EvaluationSet = &EvaluationSet{Version: 1, Repetitions: 2, Cases: c.Cases}
+		report.MaxRequests = 432
+		report.PolicySHA256 = EvaluationPolicyDigest()
+		report.CaseSetSHA256 = leancheck.Digest(*report.EvaluationSet)
+	}
+	expectedRequests, expectedPolicy, expectedCases := report.MaxRequests, report.PolicySHA256, report.CaseSetSHA256
+	report.Simulation = r.Simulation
+	if r.Simulation && (r.Build == nil || r.Checker == nil) {
+		return report, errors.New("simulation requires explicit local executor and checker")
 	}
 	validation := c
 	if r.ResolveLeanPaths {
@@ -78,8 +89,11 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 	}
 	if r.Resume {
 		body, err := os.ReadFile(filepath.Join(dir, "report.json"))
-		if err != nil || len(body) > 2<<20 || execution.DecodeAgentReport(string(body), &report) != nil || report.Version != c.Version || report.MaxRequests != 216 || report.ConfigurationSHA256 != leancheck.Digest(c) || report.AuditSHA256 != leancheck.AuditDigest() || (c.Version == 3 && report.PolicySHA256 != DemandPolicyDigest()) {
+		if err != nil || len(body) > 2<<20 || execution.DecodeAgentReport(string(body), &report) != nil || report.Simulation != r.Simulation || report.Version != c.Version || report.MaxRequests != expectedRequests || report.ConfigurationSHA256 != leancheck.Digest(c) || report.AuditSHA256 != leancheck.AuditDigest() || report.PolicySHA256 != expectedPolicy || report.CaseSetSHA256 != expectedCases {
 			return report, errors.New("resume requires unchanged configuration and audit")
+		}
+		if c.Version == 4 && (report.EvaluationSet == nil || leancheck.Digest(*report.EvaluationSet) != expectedCases) {
+			return report, errors.New("evaluation manifest changed")
 		}
 		seen := map[string]bool{}
 		for i := range report.Runs {
@@ -90,7 +104,7 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 				valid = valid || (item.ID == run.Case && item.Class == run.Class && leancheck.Digest(item.Goal) == run.GoalSHA256)
 			}
 			third := "adaptive"
-			if c.Version == 3 {
+			if c.Version >= 3 {
 				third = "demand"
 			}
 			if !valid || seen[key] || run.Repetition < 1 || run.Repetition > 2 || (run.Mode != "single" && run.Mode != "team" && run.Mode != third && run.Mode != "lean") || run.RequestUpperBound < 0 || run.RequestUpperBound > 6 || run.MeasuredRequests > run.RequestUpperBound || (run.Mode == "lean" && run.RequestUpperBound != 0) {
@@ -138,7 +152,7 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 	for repetition := 1; repetition <= 2; repetition++ {
 		for i, item := range c.Cases {
 			modes := []string{"single", "team", "adaptive"}
-			if c.Version == 3 {
+			if c.Version >= 3 {
 				modes[2] = "demand"
 			}
 			shift := (i + repetition - 1) % len(modes)
@@ -166,7 +180,7 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 				limited, cancel := context.WithTimeout(ctx, 900*time.Second)
 				var err error
 				if mode == "lean" {
-					if c.Version == 3 {
+					if c.Version >= 3 {
 						err = r.portfolioBaseline(limited, item, work, &run)
 					} else {
 						err = r.baseline(limited, item, work, &run)

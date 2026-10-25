@@ -59,6 +59,9 @@ type Run struct {
 	ReviewAccepted      bool               `json:"review_accepted"`
 }
 type Report struct {
+	EvaluationSet          *EvaluationSet          `json:"evaluation_set,omitempty"`
+	Simulation             bool                    `json:"simulation,omitempty"`
+	CaseSetSHA256          string                  `json:"case_set_sha256,omitempty"`
 	EnvironmentResolutions []EnvironmentResolution `json:"environment_resolutions,omitempty"`
 	PolicySHA256           string                  `json:"policy_sha256,omitempty"`
 	AuditSHA256            string                  `json:"audit_sha256,omitempty"`
@@ -70,6 +73,7 @@ type Report struct {
 	Runs                   []Run                   `json:"runs"`
 }
 type Runner struct {
+	Simulation       bool
 	ResolveLeanPaths bool
 	Resume           bool
 	Build            func(execution.Profile, func(string) (string, bool)) (execution.Executor, error)
@@ -84,10 +88,14 @@ type EnvironmentResolution struct {
 }
 
 func (c Config) Validate() error {
-	if c.Version != 0 && c.Version != 1 && c.Version != 2 && c.Version != 3 {
+	if c.Version < 0 || c.Version > 4 {
 		return errors.New("unsupported comparison version")
 	}
-	if len(c.Cases) != 6 {
+	if c.Version == 4 {
+		if _, err := PrepareEvaluation(EvaluationSet{Version: 1, Repetitions: 2, Cases: c.Cases}); err != nil {
+			return err
+		}
+	} else if len(c.Cases) != 6 {
 		return errors.New("exactly six cases required")
 	}
 	seen := map[string]bool{}
@@ -137,7 +145,7 @@ func (c Config) Validate() error {
 	if c.Reviewer.ID == c.Universal.ID || c.Reviewer.ID == c.Formalize.ID {
 		return errors.New("common reviewer must be independent")
 	}
-	if c.Version == 3 && (kind != "model" || c.Reviewer.ID == c.Proof.ID || c.Reviewer.ID == c.Counter.ID) {
+	if c.Version >= 3 && (kind != "model" || c.Reviewer.ID == c.Proof.ID || c.Reviewer.ID == c.Counter.ID) {
 		return errors.New("version 3 requires model executors and a separate reviewer for every source author")
 	}
 	return c.Lean.Validate()
@@ -149,7 +157,7 @@ func RunComparison(ctx context.Context, c Config, directory string, r Runner) (R
 		return Report{}, err
 	}
 	directory = absolute
-	if c.Version == 2 || c.Version == 3 {
+	if c.Version >= 2 {
 		return RunControlledComparison(ctx, c, directory, r)
 	}
 	report := Report{Version: 1, StartedAt: time.Now().UTC(), ConfigurationSHA256: leancheck.Digest(c), MaxRequests: 96, Runs: []Run{}}
@@ -358,7 +366,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		} else {
 			run.UsageIncomplete = true
 		}
-		if c.Version == 3 {
+		if c.Version >= 3 {
 			run.Stages = append(run.Stages, observeStage(role, result, started, p))
 			if saveErr := persist(*run); saveErr != nil {
 				return result, saveErr
@@ -469,7 +477,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 	run.Outcome = selected.Outcome
 	if selected.Outcome == "inconclusive" {
 		run.Status = "inconclusive"
-		if c.Version == 3 {
+		if c.Version >= 3 {
 			run.MathematicalStatus = "inconclusive"
 		}
 		return nil
@@ -518,7 +526,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		}
 	}
 	objective := `Independently review the exact goal, source, evidence and checker report. Return only JSON {"summary":"...","findings":[{"severity":"major|question|editorial","text":"..."}]}. Do not claim to have run tools.`
-	if c.Version == 3 {
+	if c.Version >= 3 {
 		objective = proofreview.Instructions
 		run.MathematicalStatus = selected.Outcome + "_verified"
 	}
@@ -530,7 +538,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 	if execution.DecodeAgentReport(review.Candidate, &findings) != nil || findings.Summary == "" || len(findings.Findings) > 100 {
 		return errors.New("invalid independent review")
 	}
-	if c.Version == 3 && (findings.Rubric != proofreview.Rubric || proofreview.Validate(findings) != nil) {
+	if c.Version >= 3 && (findings.Rubric != proofreview.Rubric || proofreview.Validate(findings) != nil) {
 		return errors.New("invalid version 3 review rubric")
 	}
 	for _, f := range findings.Findings {

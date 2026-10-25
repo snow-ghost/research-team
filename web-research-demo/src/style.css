@@ -2018,3 +2018,136 @@ td small {
 .proof-progress-table th:nth-child(3) { width: 130px; }
 .proof-progress-table th:last-child { width: 100px; }
 .proof-progress-table td:nth-child(3) { white-space: nowrap; }
+.research-audit {
+  margin-top: 24px;
+  min-width: 0;
+  border-top: 1px solid var(--process-rule);
+  padding-top: 16px;
+}
+.research-audit h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.research-audit h4 {
+  font-size: 14px;
+  margin: 20px 0 10px;
+}
+.research-audit p,
+.research-audit li,
+.research-audit summary {
+  overflow-wrap: anywhere;
+}
+.research-audit details {
+  border-bottom: 1px solid var(--process-rule);
+  padding: 12px 0;
+  min-width: 0;
+}
+.research-audit summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.research-audit summary svg {
+  vertical-align: middle;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.audit-source {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+  background: #f2f5f4;
+  padding: 12px;
+  border-radius: 4px;
+}
+.audit-tree {
+  margin: 16px 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.audit-tree ul {
+  list-style: none;
+  padding-left: 14px;
+  margin: 4px 0;
+  border-left: 1px solid #b5c8c0;
+}
+.audit-tree > ul {
+  padding-left: 0;
+  border: 0;
+}
+.audit-tree-node {
+  background: transparent;
+  border: 0;
+  color: #245d4c;
+  display: flex;
+  align-items: baseline;
+  text-align: left;
+  gap: 6px;
+  padding: 6px 0;
+  cursor: pointer;
+  max-width: 100%;
+  font: inherit;
+  font-size: 13px;
+}
+.audit-tree-node span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.audit-tree-node svg {
+  flex-shrink: 0;
+  align-self: center;
+}
+.audit-tree-node small {
+  color: #68736f;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.audit-select {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  max-width: 520px;
+}
+.audit-select select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #c7d2cc;
+  border-radius: 4px;
+  background: white;
+}
+.audit-bindings {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+.audit-bindings dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.audit-bindings dt {
+  color: #63716b;
+}
+.audit-content,
+.audit-notes,
+.audit-library-choice {
+  min-width: 0;
+}
+.audit-lemma-list {
+  padding-left: 18px;
+}
+@media (max-width: 480px) {
+  .audit-bindings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .audit-bindings dd {
+    margin-bottom: 8px;
+  }
+  .audit-tree-node {
+    flex-wrap: wrap;
+  }
+}

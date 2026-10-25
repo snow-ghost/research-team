@@ -37,16 +37,17 @@ type Goal struct {
 	Candidate   string `json:"candidate"`
 }
 type Report struct {
-	Status            string   `json:"status"`
-	Phase             string   `json:"phase"`
-	Diagnostics       string   `json:"diagnostics,omitempty"`
-	Axioms            []string `json:"axioms"`
-	GoalSHA256        string   `json:"goal_sha256"`
-	SourceSHA256      string   `json:"source_sha256"`
-	EnvironmentSHA256 string   `json:"environment_sha256"`
-	LeanVersion       string   `json:"lean_version"`
-	ArtifactSHA256    string   `json:"artifact_sha256,omitempty"`
-	AuditSHA256       string   `json:"audit_sha256,omitempty"`
+	Dependencies      *ProofDependencies `json:"dependencies,omitempty"`
+	Status            string             `json:"status"`
+	Phase             string             `json:"phase"`
+	Diagnostics       string             `json:"diagnostics,omitempty"`
+	Axioms            []string           `json:"axioms"`
+	GoalSHA256        string             `json:"goal_sha256"`
+	SourceSHA256      string             `json:"source_sha256"`
+	EnvironmentSHA256 string             `json:"environment_sha256"`
+	LeanVersion       string             `json:"lean_version"`
+	ArtifactSHA256    string             `json:"artifact_sha256,omitempty"`
+	AuditSHA256       string             `json:"audit_sha256,omitempty"`
 }
 type Checker interface {
 	Check(context.Context, Goal, string, string) (Report, error)
@@ -101,7 +102,7 @@ func (c DockerChecker) Check(ctx context.Context, g Goal, source, dir string) (r
 			return report, err
 		}
 	}
-	for path, body := range map[string]string{"input/Goal.lean": g.Source, "input/Candidate.lean": source, "trusted/Audit.lean": auditSource} {
+	for path, body := range map[string]string{"input/Goal.lean": g.Source, "input/Candidate.lean": source, "trusted/Audit.lean": auditSource, "trusted/Dependencies.lean": dependencySource} {
 		if err = os.WriteFile(filepath.Join(dir, path), []byte(body), 0600); err != nil {
 			return report, err
 		}
@@ -137,6 +138,8 @@ func (c DockerChecker) Check(ctx context.Context, g Goal, source, dir string) (r
 		{"kernel", "/lean/bin/leanchecker", []string{"Candidate"},
 			appendCopy(baseMounts, goal, candidate), strings.Join(search, ":"), "/"},
 		{"audit", "/lean/bin/lean", []string{"--run", "Audit.lean", g.Declaration, g.Candidate},
+			appendCopy(baseMounts, goal, candidate, trusted), strings.Join(search, ":"), "/trusted"},
+		{"dependencies", "/lean/bin/lean", []string{"--run", "Dependencies.lean", g.Candidate},
 			appendCopy(baseMounts, goal, candidate, trusted), strings.Join(search, ":"), "/trusted"},
 	}
 	for _, phase := range phases {
@@ -175,6 +178,14 @@ func (c DockerChecker) Check(ctx context.Context, g Goal, source, dir string) (r
 					return report, nil
 				}
 			}
+		}
+		if phase.name == "dependencies" {
+			var deps ProofDependencies
+			if json.Unmarshal([]byte(output), &deps) != nil || deps.Direct == nil || deps.LibraryReferences == nil || len(deps.Direct) > 8192 || len(deps.LibraryReferences) > 8192 {
+				return report, errors.New("invalid dependency audit")
+			}
+			deps.ProcedureSHA256 = DependencyDigest()
+			report.Dependencies = &deps
 		}
 	}
 	body, err := os.ReadFile(filepath.Join(dir, "checked", "Candidate.olean"))

@@ -38,6 +38,10 @@ type MatchReport struct {
 }
 
 // Type unification proposes a term; only the separate kernel check marks it verified.
+type ModuleMatcher interface {
+	MatchModule(context.Context, Goal, string, ModuleReport, string, string) (MatchReport, error)
+}
+
 func (c DockerChecker) MatchModule(ctx context.Context, g Goal, moduleDir string, module ModuleReport, candidate, dir string) (r MatchReport, err error) {
 	found := false
 	for _, path := range c.Config.Libraries {

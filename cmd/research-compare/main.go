@@ -18,6 +18,7 @@ func main() {
 	out := flag.String("out", "", "New private result directory")
 	confirm := flag.Bool("confirm", false, "Authorize the configured comparison (v1: 96, v2/v3: 216 requests)")
 	resume := flag.Bool("resume", false, "Continue only unstarted runs; interrupted requests are held and never replayed")
+	resolvePaths := flag.Bool("resolve-lean-paths", false, "Resolve current aliases to the same Lean directories without rewriting the experiment configuration")
 	flag.Parse()
 	if !*confirm || *config == "" || *server == "" || *out == "" {
 		fmt.Fprintln(os.Stderr, "Pass -config, -server-config, -out and -confirm.")
@@ -32,7 +33,7 @@ func main() {
 	if err == nil {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		r, runErr := researchcompare.RunComparison(ctx, c, *out, researchcompare.Runner{Lookup: o.Lookup, Resume: *resume})
+		r, runErr := researchcompare.RunComparison(ctx, c, *out, researchcompare.Runner{Lookup: o.Lookup, Resume: *resume, ResolveLeanPaths: *resolvePaths})
 		err = runErr
 		if err == nil {
 			fmt.Printf("Completed runs: %d. Maximum requests: %d. Results are not operator acceptance.\n", len(r.Runs), r.MaxRequests)

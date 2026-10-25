@@ -26,7 +26,7 @@ func reviewMaterials(d Data, a Attempt) any {
 	if source := d.attempt(v.Attempt); author == "" && source != nil {
 		author = "executor:" + source.Profile
 	}
-	return map[string]any{"proof_binding": a.ProofBinding, "goal": v.Goal, "source": v.Source, "report": v.Report, "author": author, "origin": v.Origin, "purpose": v.Purpose, "original_goal_sha256": v.OriginalGoalSHA256}
+	return map[string]any{"proof_binding": a.ProofBinding, "goal": v.Goal, "source": v.Source, "report": v.Report, "author": author, "origin": v.Origin, "purpose": v.Purpose, "original_goal_sha256": v.OriginalGoalSHA256, "digest_basis": "sha256 of JSON value, not raw file bytes", "recomputed_goal_sha256": leancheck.Digest(v.Goal), "recomputed_source_sha256": leancheck.Digest(v.Source), "recomputed_by": "server", "original_goal_sha256_scope": "used for refutation only; empty for positive submitted proof"}
 }
 
 type ReviewReport = proofreview.Report

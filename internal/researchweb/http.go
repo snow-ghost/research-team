@@ -382,6 +382,40 @@ func (h *HTTP) view(w http.ResponseWriter) {
 	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
 }
 func (h *HTTP) routes() {
+	h.mux.HandleFunc("POST /api/skills/{id}/trial", func(w http.ResponseWriter, r *http.Request) {
+		var body SkillTrialRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		result, err := h.service.TrialSkill(r.PathValue("id"), body)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, result)
+	})
+	h.mux.HandleFunc("POST /api/lemmas/catalog-search", func(w http.ResponseWriter, r *http.Request) {
+		var body CatalogSearchRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		result, err := h.service.SearchCatalog(r.Context(), body)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, result)
+	})
+	h.mux.HandleFunc("GET /api/studies/{id}/completion", func(w http.ResponseWriter, r *http.Request) {
+		value, err := h.service.StudyCompletion(r.PathValue("id"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, value)
+	})
 	h.mux.HandleFunc("POST /api/attempts/{id}/reassign", func(w http.ResponseWriter, r *http.Request) {
 		var body ReassignWorkerRequest
 		if err := bodyJSON(w, r, &body); err != nil {

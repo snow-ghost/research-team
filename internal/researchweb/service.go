@@ -247,7 +247,7 @@ func (s *Service) Act(a Action) error {
 			return s.attachProof(d, a.Target, a.Attempt)
 		})
 	}
-	return s.Store.Change(a.ExpectedRevision, a.RequestID, hash(a), actionLabel(a.Type), a.Target, "operator", func(d *Data) error {
+	err := s.Store.Change(a.ExpectedRevision, a.RequestID, hash(a), actionLabel(a.Type), a.Target, "operator", func(d *Data) error {
 		if a.Type == "SUBMIT_REVIEW" {
 			e := d.entity(a.Target)
 			if e != nil && e.Status == "challenged" && e.FormalGoal != nil && !hasVerifiedProof(d, e) {
@@ -280,8 +280,13 @@ func (s *Service) Act(a Action) error {
 				}
 			}
 		}
-		return applyAction(d, a)
+		if err := applyAction(d, a); err != nil {
+			return err
+		}
+		stopClosedStudies(d)
+		return nil
 	})
+	return err
 }
 func (s *Service) Start(r RunRequest) error {
 	if !requestPattern.MatchString(r.RequestID) {
@@ -324,6 +329,9 @@ func (s *Service) Start(r RunRequest) error {
 		item := d.entity(t.Target)
 		if item == nil {
 			return RuleError("Утверждение не найдено.")
+		}
+		if t.Kind != "answer" && studyClosed(d, item.Study) {
+			return RuleError("Основная цель исследования уже закрыта.")
 		}
 		var binding *ProofBinding
 		reviewOf := ""
@@ -531,6 +539,7 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 		if result.Status == "candidate" && strings.TrimSpace(result.Candidate) == "" {
 			result.Status = "failed"
 		}
+		enforceSkillResults(attemptProfile(s, *current), &result)
 		data, _ := json.Marshal(result)
 		dir := filepath.Join(s.Options.Config.DataDir, "attempts", a.ID)
 		if err := os.MkdirAll(dir, 0700); err != nil {

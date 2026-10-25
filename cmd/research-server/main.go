@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -19,8 +20,18 @@ import (
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
+}
+
+type configurationError struct{ error }
+
+func exitCode(err error) int {
+	var config configurationError
+	if errors.As(err, &config) {
+		return 78
+	}
+	return 1
 }
 func run() error {
 	if len(os.Args) == 3 && os.Args[1] == "--tool-proxy" {
@@ -30,7 +41,7 @@ func run() error {
 	flag.Parse()
 	o, err := researchweb.LoadOptions(*config)
 	if err != nil {
-		return err
+		return configurationError{err}
 	}
 	service, err := researchweb.NewService(o)
 	if err != nil {

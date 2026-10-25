@@ -43,6 +43,8 @@ type Skill struct {
 }
 
 type SkillContract struct {
+	Procedure     []string            `json:"procedure,omitempty"`
+	ResultChecks  []string            `json:"result_checks,omitempty"`
 	Applicability *SkillApplicability `json:"applicability,omitempty"`
 	Preconditions []string            `json:"preconditions"`
 	Inputs        []string            `json:"inputs"`
@@ -132,25 +134,33 @@ type Usage struct {
 }
 
 type Result struct {
-	Diagnostics            []Diagnostic `json:"diagnostics,omitempty"`
-	ContentPolicy          string       `json:"content_policy,omitempty"`
-	ExecutionProfileSHA256 string       `json:"execution_profile_sha256,omitempty"`
-	TaskID                 string       `json:"task_id"`
-	AttemptID              string       `json:"attempt_id"`
-	Snapshot               string       `json:"snapshot"`
-	LeaseEpoch             uint64       `json:"lease_epoch"`
-	ProfileID              string       `json:"profile_id"`
-	ProfileSHA256          string       `json:"profile_sha256"`
-	PacketSHA256           string       `json:"packet_sha256"`
-	Status                 string       `json:"status"`
-	Candidate              string       `json:"candidate,omitempty"`
-	Partial                string       `json:"partial,omitempty"`
-	SessionID              string       `json:"session_id,omitempty"`
-	Usage                  *Usage       `json:"usage"`
-	Events                 []Event      `json:"events"`
+	PrecheckStatus         string             `json:"precheck_status,omitempty"`
+	SkillChecks            []SkillResultCheck `json:"skill_checks,omitempty"`
+	Diagnostics            []Diagnostic       `json:"diagnostics,omitempty"`
+	ContentPolicy          string             `json:"content_policy,omitempty"`
+	ExecutionProfileSHA256 string             `json:"execution_profile_sha256,omitempty"`
+	TaskID                 string             `json:"task_id"`
+	AttemptID              string             `json:"attempt_id"`
+	Snapshot               string             `json:"snapshot"`
+	LeaseEpoch             uint64             `json:"lease_epoch"`
+	ProfileID              string             `json:"profile_id"`
+	ProfileSHA256          string             `json:"profile_sha256"`
+	PacketSHA256           string             `json:"packet_sha256"`
+	Status                 string             `json:"status"`
+	Candidate              string             `json:"candidate,omitempty"`
+	Partial                string             `json:"partial,omitempty"`
+	SessionID              string             `json:"session_id,omitempty"`
+	Usage                  *Usage             `json:"usage"`
+	Events                 []Event            `json:"events"`
 	// A stopped local process/request does not establish remote cancellation.
 	RemoteOutcome string `json:"remote_outcome"`
 	FailureCode   string `json:"failure_code,omitempty"`
+}
+
+type SkillResultCheck struct {
+	Skill  string `json:"skill"`
+	Check  string `json:"check"`
+	Passed bool   `json:"passed"`
 }
 
 type Executor interface {

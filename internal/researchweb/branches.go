@@ -183,7 +183,9 @@ func (s *Service) advanceBranches() {
 		e := v.entity(branch.Target)
 		team := v.team(branch.Team)
 		status, reason := branch.Status, branch.Reason
-		if e == nil || e.FormalGoal == nil || leancheck.Digest(*e.FormalGoal) != branch.GoalSHA256 {
+		if studyClosed(&v.Data, branch.Study) {
+			status, reason = "completed", "Основная цель исследования закрыта оператором."
+		} else if e == nil || e.FormalGoal == nil || leancheck.Digest(*e.FormalGoal) != branch.GoalSHA256 {
 			status, reason = "invalidated", "Формальная цель изменена."
 		} else if !branchLibrariesMatch(&v.Data, branch) {
 			status, reason = "invalidated", "Закрепленная принятая зависимость изменена."

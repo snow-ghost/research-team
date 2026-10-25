@@ -1084,6 +1084,7 @@ function NativeLemmaMatching({ live, target }) {
   const state = live.data.state;
   const [error, setError] = useState("");
   const [matchTarget, setMatchTarget] = useState(target);
+  const [catalog, setCatalog] = useState(null);
   useEffect(() => setMatchTarget(target), [target]);
   const libraries = (state.library || []).filter((l) => l.status === "ready");
   const open = state.entities.filter(
@@ -1106,6 +1107,81 @@ function NativeLemmaMatching({ live, target }) {
   return (
     <section className="process-section" aria-label="Подбор типов Lean">
       <h3>Подбор типов Lean</h3>
+      <form
+        className="runtime-form"
+        aria-label="Поиск по каталогу Lean"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setError("");
+          const f = Object.fromEntries(new FormData(e.currentTarget));
+          try {
+            setCatalog(
+              await live.command("/lemmas/catalog-search", {
+                target: selectedTarget,
+                query: f.query,
+                limit: Number(f.limit),
+                timeout_seconds: Number(f.timeout),
+                confirm: true,
+              }),
+            );
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
+      >
+        <label>
+          Фильтр лемм
+          <input name="query" maxLength={200} />
+        </label>
+        <label>
+          Предел лемм
+          <input
+            name="limit"
+            type="number"
+            min={1}
+            max={8}
+            defaultValue={4}
+            required
+          />
+        </label>
+        <label>
+          Предел времени, с
+          <input
+            name="timeout"
+            type="number"
+            min={1}
+            max={120}
+            defaultValue={90}
+            required
+          />
+        </label>
+        <label className="checkbox-label">
+          <input type="checkbox" required />
+          Подтверждаю местные проверки каталога
+        </label>
+        <button
+          className="button secondary"
+          disabled={
+            live.busy ||
+            !libraries.length ||
+            !selectedTarget ||
+            !live.data.lean?.configured
+          }
+        >
+          <Search size={15} />
+          Проверить каталог
+        </button>
+      </form>
+      {catalog && (
+        <p role="status">
+          Проверено лемм: {catalog.matches.length}.{" "}
+          {catalog.status === "verified"
+            ? "Терм проверен Lean"
+            : catalog.status === "bounded"
+              ? "Достигнут предел поиска"
+              : "Проверки завершены"}
+        </p>
+      )}
       {error && (
         <p className="api-error" role="alert">
           {error}

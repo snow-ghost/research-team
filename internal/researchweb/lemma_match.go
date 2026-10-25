@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 )
 
 type NativeLemmaMatch struct {
+	CatalogRequest   string                `json:"catalog_request,omitempty"`
 	ID               string                `json:"id"`
 	Target           string                `json:"target"`
 	TargetRevision   int                   `json:"target_revision"`
@@ -24,6 +26,7 @@ type NativeLemmaMatch struct {
 }
 
 type MatchLemmaRequest struct {
+	CatalogRequest   string `json:"catalog_request,omitempty"`
 	ExpectedRevision int    `json:"expected_revision"`
 	RequestID        string `json:"request_id"`
 	Target           string `json:"target"`
@@ -50,6 +53,9 @@ func matchCurrent(d *Data, m NativeLemmaMatch) bool {
 }
 
 func (s *Service) MatchLemma(ctx context.Context, r MatchLemmaRequest) error {
+	if r.CatalogRequest != "" && !requestPattern.MatchString(r.CatalogRequest) {
+		return ErrLimit
+	}
 	if s.Options.Lean == nil || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) {
 		return RuleError("Нужны закрепленная среда Lean и снимок.")
 	}
@@ -104,15 +110,25 @@ func (s *Service) MatchLemma(ctx context.Context, r MatchLemmaRequest) error {
 		g.Source = "import " + library.Module + "\n" + g.Source
 	}
 	dir := filepath.Join(s.Options.Config.DataDir, "inspections", id)
-	report, matchErr := (leancheck.DockerChecker{Config: *env}).MatchModule(run, g, filepath.Join(s.Options.Config.DataDir, "library", library.ID, "checked"), *library.Report, library.Goal.Candidate, dir)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	matcher := s.Options.Matcher
+	if matcher == nil {
+		matcher = leancheck.DockerChecker{Config: *env}
+	}
+	report, matchErr := matcher.MatchModule(run, g, filepath.Join(s.Options.Config.DataDir, "library", library.ID, "checked"), *library.Report, library.Goal.Candidate, dir)
+	if matchErr != nil {
+		report.Status = "failed"
+		if report.Diagnostics == "" {
+			report.Diagnostics = "Нативный подбор не завершен; исходные сведения проверки сохранены."
+		}
+	}
 	body, _ := json.Marshal(report)
 	if err := atomicFile(filepath.Join(dir, "report.json"), body); err != nil {
 		return err
 	}
-	if matchErr != nil {
-		return RuleError("Подбор типов Lean не завершен; отчет сохранен.")
-	}
-	m := NativeLemmaMatch{ID: id, Target: e.ID, TargetRevision: e.Revision, TargetGoalSHA256: leancheck.Digest(*e.FormalGoal), Library: library.ID, Goal: g, Report: report, CreatedAt: time.Now().UTC()}
+	m := NativeLemmaMatch{CatalogRequest: r.CatalogRequest, ID: id, Target: e.ID, TargetRevision: e.Revision, TargetGoalSHA256: leancheck.Digest(*e.FormalGoal), Library: library.ID, Goal: g, Report: report, CreatedAt: time.Now().UTC()}
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Подобрана подстановка средствами Lean", e.ID, "checker", func(d *Data) error {
 		if !matchCurrent(d, m) {
 			return ErrConflict

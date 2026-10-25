@@ -59,20 +59,28 @@ type Run struct {
 	ReviewAccepted      bool               `json:"review_accepted"`
 }
 type Report struct {
-	PolicySHA256        string      `json:"policy_sha256,omitempty"`
-	AuditSHA256         string      `json:"audit_sha256,omitempty"`
-	ResumedAt           []time.Time `json:"resumed_at,omitempty"`
-	Version             int         `json:"version"`
-	StartedAt           time.Time   `json:"started_at"`
-	ConfigurationSHA256 string      `json:"configuration_sha256"`
-	MaxRequests         int         `json:"max_requests"`
-	Runs                []Run       `json:"runs"`
+	EnvironmentResolutions []EnvironmentResolution `json:"environment_resolutions,omitempty"`
+	PolicySHA256           string                  `json:"policy_sha256,omitempty"`
+	AuditSHA256            string                  `json:"audit_sha256,omitempty"`
+	ResumedAt              []time.Time             `json:"resumed_at,omitempty"`
+	Version                int                     `json:"version"`
+	StartedAt              time.Time               `json:"started_at"`
+	ConfigurationSHA256    string                  `json:"configuration_sha256"`
+	MaxRequests            int                     `json:"max_requests"`
+	Runs                   []Run                   `json:"runs"`
 }
 type Runner struct {
-	Resume  bool
-	Build   func(execution.Profile, func(string) (string, bool)) (execution.Executor, error)
-	Checker leancheck.Checker
-	Lookup  func(string) (string, bool)
+	ResolveLeanPaths bool
+	Resume           bool
+	Build            func(execution.Profile, func(string) (string, bool)) (execution.Executor, error)
+	Checker          leancheck.Checker
+	Lookup           func(string) (string, bool)
+}
+
+type EnvironmentResolution struct {
+	RecordedAt      time.Time `json:"recorded_at"`
+	OriginalSHA256  string    `json:"original_sha256"`
+	EffectiveSHA256 string    `json:"effective_sha256"`
 }
 
 func (c Config) Validate() error {

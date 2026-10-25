@@ -133,6 +133,9 @@ func (s *Service) StartTeam(r TeamRequest) error {
 				goalID = r.Target
 			}
 			goal := d.entity(goalID)
+			if studyClosed(d, r.Study) {
+				return RuleError("Основная цель исследования уже закрыта.")
+			}
 			if goal == nil || goal.Study != study.ID {
 				return RuleError("Обязательство должно относиться к выбранному исследованию.")
 			}
@@ -309,6 +312,10 @@ func teamGoalClosed(d *Data, team ResearchTeam) bool {
 	return e != nil && (e.Status == "refuted" || d.effective(e.ID, map[string]bool{}) == "accepted")
 }
 func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
+	if studyClosed(d, team.Study) {
+		stopClosedStudies(d)
+		return nil
+	}
 	block := func(reason string) error { team.Status = "blocked"; team.Reason = reason; return nil }
 	if goal := d.entity(team.Goal); goal != nil && goal.Status == "refuted" {
 		cancelTeam(d, team.ID)

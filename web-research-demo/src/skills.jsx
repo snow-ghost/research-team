@@ -13,6 +13,12 @@ const fields = {
   examples: "Примеры",
 };
 
+const resultChecks = {
+  lean_source: "Исходник Lean",
+  counterexample_report: "Отчет контрпримеров",
+  review_report: "Рецензия",
+};
+
 export function SkillRegistry({ live }) {
   const [open, setOpen] = useState(false),
     [error, setError] = useState("");
@@ -48,6 +54,10 @@ export function SkillRegistry({ live }) {
                 label: f.label,
                 instructions: f.instructions,
                 contract: {
+                  procedure: lines(f.procedure || ""),
+                  result_checks: Object.keys(resultChecks).filter(
+                    (c) => f[`check_${c}`] === "on",
+                  ),
                   ...Object.fromEntries(
                     Object.keys(fields).map((key) => [key, lines(f[key])]),
                   ),
@@ -115,6 +125,19 @@ export function SkillRegistry({ live }) {
             Формат результата
             <textarea name="output" required maxLength={4000} />
           </label>
+          <label className="wide">
+            Порядок действий
+            <textarea name="procedure" maxLength={16000} />
+          </label>
+          <fieldset className="wide">
+            <legend>Проверки результата</legend>
+            {Object.entries(resultChecks).map(([id, label]) => (
+              <label className="checkbox-label" key={id}>
+                <input type="checkbox" name={`check_${id}`} />
+                {label}
+              </label>
+            ))}
+          </fieldset>
           <fieldset className="wide">
             <legend>Требуемые инструменты</legend>
             {["read_file", "check_lean", "check_refutation"].map((t) => (
@@ -231,6 +254,116 @@ export function SkillRegistry({ live }) {
           </tbody>
         </table>
       </div>
+      <SkillTrial live={live} />
+    </section>
+  );
+}
+
+function SkillTrial({ live }) {
+  const [result, setResult] = useState(null),
+    [error, setError] = useState("");
+  const state = live.data.state;
+  return (
+    <section className="process-section" aria-label="Испытание навыка">
+      <h3>Испытание навыка</h3>
+      <form
+        className="runtime-form"
+        aria-label="Проверка навыка"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setError("");
+          const f = Object.fromEntries(new FormData(e.currentTarget));
+          try {
+            setResult(
+              await live.command(`/skills/${f.skill}/trial`, {
+                target: f.target,
+                profile: f.profile,
+                role: f.role,
+                candidate: f.candidate,
+              }),
+            );
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
+      >
+        <label>
+          Навык
+          <select name="skill" required>
+            {(state.skill_revisions || []).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label} · {s.id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Профиль
+          <select name="profile" required>
+            {live.data.profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Утверждение
+          <select name="target" required>
+            {state.entities.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Роль
+          <select name="role">
+            <option value="proof">Доказательство</option>
+            <option value="formalize">Формализация</option>
+            <option value="counterexample">Контрпримеры</option>
+            <option value="review">Рецензия</option>
+            <option value="decompose">План</option>
+            <option value="answer">Ответ</option>
+          </select>
+        </label>
+        <label className="wide">
+          Образец результата
+          <textarea name="candidate" maxLength={65536} required />
+        </label>
+        <button
+          className="button secondary"
+          disabled={live.busy || !state.skill_revisions?.length}
+        >
+          <Save size={15} />
+          Проверить образец
+        </button>
+      </form>
+      {error && (
+        <p role="alert" className="api-error">
+          {error}
+        </p>
+      )}
+      {result && (
+        <div role="status">
+          <p>
+            {result.applicable
+              ? "Условия применения выполнены"
+              : "Условия применения не выполнены"}
+          </p>
+          {result.selections.map((s, i) => (
+            <p key={i}>{s.reason}</p>
+          ))}
+          {result.checks.map((c, i) => (
+            <p key={i}>
+              {resultChecks[c.check] || c.check}:{" "}
+              {c.passed ? "форма соответствует" : "ошибка формы"}
+            </p>
+          ))}
+          <p>Математическая проверка не выполнена.</p>
+        </div>
+      )}
     </section>
   );
 }

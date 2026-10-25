@@ -43,7 +43,15 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 		report.Version = 3
 		report.PolicySHA256 = DemandPolicyDigest()
 	}
-	if err := c.Validate(); err != nil {
+	validation := c
+	if r.ResolveLeanPaths {
+		var err error
+		validation.Lean, err = leancheck.ResolvePaths(c.Lean)
+		if err != nil {
+			return report, err
+		}
+	}
+	if err := validation.Validate(); err != nil {
 		return report, err
 	}
 	if c.Universal.Kind != "model" {
@@ -63,7 +71,7 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 		r.Build = execution.Build
 	}
 	if r.Checker == nil {
-		r.Checker = leancheck.DockerChecker{Config: c.Lean}
+		r.Checker = leancheck.DockerChecker{Config: validation.Lean}
 	}
 	if r.Lookup == nil {
 		r.Lookup = os.LookupEnv
@@ -97,6 +105,9 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 		report.ResumedAt = append(report.ResumedAt, time.Now().UTC())
 	} else if err := os.Mkdir(dir, 0700); err != nil {
 		return report, errors.New("destination must be new")
+	}
+	if r.ResolveLeanPaths && leancheck.Digest(c.Lean) != leancheck.Digest(validation.Lean) {
+		report.EnvironmentResolutions = append(report.EnvironmentResolutions, EnvironmentResolution{RecordedAt: time.Now().UTC(), OriginalSHA256: leancheck.Digest(c.Lean), EffectiveSHA256: leancheck.Digest(validation.Lean)})
 	}
 	if err := saveReport(dir, report); err != nil {
 		return report, err

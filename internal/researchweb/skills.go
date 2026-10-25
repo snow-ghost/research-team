@@ -29,6 +29,21 @@ type SkillRequest struct {
 }
 
 func validateSkillContract(c execution.SkillContract) error {
+	if len(c.Procedure) > 16 || len(c.ResultChecks) > 3 {
+		return ErrLimit
+	}
+	for _, step := range c.Procedure {
+		if !textOK(step, 4000) {
+			return ErrLimit
+		}
+	}
+	checks := map[string]bool{}
+	for _, check := range c.ResultChecks {
+		if (check != "lean_source" && check != "review_report" && check != "counterexample_report") || checks[check] {
+			return RuleError("Неизвестная или повторная проверка результата навыка.")
+		}
+		checks[check] = true
+	}
 	if err := validateSkillApplicability(c.Applicability); err != nil {
 		return err
 	}

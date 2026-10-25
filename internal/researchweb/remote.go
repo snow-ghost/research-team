@@ -59,6 +59,9 @@ func (s *Service) ReassignWorker(id string, r ReassignWorkerRequest) error {
 		}
 		target := d.entity(old.Target)
 		task := d.task(old.TaskID)
+		if target != nil && task != nil && task.Kind != "answer" && studyClosed(d, target.Study) {
+			return RuleError("Основная цель исследования уже закрыта.")
+		}
 		if target == nil || task == nil || target.Revision != old.TargetRevision || target.Status == "accepted" || target.Status == "refuted" || target.Status == "challenged" {
 			return RuleError("Версия цели изменилась или закрыта.")
 		}
@@ -363,6 +366,7 @@ func (s *Service) SubmitWorker(id, attempt string, r WorkerRequest) error {
 				e.Tool = strings.ReplaceAll(e.Tool, secret, "[REDACTED]")
 			}
 		}
+		enforceSkillResults(profile, &result)
 		dir := filepath.Join(s.Options.Config.DataDir, "attempts", a.ID)
 		journal, err := openJournal(dir, s.profileSecrets(profile), func() {})
 		if err != nil {

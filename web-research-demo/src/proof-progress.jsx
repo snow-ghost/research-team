@@ -14,6 +14,7 @@ const statusNames = {
 
 export function ProofProgressPanel({ live, study, onSelect }) {
   const [progress, setProgress] = useState(null);
+  const [completion, setCompletion] = useState(null);
   const [error, setError] = useState("");
   const [route, setRoute] = useState("decomposed");
   const revision = live.data.state.revision;
@@ -30,6 +31,14 @@ export function ProofProgressPanel({ live, study, onSelect }) {
         })
         .catch((e) => {
           if (active) setError(e.message);
+        });
+    if (study)
+      api(`/studies/${study}/completion`)
+        .then((value) => {
+          if (active) setCompletion(value);
+        })
+        .catch(() => {
+          if (active) setCompletion(null);
         });
     return () => {
       active = false;
@@ -102,73 +111,93 @@ export function ProofProgressPanel({ live, study, onSelect }) {
         </p>
       )}
       {progress && (
-        <div className="table-wrap">
-          <table className="proof-progress-table">
-            <thead>
-              <tr>
-                <th>Утверждение</th>
-                <th>Состояние</th>
-                <th>Lean</th>
-                <th>Основания и замечания</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {progress.nodes.map((n) => (
-                <tr key={n.id}>
-                  <td>{n.title}</td>
-                  <td>{statusNames[n.status] || n.status}</td>
-                  <td>
-                    {n.native === "verified"
-                      ? "Проверено"
-                      : n.native === "none"
-                        ? "Нет проверки"
-                        : n.native}
-                  </td>
-                  <td>
-                    {n.blockers.length ? (
-                      <ul>
-                        {n.blockers.map((b, i) => (
-                          <li key={i}>{b}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      "Нет незакрытых оснований"
-                    )}
-                    {n.modules.map((m) => (
-                      <p key={m}>{m}</p>
-                    ))}
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      {onSelect && (
-                        <button
-                          className="button secondary"
-                          title="Открыть утверждение"
-                          aria-label={`Открыть: ${n.title}`}
-                          onClick={() => onSelect(n.id)}
-                        >
-                          <ChevronRight size={16} />
-                        </button>
-                      )}
-                      {!["accepted", "refuted"].includes(n.status) && (
-                        <button
-                          className="button secondary"
-                          title="Отдельные приемы Lean"
-                          aria-label={`Проверить Lean: ${n.title}`}
-                          disabled={live.busy}
-                          onClick={() => tactics(n.id)}
-                        >
-                          <FlaskConical size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
+        <>
+          {completion && (
+            <div className="usage-summary" aria-label="Итог исследования">
+              <p>
+                {completion.status === "completed"
+                  ? "Основная цель закрыта"
+                  : completion.status === "awaiting_operator"
+                    ? "Ожидает решения оператора"
+                    : "Основная цель открыта"}
+                . Активных попыток: {completion.active_attempts}.
+              </p>
+              <p>
+                Исходники исполнителей: {completion.executor_sources}.
+                Представленные исходники: {completion.submitted_sources}.
+                Перенесенные: {completion.imported_sources}. Заметки оператора:{" "}
+                {completion.operator_notes}.
+              </p>
+            </div>
+          )}
+          <div className="table-wrap">
+            <table className="proof-progress-table">
+              <thead>
+                <tr>
+                  <th>Утверждение</th>
+                  <th>Состояние</th>
+                  <th>Lean</th>
+                  <th>Основания и замечания</th>
+                  <th>Действия</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {progress.nodes.map((n) => (
+                  <tr key={n.id}>
+                    <td>{n.title}</td>
+                    <td>{statusNames[n.status] || n.status}</td>
+                    <td>
+                      {n.native === "verified"
+                        ? "Проверено"
+                        : n.native === "none"
+                          ? "Нет проверки"
+                          : n.native}
+                    </td>
+                    <td>
+                      {n.blockers.length ? (
+                        <ul>
+                          {n.blockers.map((b, i) => (
+                            <li key={i}>{b}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        "Нет незакрытых оснований"
+                      )}
+                      {n.modules.map((m) => (
+                        <p key={m}>{m}</p>
+                      ))}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        {onSelect && (
+                          <button
+                            className="button secondary"
+                            title="Открыть утверждение"
+                            aria-label={`Открыть: ${n.title}`}
+                            onClick={() => onSelect(n.id)}
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        )}
+                        {!["accepted", "refuted"].includes(n.status) && (
+                          <button
+                            className="button secondary"
+                            title="Отдельные приемы Lean"
+                            aria-label={`Проверить Lean: ${n.title}`}
+                            disabled={live.busy}
+                            onClick={() => tactics(n.id)}
+                          >
+                            <FlaskConical size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );

@@ -45,6 +45,7 @@ type DatabaseConfig struct {
 	DSNEnv string `json:"dsn_env,omitempty"`
 }
 type Options struct {
+	Matcher        leancheck.ModuleMatcher
 	TelegramClient TelegramClient
 	Lean           *leancheck.Config
 	Checker        leancheck.Checker

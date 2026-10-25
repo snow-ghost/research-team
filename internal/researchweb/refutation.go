@@ -178,6 +178,7 @@ func (s *Service) AcceptRefutation(id string, r RefutationAcceptanceRequest) err
 		v.TargetRevision = e.Revision
 		e.ReviewedBy = "operator"
 		e.ReviewReason = r.Note
+		stopClosedStudies(d)
 		return nil
 	})
 }

@@ -5,6 +5,7 @@ package researchweb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -56,6 +57,24 @@ func packageFixture(t *testing.T) (*Service, ResultPackage) {
 		t.Fatal(err)
 	}
 	return s, p
+}
+
+func TestResultPackageBDD_UnstartedIncompleteHistoryReturnsRuleErrorNotStorageFailure(t *testing.T) {
+	s, p := packageFixture(t)
+	profile := s.profile("proof")
+	if err := s.Store.Change(0, "", "", "Preparation failure without artifacts", p.Target.ID, "test", func(d *Data) error {
+		taskID, attemptID := identifier("task"), identifier("run")
+		d.Tasks = append(d.Tasks, Task{ID: taskID, Target: p.Target.ID, Kind: "proof", State: "failed", Attempt: attemptID})
+		d.Attempts = append(d.Attempts, Attempt{ID: attemptID, TaskID: taskID, Target: p.Target.ID, TargetRevision: d.entity(p.Target.ID).Revision, Profile: profile.ID, ProfileConfiguration: &profile, Status: "failed", RemoteOutcome: "not_started"})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.ExportResultPackage(p.Result.ID)
+	var rule RuleError
+	if !errors.As(err, &rule) {
+		t.Fatal("incomplete input reported as storage failure", err)
+	}
 }
 
 func packageDestination(t *testing.T, status string, backend ...string) *Service {

@@ -110,6 +110,37 @@ export function ProofProgressPanel({ live, study, onSelect }) {
           {error}
         </p>
       )}
+      {study && (
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            disabled={live.busy}
+            checked={
+              !!live.data.state.studies.find((s) => s.id === study)
+                ?.pause_on_ready
+            }
+            onChange={async (e) => {
+              const value = e.target.checked;
+              if (
+                !window.confirm(
+                  "Изменить приостановку поиска при готовности основной цели? Приемка остается отдельным решением.",
+                )
+              )
+                return;
+              try {
+                setError("");
+                await live.command(`/studies/${study}/policy`, {
+                  pause_on_ready: value,
+                  confirm: true,
+                });
+              } catch (error) {
+                setError(error.message);
+              }
+            }}
+          />
+          Приостанавливать поиск при готовности основной цели
+        </label>
+      )}
       {progress && (
         <>
           {completion && (
@@ -123,6 +154,8 @@ export function ProofProgressPanel({ live, study, onSelect }) {
                 . Активных попыток: {completion.active_attempts}.
               </p>
               <p>
+                {completion.search_suspended &&
+                  "Поиск приостановлен до решения оператора. "}
                 Исходники исполнителей: {completion.executor_sources}.
                 Представленные исходники: {completion.submitted_sources}.
                 Перенесенные: {completion.imported_sources}. Заметки оператора:{" "}

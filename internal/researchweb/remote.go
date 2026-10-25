@@ -59,7 +59,7 @@ func (s *Service) ReassignWorker(id string, r ReassignWorkerRequest) error {
 		}
 		target := d.entity(old.Target)
 		task := d.task(old.TaskID)
-		if target != nil && task != nil && task.Kind != "answer" && studyClosed(d, target.Study) {
+		if target != nil && task != nil && task.Kind != "answer" && (studyClosed(d, target.Study) || studySearchSuspended(d, target.Study)) {
 			return RuleError("Основная цель исследования уже закрыта.")
 		}
 		if target == nil || task == nil || target.Revision != old.TargetRevision || target.Status == "accepted" || target.Status == "refuted" || target.Status == "challenged" {

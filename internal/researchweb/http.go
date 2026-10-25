@@ -395,6 +395,19 @@ func (h *HTTP) routes() {
 		}
 		h.json(w, result)
 	})
+	h.mux.HandleFunc("POST /api/lemmas/chain-search", func(w http.ResponseWriter, r *http.Request) {
+		var b ChainSearchRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		result, err := h.service.SearchLemmaChains(r.Context(), b)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, result)
+	})
 	h.mux.HandleFunc("POST /api/lemmas/catalog-search", func(w http.ResponseWriter, r *http.Request) {
 		var body CatalogSearchRequest
 		if err := bodyJSON(w, r, &body); err != nil {
@@ -540,6 +553,18 @@ func (h *HTTP) routes() {
 			return
 		}
 		if err := h.service.RequestPlanning(b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/studies/{id}/policy", func(w http.ResponseWriter, r *http.Request) {
+		var b StudyPolicyRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SetStudyPolicy(r.PathValue("id"), b); err != nil {
 			h.fail(w, err)
 			return
 		}

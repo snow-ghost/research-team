@@ -10,47 +10,50 @@ import (
 )
 
 type ResearchTeam struct {
-	Decisions      []TeamDecision              `json:"decisions,omitempty"`
-	Diagnostic     string                      `json:"diagnostic,omitempty"`
-	Strategy       string                      `json:"strategy,omitempty"`
-	Methods        []string                    `json:"methods,omitempty"`
-	MethodIndex    int                         `json:"method_index,omitempty"`
-	Refuting       bool                        `json:"refuting,omitempty"`
-	Workers        map[string]string           `json:"workers,omitempty"`
-	OperatorNote   string                      `json:"operator_note,omitempty"`
-	RetryRole      string                      `json:"retry_role,omitempty"`
-	RoleLimits     map[string]execution.Limits `json:"role_limits,omitempty"`
-	ID             string                      `json:"id"`
-	Study          string                      `json:"study"`
-	Goal           string                      `json:"goal"`
-	Target         string                      `json:"target,omitempty"`
-	TargetRevision int                         `json:"target_revision,omitempty"`
-	Profiles       map[string]string           `json:"profiles"`
-	ProfileHashes  map[string]string           `json:"profile_hashes"`
-	Workspace      string                      `json:"workspace"`
-	MaxAttempts    int                         `json:"max_attempts"`
-	UsedAttempts   int                         `json:"used_attempts"`
-	RequireLean    bool                        `json:"require_lean"`
-	Status         string                      `json:"status"`
-	Stage          string                      `json:"stage"`
-	Reason         string                      `json:"reason"`
-	Current        map[string]string           `json:"current"`
-	Verification   string                      `json:"verification,omitempty"`
-	CreatedAt      time.Time                   `json:"created_at"`
+	FormatRepairLimit int                         `json:"format_repair_limit,omitempty"`
+	FormatRepairsUsed int                         `json:"format_repairs_used,omitempty"`
+	Decisions         []TeamDecision              `json:"decisions,omitempty"`
+	Diagnostic        string                      `json:"diagnostic,omitempty"`
+	Strategy          string                      `json:"strategy,omitempty"`
+	Methods           []string                    `json:"methods,omitempty"`
+	MethodIndex       int                         `json:"method_index,omitempty"`
+	Refuting          bool                        `json:"refuting,omitempty"`
+	Workers           map[string]string           `json:"workers,omitempty"`
+	OperatorNote      string                      `json:"operator_note,omitempty"`
+	RetryRole         string                      `json:"retry_role,omitempty"`
+	RoleLimits        map[string]execution.Limits `json:"role_limits,omitempty"`
+	ID                string                      `json:"id"`
+	Study             string                      `json:"study"`
+	Goal              string                      `json:"goal"`
+	Target            string                      `json:"target,omitempty"`
+	TargetRevision    int                         `json:"target_revision,omitempty"`
+	Profiles          map[string]string           `json:"profiles"`
+	ProfileHashes     map[string]string           `json:"profile_hashes"`
+	Workspace         string                      `json:"workspace"`
+	MaxAttempts       int                         `json:"max_attempts"`
+	UsedAttempts      int                         `json:"used_attempts"`
+	RequireLean       bool                        `json:"require_lean"`
+	Status            string                      `json:"status"`
+	Stage             string                      `json:"stage"`
+	Reason            string                      `json:"reason"`
+	Current           map[string]string           `json:"current"`
+	Verification      string                      `json:"verification,omitempty"`
+	CreatedAt         time.Time                   `json:"created_at"`
 }
 type TeamRequest struct {
-	Strategy         string            `json:"strategy,omitempty"`
-	Methods          []string          `json:"methods,omitempty"`
-	Workers          map[string]string `json:"workers,omitempty"`
-	ExpectedRevision int               `json:"expected_revision"`
-	RequestID        string            `json:"request_id"`
-	Study            string            `json:"study"`
-	Target           string            `json:"target,omitempty"`
-	Profiles         map[string]string `json:"profiles"`
-	Workspace        string            `json:"workspace"`
-	MaxAttempts      int               `json:"max_attempts"`
-	RequireLean      bool              `json:"require_lean"`
-	Confirm          bool              `json:"confirm"`
+	FormatRepairLimit int               `json:"format_repair_limit,omitempty"`
+	Strategy          string            `json:"strategy,omitempty"`
+	Methods           []string          `json:"methods,omitempty"`
+	Workers           map[string]string `json:"workers,omitempty"`
+	ExpectedRevision  int               `json:"expected_revision"`
+	RequestID         string            `json:"request_id"`
+	Study             string            `json:"study"`
+	Target            string            `json:"target,omitempty"`
+	Profiles          map[string]string `json:"profiles"`
+	Workspace         string            `json:"workspace"`
+	MaxAttempts       int               `json:"max_attempts"`
+	RequireLean       bool              `json:"require_lean"`
+	Confirm           bool              `json:"confirm"`
 }
 type TeamCommand struct {
 	Note             string                      `json:"note,omitempty"`
@@ -102,6 +105,9 @@ func (s *Service) StartTeam(r TeamRequest) error {
 			return err
 		}
 		pins[role] = hash(s.profile(profile))
+		if err := validateRoleTools(s.profile(profile), role, false); err != nil {
+			return err
+		}
 	}
 	author := r.Profiles["proof"]
 	if r.RequireLean {
@@ -133,7 +139,7 @@ func (s *Service) StartTeam(r TeamRequest) error {
 				goalID = r.Target
 			}
 			goal := d.entity(goalID)
-			if studyClosed(d, r.Study) {
+			if studyClosed(d, r.Study) || studySearchSuspended(d, r.Study) {
 				return RuleError("Основная цель исследования уже закрыта.")
 			}
 			if goal == nil || goal.Study != study.ID {
@@ -153,7 +159,7 @@ func (s *Service) StartTeam(r TeamRequest) error {
 				}
 			}
 			d.Teams = append(d.Teams, ResearchTeam{ID: identifier("team"), Study: study.ID, Goal: goal.ID,
-				Strategy: r.Strategy, Methods: r.Methods, Profiles: r.Profiles, Workers: r.Workers, ProfileHashes: pins, Workspace: r.Workspace, MaxAttempts: r.MaxAttempts, RequireLean: r.RequireLean,
+				FormatRepairLimit: r.FormatRepairLimit, Strategy: r.Strategy, Methods: r.Methods, Profiles: r.Profiles, Workers: r.Workers, ProfileHashes: pins, Workspace: r.Workspace, MaxAttempts: r.MaxAttempts, RequireLean: r.RequireLean,
 				Status: "running", Stage: "planning", Current: map[string]string{}, CreatedAt: time.Now().UTC(), Reason: "Выбор обязательства."})
 			return nil
 		}
@@ -192,6 +198,9 @@ func (s *Service) ControlTeam(id string, r TeamCommand) error {
 			team.OperatorNote = r.Note
 			team.Reason = "Разрешена повторная обработка сохраненных отчетов."
 		case "resume", "configure":
+			if studySearchSuspended(d, team.Study) {
+				return RuleError("Готовый результат основной цели ожидает решения оператора.")
+			}
 			if !r.Confirm {
 				return RuleError("Подтвердите продолжение и возможные расходы.")
 			}
@@ -316,6 +325,9 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 		stopClosedStudies(d)
 		return nil
 	}
+	if studySearchSuspended(d, team.Study) {
+		return errNoCycleChange
+	}
 	block := func(reason string) error { team.Status = "blocked"; team.Reason = reason; return nil }
 	if goal := d.entity(team.Goal); goal != nil && goal.Status == "refuted" {
 		cancelTeam(d, team.ID)
@@ -386,7 +398,7 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 		team.Reason = "Поиск доказательства и проверка контрпримеров."
 		return nil
 	}
-	for _, id := range team.Current {
+	for role, id := range team.Current {
 		a := d.attempt(id)
 		if a == nil {
 			return block("Отсутствует запись попытки.")
@@ -395,6 +407,12 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			return errNoCycleChange
 		}
 		if a.Status != "candidate" {
+			if repaired, err := s.repairTeamFormat(d, team, role, a); repaired || err != nil {
+				if err != nil {
+					return block(err.Error())
+				}
+				return nil
+			}
 			team.Status = "paused"
 			team.Reason = "Попытка " + a.ID + " остановилась: " + a.Status + ". Проверьте журнал и продолжите."
 			return nil
@@ -667,6 +685,9 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 	return block("Неизвестный этап команды.")
 }
 func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent string) error {
+	if studySearchSuspended(d, team.Study) {
+		return RuleError("Готовый результат основной цели ожидает решения оператора.")
+	}
 	if team.UsedAttempts >= team.MaxAttempts {
 		return RuleError("Исчерпан бюджет попыток команды.")
 	}
@@ -719,6 +740,9 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 	}
 	if limits, ok := team.RoleLimits[role]; ok {
 		p.Limits = limits
+	}
+	if err := validateRoleTools(p, role, role == "formalize" && team.Refuting); err != nil {
+		return err
 	}
 	reservation, err := s.reserveStudyBudget(d, target.ID, p)
 	if err != nil {
@@ -781,6 +805,11 @@ func (s *Service) teamContext(d Data, a Attempt) any {
 		out["proof_binding"] = a.ProofBinding
 	}
 	out["operator_note"] = team.OperatorNote
+	if parent := d.attempt(a.ParentAttempt); parent != nil && parent.Target == a.Target && parent.TargetRevision == a.TargetRevision {
+		if r, err := s.readResult(*parent); err == nil && repairableSkillFailure(r) && s.safeResultContent(*parent, r) {
+			out["format_repair"] = map[string]any{"attempt": parent.ID, "candidate": execution.Preview(r.Candidate, 32000), "checks": r.SkillChecks, "instruction": "Исправь форму ответа по обязательным проверкам навыка. Не считай предыдущий ответ доказанным результатом."}
+		}
+	}
 	if e := d.entity(a.Target); e != nil {
 		out["operator_review"] = e.ReviewReason
 	}

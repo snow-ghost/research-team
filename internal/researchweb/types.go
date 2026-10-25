@@ -22,12 +22,13 @@ type RuleError string
 func (e RuleError) Error() string { return string(e) }
 
 type Study struct {
-	Budget   *StudyBudget `json:"budget,omitempty"`
-	ID       string       `json:"id"`
-	Title    string       `json:"title"`
-	Goal     string       `json:"goal"`
-	Category string       `json:"category"`
-	Formula  string       `json:"formula"`
+	PauseOnReady bool         `json:"pause_on_ready,omitempty"`
+	Budget       *StudyBudget `json:"budget,omitempty"`
+	ID           string       `json:"id"`
+	Title        string       `json:"title"`
+	Goal         string       `json:"goal"`
+	Category     string       `json:"category"`
+	Formula      string       `json:"formula"`
 }
 type Entity struct {
 	RefutationVerification string          `json:"refutation_verification,omitempty"`

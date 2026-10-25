@@ -330,7 +330,7 @@ func (s *Service) Start(r RunRequest) error {
 		if item == nil {
 			return RuleError("Утверждение не найдено.")
 		}
-		if t.Kind != "answer" && studyClosed(d, item.Study) {
+		if t.Kind != "answer" && (studyClosed(d, item.Study) || studySearchSuspended(d, item.Study)) {
 			return RuleError("Основная цель исследования уже закрыта.")
 		}
 		var binding *ProofBinding

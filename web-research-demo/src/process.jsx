@@ -108,6 +108,7 @@ export function TeamPanel({ live, study, all, onSelect }) {
                 ),
                 workspace: v.workspace,
                 max_attempts: Number(v.max_attempts),
+                format_repair_limit: Number(v.format_repair_limit),
                 require_lean: v.lean === "on",
                 strategy: v.strategy,
                 methods: new FormData(e.currentTarget).getAll("methods"),
@@ -269,6 +270,17 @@ export function TeamPanel({ live, study, all, onSelect }) {
               max="20"
               name="max_attempts"
               defaultValue="8"
+              required
+            />
+          </label>
+          <label>
+            <span>Исправления формата на команду</span>
+            <input
+              name="format_repair_limit"
+              type="number"
+              min="0"
+              max="2"
+              defaultValue="0"
               required
             />
           </label>

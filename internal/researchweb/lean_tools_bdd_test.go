@@ -93,6 +93,9 @@ func TestCoddyLeanToolBDD_RealBinaryCorrectsCandidate(t *testing.T) {
 	defer model.Close()
 	o := optionsFor(t, model.URL+"/v1")
 	p := execution.Profile{ID: "coddy-lean", Kind: "external", Limits: execution.Limits{TimeoutSeconds: 120, MaxSteps: 3, MaxToolCalls: 2, MaxOutputTokens: 2048, MaxOutputBytes: 1 << 20}, External: &execution.ExternalConfig{Provider: "coddy-agent", Executable: binary, ExpectedVersion: "1.2.54", SearchPath: "/usr/bin:/bin", Model: "test/model", BaseURL: model.URL + "/v1", AllowLoopbackHTTP: true, ExecutionBoundary: "operator_managed", ToolProxy: proxy, Tools: []string{"check_lean"}}}
+	if version := os.Getenv("CODDY_AGENT_TEST_VERSION"); version != "" {
+		p.External.ExpectedVersion = version
+	}
 	o.Config.AllowExternalExecution = true
 	o.Profiles[p.ID] = p
 	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
@@ -132,6 +135,18 @@ func TestCoddyLeanToolBDD_RealBinaryCorrectsCandidate(t *testing.T) {
 	v = stateOf(t, s)
 	if v.entity(target).Status != "open" {
 		t.Fatal("intermediate check accepted proof")
+	}
+}
+
+func TestRoleToolsBDD_RefutationCapabilityCannotBeAssignedToPositiveProof(t *testing.T) {
+	p := execution.Profile{Model: &execution.ModelConfig{Tools: []string{"check_lean", "check_refutation"}}}
+	for _, role := range []string{"proof", "formalize", "review", "decompose", "answer"} {
+		if validateRoleTools(p, role, false) == nil {
+			t.Fatal("invalid role accepted", role)
+		}
+	}
+	if validateRoleTools(p, "counterexample", false) != nil || validateRoleTools(p, "formalize", true) != nil {
+		t.Fatal("negative proof checker rejected")
 	}
 }
 

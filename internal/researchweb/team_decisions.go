@@ -193,6 +193,9 @@ func selectAssignmentSkills(d *Data, f skillFacts, p *execution.Profile) []Skill
 }
 
 func selectStandaloneSkills(d *Data, target, role, method, verification string, p *execution.Profile) ([]SkillSelection, error) {
+	if err := validateRoleTools(*p, role, false); err != nil {
+		return nil, err
+	}
 	if method != "" {
 		if _, ok := researchMethod(method); !ok {
 			return nil, RuleError("Неизвестный метод исследования.")

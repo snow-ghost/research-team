@@ -71,7 +71,7 @@ func (s *Service) SearchCatalog(ctx context.Context, r CatalogSearchRequest) (Ca
 		return out, ErrConflict
 	}
 	target := view.entity(r.Target)
-	if target == nil || target.FormalGoal == nil || studyClosed(&view.Data, target.Study) {
+	if target == nil || target.FormalGoal == nil || studyClosed(&view.Data, target.Study) || studySearchSuspended(&view.Data, target.Study) {
 		return out, RuleError("Нужна открытая формальная цель исследования.")
 	}
 	version := target.Revision

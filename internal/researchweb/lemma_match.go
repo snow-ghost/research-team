@@ -13,16 +13,18 @@ import (
 )
 
 type NativeLemmaMatch struct {
-	CatalogRequest   string                `json:"catalog_request,omitempty"`
-	ID               string                `json:"id"`
-	Target           string                `json:"target"`
-	TargetRevision   int                   `json:"target_revision"`
-	TargetGoalSHA256 string                `json:"target_goal_sha256"`
-	Library          string                `json:"library"`
-	Goal             leancheck.Goal        `json:"goal"`
-	Report           leancheck.MatchReport `json:"report"`
-	Application      string                `json:"application,omitempty"`
-	CreatedAt        time.Time             `json:"created_at"`
+	Libraries        []string               `json:"libraries,omitempty"`
+	Chain            *leancheck.ChainReport `json:"chain,omitempty"`
+	CatalogRequest   string                 `json:"catalog_request,omitempty"`
+	ID               string                 `json:"id"`
+	Target           string                 `json:"target"`
+	TargetRevision   int                    `json:"target_revision"`
+	TargetGoalSHA256 string                 `json:"target_goal_sha256"`
+	Library          string                 `json:"library"`
+	Goal             leancheck.Goal         `json:"goal"`
+	Report           leancheck.MatchReport  `json:"report"`
+	Application      string                 `json:"application,omitempty"`
+	CreatedAt        time.Time              `json:"created_at"`
 }
 
 type MatchLemmaRequest struct {
@@ -41,8 +43,16 @@ type ApplyMatchRequest struct {
 
 func matchCurrent(d *Data, m NativeLemmaMatch) bool {
 	e := d.entity(m.Target)
-	if e == nil || e.Revision != m.TargetRevision || e.FormalGoal == nil || leancheck.Digest(*e.FormalGoal) != m.TargetGoalSHA256 || m.Report.MatcherSHA256 != leancheck.MatcherDigest() || m.Report.GoalSHA256 != leancheck.Digest(m.Goal) {
+	matcher := leancheck.MatcherDigest()
+	if m.Chain != nil {
+		matcher = leancheck.ChainDigest()
+	}
+	if e == nil || e.Revision != m.TargetRevision || e.FormalGoal == nil || leancheck.Digest(*e.FormalGoal) != m.TargetGoalSHA256 || m.Report.MatcherSHA256 != matcher || m.Report.GoalSHA256 != leancheck.Digest(m.Goal) {
 		return false
+	}
+	if m.Chain != nil {
+		pins, ok := chainLibraryPins(d, m.Libraries)
+		return ok && m.Chain.ProcedureSHA256 == leancheck.ChainDigest() && hash(pins) == m.Report.ArtifactSHA256
 	}
 	for _, l := range d.Library {
 		if l.ID == m.Library && l.Status == "ready" && l.Report != nil && l.Report.ArtifactSHA256 == m.Report.ArtifactSHA256 && libraryMatches(d, l) {
@@ -182,6 +192,16 @@ func (s *Service) ApplyLemmaMatch(id string, r ApplyMatchRequest) error {
 		app := newEntity(appID, "Перенос леммы: "+target.Title, "application", target.Study, target.Statement, target.Assumptions)
 		app.FormalGoal = &m.Goal
 		app.Dependencies = []string{l.Lemma}
+		if m.Chain != nil {
+			app.Dependencies = nil
+			for _, id := range m.Libraries {
+				for _, entry := range d.Library {
+					if entry.ID == id {
+						app.Dependencies = append(app.Dependencies, entry.Lemma)
+					}
+				}
+			}
+		}
 		for i, missing := range m.Report.Missing {
 			obID := identifier("O")
 			name := fmt.Sprintf("ResearchApplicationPremise_%s_%d", strings.TrimPrefix(appID, "A-"), i)

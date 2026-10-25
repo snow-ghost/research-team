@@ -39,6 +39,15 @@ func refutationGoal(g leancheck.Goal) leancheck.Goal {
 	return leancheck.Goal{Source: g.Source + "\nnamespace ResearchRefutation\ndef Statement : Prop := Not (" + g.Declaration + ")\nend ResearchRefutation\n", Declaration: "ResearchRefutation.Statement", Candidate: "ResearchRefutation.candidate"}
 }
 
+func validateRoleTools(p execution.Profile, role string, negative bool) error {
+	for _, name := range leanToolNames(p) {
+		if name == "check_refutation" && role != "counterexample" && !negative {
+			return RuleError("Проверка отрицания доступна только заданию контрпримеров или формализации отрицания.")
+		}
+	}
+	return nil
+}
+
 func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (context.Context, error) {
 	p := attemptProfile(s, a)
 	tools := []execution.RuntimeTool{}

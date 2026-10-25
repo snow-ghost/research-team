@@ -7,6 +7,9 @@ import (
 )
 
 func validateTeamStrategy(r TeamRequest) error {
+	if r.FormatRepairLimit < 0 || r.FormatRepairLimit > 2 {
+		return RuleError("Допустимо от нуля до двух исправлений формата на команду.")
+	}
 	if r.Strategy != "" && r.Strategy != "fixed" && r.Strategy != "adaptive" && r.Strategy != "demand" {
 		return RuleError("Неизвестный порядок работы команды.")
 	}

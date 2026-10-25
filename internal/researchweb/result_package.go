@@ -181,6 +181,9 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 		if a.ProfileConfiguration == nil {
 			return p, RuleError("Для экспорта нужен закрепленный исходный профиль попытки.")
 		}
+		if a.InputSHA256 == "" && a.RemoteOutcome == "not_started" {
+			return p, RuleError("История содержит попытку, остановленную до записи полного входа и журнала. Перенос неполной истории отдельным пакетом пока не поддерживается; материалы остаются в исходной базе.")
+		}
 		input, readErr := s.readInput(a)
 		if readErr != nil {
 			return p, readErr

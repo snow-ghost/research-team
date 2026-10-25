@@ -528,6 +528,17 @@ function TeamFields({ live }) {
           required
         />
       </label>
+      <label>
+        Исправления формата на команду
+        <input
+          name="format_repair_limit"
+          type="number"
+          min="0"
+          max="2"
+          defaultValue="0"
+          required
+        />
+      </label>
     </>
   );
 }
@@ -723,6 +734,7 @@ export function PlanningPanel({ live, study }) {
                           ),
                           workspace: f.workspace,
                           max_attempts: Number(f.max_attempts),
+                          format_repair_limit: Number(f.format_repair_limit),
                           require_lean: true,
                         }
                       : undefined,
@@ -1085,6 +1097,7 @@ function NativeLemmaMatching({ live, target }) {
   const [error, setError] = useState("");
   const [matchTarget, setMatchTarget] = useState(target);
   const [catalog, setCatalog] = useState(null);
+  const [catalogMode, setCatalogMode] = useState("single");
   useEffect(() => setMatchTarget(target), [target]);
   const libraries = (state.library || []).filter((l) => l.status === "ready");
   const open = state.entities.filter(
@@ -1116,23 +1129,83 @@ function NativeLemmaMatching({ live, target }) {
           const f = Object.fromEntries(new FormData(e.currentTarget));
           try {
             setCatalog(
-              await live.command("/lemmas/catalog-search", {
-                target: selectedTarget,
-                query: f.query,
-                limit: Number(f.limit),
-                timeout_seconds: Number(f.timeout),
-                confirm: true,
-              }),
+              await live.command(
+                catalogMode === "chain"
+                  ? "/lemmas/chain-search"
+                  : "/lemmas/catalog-search",
+                {
+                  target: selectedTarget,
+                  query: f.query,
+                  limit: Number(f.limit),
+                  timeout_seconds: Number(f.timeout),
+                  ...(catalogMode === "chain"
+                    ? {
+                        depth: Number(f.depth),
+                        max_trials: Number(f.max_trials),
+                      }
+                    : {}),
+                  confirm: true,
+                },
+              ),
             );
           } catch (err) {
             setError(err.message);
           }
         }}
       >
+        <fieldset className="wide">
+          <legend>Способ поиска</legend>
+          <label className="checkbox-label">
+            <input
+              type="radio"
+              name="catalog_mode"
+              value="single"
+              checked={catalogMode === "single"}
+              onChange={() => setCatalogMode("single")}
+            />
+            Одна лемма
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="radio"
+              name="catalog_mode"
+              value="chain"
+              checked={catalogMode === "chain"}
+              onChange={() => setCatalogMode("chain")}
+            />
+            Цепочка лемм
+          </label>
+        </fieldset>
         <label>
           Фильтр лемм
           <input name="query" maxLength={200} />
         </label>
+        {catalogMode === "chain" && (
+          <>
+            <label>
+              Глубина поиска Lean
+              <input
+                name="depth"
+                type="number"
+                min="1"
+                max="3"
+                defaultValue="3"
+                required
+              />
+            </label>
+            <label>
+              Предел наборов
+              <input
+                name="max_trials"
+                type="number"
+                min="1"
+                max="32"
+                defaultValue="16"
+                required
+              />
+            </label>
+          </>
+        )}
         <label>
           Предел лемм
           <input
@@ -1250,6 +1323,12 @@ function NativeLemmaMatching({ live, target }) {
           <div className="team-row" key={m.id}>
             <strong>{statuses[m.report.status] || m.report.status}</strong>
             <p>{state.library.find((l) => l.id === m.library)?.module}</p>
+            {m.chain && (
+              <p>
+                Поиск цепочки: наборов {m.chain.trials.length} /{" "}
+                {m.chain.max_trials}, глубина {m.chain.depth}.
+              </p>
+            )}
             {!!m.report.bindings.length && (
               <dl>
                 {m.report.bindings.map((b, i) => (

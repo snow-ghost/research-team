@@ -1733,7 +1733,7 @@ td small {
   color: #405650;
 }
 .access-form input,
-.runtime-form input:not([type="checkbox"]),
+.runtime-form input:not([type="checkbox"]):not([type="radio"]),
 .runtime-form select,
 .runtime-form textarea {
   width: 100%;

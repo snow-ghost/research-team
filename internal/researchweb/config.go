@@ -46,6 +46,7 @@ type DatabaseConfig struct {
 }
 type Options struct {
 	Matcher        leancheck.ModuleMatcher
+	ChainChecker   leancheck.Checker
 	TelegramClient TelegramClient
 	Lean           *leancheck.Config
 	Checker        leancheck.Checker

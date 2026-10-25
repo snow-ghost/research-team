@@ -166,6 +166,7 @@ func (s *Store) Change(expected int, requestID, fingerprint, label, target, acto
 			return err
 		}
 		refreshEvidence(d)
+		holdReadyStudies(d)
 		return nil
 	}
 	if s.pg != nil {

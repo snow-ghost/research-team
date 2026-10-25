@@ -52,6 +52,8 @@ func stopClosedStudies(d *Data) {
 }
 
 type StudyCompletion struct {
+	PauseOnReady               bool              `json:"pause_on_ready"`
+	SearchSuspended            bool              `json:"search_suspended"`
 	Revision                   int               `json:"revision"`
 	Study                      string            `json:"study"`
 	Goal                       string            `json:"goal"`
@@ -77,6 +79,7 @@ func (s *Service) StudyCompletion(id string) (StudyCompletion, error) {
 		return StudyCompletion{}, RuleError("Исследование не найдено.")
 	}
 	out := StudyCompletion{Revision: v.Revision, Study: id, Goal: st.Goal, Status: "researching", GoalStatus: v.effective(st.Goal, map[string]bool{}), Budget: s.observeBudget(&v.Data, id), OperatorAcceptanceRequired: true}
+	out.PauseOnReady, out.SearchSuspended = st.PauseOnReady, studySearchSuspended(&v.Data, id)
 	if studyClosed(&v.Data, id) {
 		out.Status = "completed"
 		out.OperatorAcceptanceRequired = false

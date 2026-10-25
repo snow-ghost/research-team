@@ -36,7 +36,7 @@ func (s *Service) RequestPlanning(r PlanningRequest) error {
 	objective := `Предложи план исследования. Верни только JSON: {"summary":"...","claims":[{"title":"...","statement":"...","assumptions":"...","depends_on":[],"formal_goal":{"source":"...","declaration":"...","candidate":"..."}}],"coverage":{"title":"...","statement":"...","assumptions":"...","formal_goal":{"source":"...","declaration":"...","candidate":"..."}},"strategies":[{"target":0,"method":"induction","priority":50,"rationale":"..."}]}. От одной до шести лемм. Зависимости ссылаются только на предыдущие леммы. coverage явно обосновывает переход от лемм к исходной цели. target стратегии: -1 исходная цель; 0..len(claims)-1 леммы; len(claims) покрытие. Не изменяй исходные предпосылки неявно. Сформулируй проверяемые цели Lean, без доказательств и sorry. План проверит оператор до запуска ветвей. Приемы: ` + string(methods)
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Запрошен план исследования", r.Target, "operator", func(d *Data) error {
 		e := d.entity(r.Target)
-		if e != nil && studyClosed(d, e.Study) {
+		if e != nil && (studyClosed(d, e.Study) || studySearchSuspended(d, e.Study)) {
 			return RuleError("Основная цель исследования уже закрыта.")
 		}
 		if d.Paused || e == nil || e.FormalGoal == nil || e.Status == "accepted" || e.Status == "refuted" {

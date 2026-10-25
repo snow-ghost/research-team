@@ -96,6 +96,9 @@ func (s *Service) StartCycle(r CycleRequest) error {
 		return err
 	}
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Начат исследовательский цикл", r.Study, "operator", func(d *Data) error {
+		if studySearchSuspended(d, r.Study) {
+			return RuleError("Готовый результат основной цели ожидает решения оператора.")
+		}
 		if d.Paused {
 			return RuleError("Новые запуски приостановлены.")
 		}
@@ -244,6 +247,9 @@ func (s *Service) advanceCycles() {
 	}
 }
 func (s *Service) advanceCycle(d *Data, c *Cycle) error {
+	if studySearchSuspended(d, c.Study) {
+		return errNoCycleChange
+	}
 	set := func(status, reason string) error {
 		if c.Status == status && c.Reason == reason {
 			return errNoCycleChange

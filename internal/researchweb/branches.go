@@ -228,6 +228,9 @@ func (s *Service) advanceBranches() {
 	}
 	sort.SliceStable(ready, func(i, j int) bool { return ready[i].Priority > ready[j].Priority })
 	for _, b := range ready {
+		if studySearchSuspended(&v.Data, b.Study) {
+			continue
+		}
 		busy := false
 		for _, t := range v.Teams {
 			if t.Study == b.Study && teamActive(t.Status) {
@@ -262,7 +265,7 @@ func (s *Service) advanceBranches() {
 					current = &d.Branches[i]
 				}
 			}
-			if current == nil || current.Status != "ready" || current.Team != "" {
+			if current == nil || current.Status != "ready" || current.Team != "" || studySearchSuspended(d, current.Study) {
 				return errNoCycleChange
 			}
 			goal := d.entity(current.Target)
@@ -289,6 +292,7 @@ func (s *Service) advanceBranches() {
 			method, _ := researchMethod(current.Method)
 			c := current.Configuration
 			team := ResearchTeam{Strategy: c.Strategy, Methods: c.Methods, ID: identifier("team"), Study: current.Study, Goal: current.Target, Profiles: c.Profiles, Workers: c.Workers, ProfileHashes: current.ProfileHashes, Workspace: c.Workspace, MaxAttempts: c.MaxAttempts, RequireLean: true, Status: "running", Stage: "planning", Current: map[string]string{}, OperatorNote: method.Procedure + " Основание выбора: " + current.Rationale, CreatedAt: time.Now().UTC(), Reason: "Выбрана ветвь: " + method.Label}
+			team.FormatRepairLimit = c.FormatRepairLimit
 			d.Teams = append(d.Teams, team)
 			current.Team = team.ID
 			current.Status = "running"

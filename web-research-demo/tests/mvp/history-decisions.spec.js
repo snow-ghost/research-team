@@ -91,7 +91,10 @@ test("история сравнивает точные версии и реше�
     await expect(diff).toContainText(`Снимки ${from} и ${to}`);
     await diff.locator("summary").click();
     await expect(diff).toContainText("NEW-GOAL-VERSION");
-    const closeInspector = page.getByRole("button", { name: "Закрыть сведения", exact: true });
+    const closeInspector = page.getByRole("button", {
+      name: "Закрыть сведения",
+      exact: true,
+    });
     if (await closeInspector.isVisible()) await closeInspector.click();
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 960 });
@@ -119,13 +122,11 @@ test("история сравнивает точные версии и реше�
         .getByRole("button", { name: "Исследования", exact: true })
         .click();
       await page.getByRole("tab", { name: /Задания/ }).click();
-      const branchRow = page
-        .locator(".branch-list .team-row")
-        .filter({
-          has: page.getByText("Отдельно проверить условия разбиения", {
-            exact: true,
-          }),
-        });
+      const branchRow = page.locator(".branch-list .team-row").filter({
+        has: page.getByText("Отдельно проверить условия разбиения", {
+          exact: true,
+        }),
+      });
       await branchRow.getByText("Решение по ветви", { exact: true }).click();
       const form = page.getByRole("form", {
         name: `Решение по ветви ${branch.id}`,
@@ -142,10 +143,30 @@ test("история сравнивает точные версии и реше�
       await expect(branchRow).toContainText("Ожидается отдельный план");
       state = (await bootstrap()).state;
       expect(state.branches.find((b) => b.id === branch.id).held).toBe(true);
-      expect((state.proposals || []).filter((p) => p.study === study.id)).toHaveLength(
-        0,
-      );
+      expect(
+        (state.proposals || []).filter((p) => p.study === study.id),
+      ).toHaveLength(0);
     }
+    await page
+      .getByRole("button", { name: "Журнал действий", exact: true })
+      .click();
+    const timeline = page.getByRole("region", {
+      name: "История исследования",
+      exact: true,
+    });
+    await timeline
+      .getByRole("button", { name: "Открыть снимок", exact: true })
+      .first()
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Библиотека лемм", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Исполнители", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Новое исследование", exact: true }),
+    ).toBeDisabled();
     expect(errors).toEqual([]);
   } finally {
     if (branch)
@@ -206,7 +227,10 @@ test("наблюдение сравнения показывает прогре�
   });
   await expect(progress).toContainText("Завершено запусков: 1 / 96");
   await expect(progress).toContainText("Математическая приемка: не выполнена");
-  const closeInspector = page.getByRole("button", { name: "Закрыть сведения", exact: true });
+  const closeInspector = page.getByRole("button", {
+    name: "Закрыть сведения",
+    exact: true,
+  });
   if (await closeInspector.isVisible()) await closeInspector.click();
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 960 });

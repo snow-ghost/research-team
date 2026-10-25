@@ -745,7 +745,7 @@ function App({ live } = {}) {
               disabled={
                 !!live &&
                 historic !== null &&
-                ["executors", "coddy"].includes(id)
+                ["executors", "coddy", "library"].includes(id)
               }
               className={"nav-item " + (section === id ? "active" : "")}
               onClick={() => {

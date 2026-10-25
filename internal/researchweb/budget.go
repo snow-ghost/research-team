@@ -257,5 +257,8 @@ func attemptStopCause(r execution.Result, limits *execution.Limits) string {
 			return "acp_or_transport_error"
 		}
 	}
+	if r.FailureCode == "skill_result_contract" {
+		return "skill_result_contract"
+	}
 	return "unspecified_failure"
 }

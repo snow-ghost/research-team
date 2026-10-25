@@ -2140,6 +2140,46 @@ td small {
 .audit-lemma-list {
   padding-left: 18px;
 }
+.branch-decisions, .research-history, .revision-diff, .evaluation-row {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.branch-decisions > details, .revision-diff > details {
+  border-top: 1px solid var(--line, #dce1e7);
+  padding: 12px 0;
+}
+.decision-entry, .evaluation-row, .diff-field {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line, #dce1e7);
+}
+.diff-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.diff-values > div { min-width: 0; }
+.diff-values pre, .reuse-summary pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 360px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.evaluation-row .table-wrap { overflow-x: auto; }
+.process-section > h3:has(svg) { display: flex; align-items: center; gap: 8px; }
+.evaluation-row p { margin: 8px 0; line-height: 1.5; }
+.evaluation-row table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.evaluation-row th, .evaluation-row td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--line, #dce1e7);
+}
+.branch-decisions .checkbox-label { display: flex; align-items: flex-start; gap: 8px; }
+.branch-decisions .checkbox-label input { flex: 0 0 16px; width: 16px; margin-top: 3px; }
+@media (max-width: 760px) {
+  .diff-values { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 480px) {
   .audit-bindings {
     grid-template-columns: minmax(0, 1fr);

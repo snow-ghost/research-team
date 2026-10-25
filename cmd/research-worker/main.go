@@ -78,6 +78,8 @@ func main() {
 }
 func run() error {
 	path := flag.String("config", "", "Local worker configuration")
+	stateDir := flag.String("state-dir", "", "New private directory for the final result and stable delivery request id")
+	resend := flag.Bool("resend-result", false, "Explicitly resend a saved final result without model execution")
 	flag.Parse()
 	var conf config
 	if err := researchweb.ReadJSON(*path, &conf); err != nil {
@@ -94,6 +96,27 @@ func run() error {
 	if len(key) < 32 {
 		return errors.New("worker key missing")
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	defer transport.CloseIdleConnections()
+	c := client{conf, key, &http.Client{Transport: transport, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if *resend {
+		if *stateDir == "" {
+			return errors.New("-resend-result requires -state-dir")
+		}
+		if err := deliverSaved(ctx, c, *stateDir); err != nil {
+			return err
+		}
+		fmt.Println("Saved result acknowledged without model execution")
+		return nil
+	}
+	if *stateDir != "" {
+		if _, err := os.Lstat(*stateDir); !os.IsNotExist(err) {
+			return errors.New("delivery directory must be new; use explicit -resend-result for saved output")
+		}
+	}
 	var profile execution.Profile
 	profilePath := conf.Profile
 	if !filepath.IsAbs(profilePath) {
@@ -105,12 +128,6 @@ func run() error {
 	if err := profile.Validate(); err != nil {
 		return err
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	defer transport.CloseIdleConnections()
-	c := client{conf, key, &http.Client{Transport: transport, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	var packet *researchweb.WorkerPacket
 	if err := c.post(ctx, "/claim", researchweb.WorkerRequest{RequestID: requestID()}, &packet); err != nil {
 		return err
@@ -118,6 +135,11 @@ func run() error {
 	if packet == nil {
 		fmt.Println("No assigned task")
 		return nil
+	}
+	if *stateDir != "" {
+		if err := os.Mkdir(*stateDir, 0700); err != nil {
+			return errors.New("cannot reserve new delivery directory")
+		}
 	}
 	if packet.Profile != profile.ID {
 		return errors.New("assigned profile differs from local profile")
@@ -197,8 +219,20 @@ func run() error {
 	result.ExecutionProfileSHA256 = result.ProfileSHA256
 	result.ProfileSHA256 = packet.ProfileSHA256
 	request := researchweb.WorkerRequest{RequestID: requestID(), Epoch: task.LeaseEpoch, Snapshot: task.Snapshot, Result: &result}
+	record := deliveryRecord{Version: 1, Server: conf.Server, Worker: conf.Worker, Attempt: task.AttemptID, Request: request}
+	if *stateDir != "" {
+		if err := saveDelivery(*stateDir, record); err != nil {
+			return err
+		}
+	}
 	if err := c.post(ctx, "/attempts/"+task.AttemptID+"/result", request, nil); err != nil {
 		return err
+	}
+	if *stateDir != "" {
+		record.Acknowledged = true
+		if err := saveDelivery(*stateDir, record); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("Attempt %s: %s\n", task.AttemptID, result.Status)
 	return runErr

@@ -3,6 +3,7 @@ import { CyclePanel } from "./cycles.jsx";
 import { EvidencePanel } from "./evidence.jsx";
 import { MemoryPanel } from "./research-progress.jsx";
 import { ResearchMethodSelect } from "./assignment.jsx";
+import { EvaluationProgress } from "./evaluation-progress.jsx";
 import {
   TeamPanel,
   FormalGoalPanel,
@@ -96,6 +97,7 @@ export function RuntimePanel({
   }, [state, launch]);
   return (
     <div className="scroll-content runtime-panel">
+      <EvaluationProgress live={live} />
       <TeamPanel
         live={live}
         study={study}

@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { ResearchMethodSelect } from "./assignment.jsx";
-import { Plus, Save, Play, Search, Trash2, GitBranch } from "lucide-react";
+import {
+  Plus,
+  Save,
+  Play,
+  Search,
+  Trash2,
+  GitBranch,
+  FlaskConical,
+} from "lucide-react";
 import { api } from "./api.js";
 
 const roles = {
@@ -1267,10 +1275,24 @@ function NativeLemmaMatching({ live, target }) {
           setError("");
           const f = Object.fromEntries(new FormData(e.currentTarget));
           try {
-            await live.command("/lemmas/match", {
-              target: f.target,
-              library: f.library,
-            });
+            const reuse = e.nativeEvent.submitter?.value === "reuse";
+            if (
+              reuse &&
+              !window.confirm(
+                "Выполнить две местные проверки Lean, каждую до 90 секунд, без обращений к модели?",
+              )
+            )
+              return;
+            await live.command(
+              reuse ? "/lemmas/reuse-trial" : "/lemmas/match",
+              {
+                target: f.target,
+                library: f.library,
+                ...(reuse
+                  ? { depth: 6, timeout_seconds: 90, confirm: true }
+                  : {}),
+              },
+            );
           } catch (err) {
             setError(err.message);
           }
@@ -1314,6 +1336,19 @@ function NativeLemmaMatching({ live, target }) {
           <Search size={15} />
           Подобрать подстановку
         </button>
+        <button
+          className="button secondary"
+          value="reuse"
+          disabled={
+            live.busy ||
+            !libraries.length ||
+            !open.length ||
+            !live.data.lean?.configured
+          }
+        >
+          <FlaskConical size={15} />
+          Сравнить перенос леммы
+        </button>
       </form>
       {matches.map((m) => {
         const current =
@@ -1328,6 +1363,34 @@ function NativeLemmaMatching({ live, target }) {
                 Поиск цепочки: наборов {m.chain.trials.length} /{" "}
                 {m.chain.max_trials}, глубина {m.chain.depth}.
               </p>
+            )}
+            {m.reuse && (
+              <div className="reuse-summary">
+                <p>
+                  Без леммы:{" "}
+                  {m.reuse.without.status === "verified"
+                    ? "проверено"
+                    : "не получено доказательство"}
+                  , {m.reuse.without.seconds.toFixed(2)} с.
+                </p>
+                <p>
+                  С леммой:{" "}
+                  {m.reuse.with.status === "verified"
+                    ? "проверено"
+                    : "не получено доказательство"}
+                  , {m.reuse.with.seconds.toFixed(2)} с.
+                </p>
+                <p>
+                  Обращений к модели: {m.reuse.model_calls}. Приемка не
+                  выполнена.
+                </p>
+                <details>
+                  <summary>Два исходника и отчеты Lean</summary>
+                  <pre className="proof-source">
+                    {JSON.stringify(m.reuse, null, 2)}
+                  </pre>
+                </details>
+              </div>
             )}
             {!!m.report.bindings.length && (
               <dl>

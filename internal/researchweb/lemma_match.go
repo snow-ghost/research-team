@@ -13,6 +13,7 @@ import (
 )
 
 type NativeLemmaMatch struct {
+	Reuse            *leancheck.ReuseReport `json:"reuse,omitempty"`
 	Libraries        []string               `json:"libraries,omitempty"`
 	Chain            *leancheck.ChainReport `json:"chain,omitempty"`
 	CatalogRequest   string                 `json:"catalog_request,omitempty"`
@@ -44,10 +45,16 @@ type ApplyMatchRequest struct {
 func matchCurrent(d *Data, m NativeLemmaMatch) bool {
 	e := d.entity(m.Target)
 	matcher := leancheck.MatcherDigest()
+	if m.Reuse != nil {
+		matcher = leancheck.ReuseDigest()
+	}
 	if m.Chain != nil {
 		matcher = leancheck.ChainDigest()
 	}
 	if e == nil || e.Revision != m.TargetRevision || e.FormalGoal == nil || leancheck.Digest(*e.FormalGoal) != m.TargetGoalSHA256 || m.Report.MatcherSHA256 != matcher || m.Report.GoalSHA256 != leancheck.Digest(m.Goal) {
+		return false
+	}
+	if m.Reuse != nil && (m.Reuse.ProcedureSHA256 != leancheck.ReuseDigest() || m.Reuse.OriginalGoalSHA256 != m.TargetGoalSHA256 || leancheck.Digest(m.Reuse.With.Goal) != leancheck.Digest(m.Goal) || hash(m.Reuse.With.Report) != hash(m.Report.Verification)) {
 		return false
 	}
 	if m.Chain != nil {
@@ -235,7 +242,13 @@ func (s *Service) ApplyLemmaMatch(id string, r ApplyMatchRequest) error {
 		if m.Report.Status == "verified" {
 			e := d.entity(appID)
 			env, pins := s.libraryEnvironment(d, e)
-			d.Verifications = append(d.Verifications, Verification{ID: identifier("verify"), Target: appID, TargetRevision: e.Revision, SubmittedRevision: e.Revision, Origin: "submitted", Author: "procedure:lean-type-matcher@1", Basis: "Нативный подбор " + m.ID + "; отчет " + hash(m.Report), Goal: m.Goal, Source: m.Report.Source, Environment: env, LibraryPins: pins, DependencyRevisions: map[string]int{l.Lemma: l.LemmaRevision}, Status: "queued", CreatedAt: time.Now().UTC()})
+			author := "procedure:lean-type-matcher@1"
+			if m.Reuse != nil {
+				author = "procedure:paired-native-reuse@1"
+			} else if m.Chain != nil {
+				author = "procedure:lean-chain-search@1"
+			}
+			d.Verifications = append(d.Verifications, Verification{ID: identifier("verify"), Target: appID, TargetRevision: e.Revision, SubmittedRevision: e.Revision, Origin: "submitted", Author: author, Basis: "Нативный подбор " + m.ID + "; отчет " + hash(m.Report), Goal: m.Goal, Source: m.Report.Source, Environment: env, LibraryPins: pins, DependencyRevisions: map[string]int{l.Lemma: l.LemmaRevision}, Status: "queued", CreatedAt: time.Now().UTC()})
 		}
 		return nil
 	})

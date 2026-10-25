@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { api } from "./api.js";
 import { verificationCurrent } from "./proof-state.js";
+import { BranchDecisionForm } from "./branch-decision.jsx";
+import { ResearchMethodSelect } from "./assignment.jsx";
 
 const statusNames = {
   ready: "Ожидает",
@@ -26,6 +28,8 @@ const trustNames = {
   accepted_lemma: "Принятая лемма",
   verified_refutation: "Проверенное опровержение",
   recorded_failure: "Неудачная попытка",
+  recorded_obligation: "Недоказанная предпосылка",
+  legacy_unscoped: "Историческая запись без точной области",
   unverified_note: "Непроверенная заметка",
   stale: "Устарело",
 };
@@ -70,6 +74,7 @@ export function BranchList({ live, study, all, methods = [] }) {
           </div>
           <p>{b.rationale}</p>
           <p>{b.reason}</p>
+          <BranchDecisionForm live={live} branch={b} methods={methods} />
           <div className="row-actions">
             <label>
               Приоритет{" "}
@@ -294,6 +299,8 @@ export function MemoryPanel({ live, study, selected, onSelect }) {
                 ...(kind === "counterexample"
                   ? { verification: entity.refutation_verification }
                   : {}),
+                ...(kind === "unmet_assumption" ? { match: v.match } : {}),
+                method: v.method || "",
               });
               setOpen(false);
             } catch (err) {
@@ -306,6 +313,7 @@ export function MemoryPanel({ live, study, selected, onSelect }) {
             <select value={kind} onChange={(e) => setKind(e.target.value)}>
               <option value="note">Заметка</option>
               <option value="failed_method">Неудачный прием</option>
+              <option value="unmet_assumption">Недоказанная предпосылка</option>
               <option
                 value="counterexample"
                 disabled={
@@ -316,6 +324,26 @@ export function MemoryPanel({ live, study, selected, onSelect }) {
               </option>
             </select>
           </label>
+          {kind !== "note" && <ResearchMethodSelect live={live} />}
+          {kind === "unmet_assumption" && (
+            <label className="wide">
+              Подбор с недостающими предпосылками
+              <select name="match" required>
+                {(state.lemma_matches || [])
+                  .filter(
+                    (m) =>
+                      m.target === entity.id &&
+                      m.target_revision === entity.revision &&
+                      m.report.status === "obligations",
+                  )
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           {kind === "failed_method" && (
             <>
               <label>
@@ -353,7 +381,11 @@ export function MemoryPanel({ live, study, selected, onSelect }) {
           </label>
           <label className="wide">
             Условия применимости
-            <textarea name="conditions" maxLength="4000" />
+            <textarea
+              name="conditions"
+              maxLength="4000"
+              defaultValue={entity.assumptions}
+            />
           </label>
           <button className="button primary" disabled={live.busy}>
             <Save size={15} />
@@ -371,6 +403,19 @@ export function MemoryPanel({ live, study, selected, onSelect }) {
             <p>{h.content}</p>
             {h.conditions && <p>{h.conditions}</p>}
             {h.module && <code>{h.module}</code>}
+            {h.kind !== "lemma" && (
+              <p>
+                {h.auto_reuse
+                  ? "Условия автоматической передачи совпадают"
+                  : "Автоматическая передача не разрешена"}
+              </p>
+            )}
+            {h.failure_class && <code>{h.failure_class}</code>}
+            {h.obligations?.map((o, i) => (
+              <pre className="proof-source" key={i}>
+                {o}
+              </pre>
+            ))}
             <button
               className="button secondary"
               onClick={() => onSelect?.(h.target)}

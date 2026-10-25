@@ -59,9 +59,14 @@ import {
 } from "lucide-react";
 import { Connected } from "./connected.jsx";
 import { RuntimePanel } from "./runtime.jsx";
-import { ProfileFactory, StructuredLemmaSearch, ComparisonPanel } from "./research-management.jsx";
+import {
+  ProfileFactory,
+  StructuredLemmaSearch,
+  ComparisonPanel,
+} from "./research-management.jsx";
 import { SkillRegistry } from "./skills.jsx";
 import { CoddyPanel } from "./coddy.jsx";
+import { ResearchHistory } from "./research-history.jsx";
 import {
   createInitialState,
   effectiveStatus,
@@ -565,11 +570,18 @@ function App({ live } = {}) {
       formula: "",
     };
   const item = view.entities.find((x) => x.id === selected);
-  const proofCheck = item && (view.verifications || []).find((v) =>
-    v.target === item.id && verificationCurrent(v, item, view) &&
-    v.status === "verified" && v.report?.status === "verified" &&
-    (item.proofVerification ? v.id === item.proofVerification : item.proofAttempt && v.attempt === item.proofAttempt),
-  );
+  const proofCheck =
+    item &&
+    (view.verifications || []).find(
+      (v) =>
+        v.target === item.id &&
+        verificationCurrent(v, item, view) &&
+        v.status === "verified" &&
+        v.report?.status === "verified" &&
+        (item.proofVerification
+          ? v.id === item.proofVerification
+          : item.proofAttempt && v.attempt === item.proofAttempt),
+    );
   const readOnly = historic !== null || !!live?.busy;
   const allStudy = view.entities.filter((x) => x.study === currentStudy.id);
   const tasks = view.tasks.filter(
@@ -738,7 +750,8 @@ function App({ live } = {}) {
               className={"nav-item " + (section === id ? "active" : "")}
               onClick={() => {
                 setSection(id);
-                if (["executors", "library"].includes(id)) setInspectorOpen(false);
+                if (["executors", "library"].includes(id))
+                  setInspectorOpen(false);
                 setMobileNav(false);
               }}
             >
@@ -927,7 +940,9 @@ function App({ live } = {}) {
                 <span className={"run-state " + (view.paused ? "paused" : "")}>
                   <span />
                   {view.paused
-                    ? live ? "Новые запуски приостановлены" : "Поиск приостановлен"
+                    ? live
+                      ? "Новые запуски приостановлены"
+                      : "Поиск приостановлен"
                     : "Исследование открыто"}
                 </span>
               </div>
@@ -976,7 +991,9 @@ function App({ live } = {}) {
             {live && section === "executors" && <ProfileFactory live={live} />}
             {live && section === "executors" && <SkillRegistry live={live} />}
             {live && section === "executors" && <ComparisonPanel live={live} />}
-            {live && section === "library" && <StructuredLemmaSearch live={live} target={selected} />}
+            {live && section === "library" && (
+              <StructuredLemmaSearch live={live} target={selected} />
+            )}
             {live && section === "executors" && (
               <RuntimePanel
                 live={live}
@@ -986,7 +1003,9 @@ function App({ live } = {}) {
                 onSelect={select}
               />
             )}
-            {live && section === "coddy" && <CoddyPanel live={live} onTarget={setSelected} />}
+            {live && section === "coddy" && (
+              <CoddyPanel live={live} onTarget={setSelected} />
+            )}
             {section === "research" && (
               <>
                 <div
@@ -1226,7 +1245,10 @@ function App({ live } = {}) {
                       {view.entities
                         .filter(
                           (x) =>
-                            (x.kind === "lemma" || (view.library || []).some(l => l.lemma === x.id && l.status === "ready")) &&
+                            (x.kind === "lemma" ||
+                              (view.library || []).some(
+                                (l) => l.lemma === x.id && l.status === "ready",
+                              )) &&
                             (lemmaFilter === "all" ||
                               effectiveStatus(view, x.id) === "accepted"),
                         )
@@ -1373,66 +1395,107 @@ function App({ live } = {}) {
                   <h2>История решений</h2>
                   <span>{state.history.length} событий</span>
                 </div>
-                <div className="timeline">
-                  {[...state.history].reverse().map((e) => (
-                    <article
-                      key={e.id}
-                      className={
-                        "timeline-entry " +
-                        (historic === e.id ? "historical" : "")
+                {live && (
+                  <ResearchHistory
+                    key={currentStudy.id}
+                    live={live}
+                    study={currentStudy.id}
+                    onOpen={async (event) => {
+                      try {
+                        const snapshot = await live.get("/history/" + event.id);
+                        setHistoricData(snapshot);
+                        setHistoric(event.id);
+                        const root = snapshot.studies.find(
+                          (s) => s.id === currentStudy.id,
+                        )?.goal;
+                        const target =
+                          snapshot.tasks.find((t) => t.id === event.target)
+                            ?.target || event.target;
+                        const entity =
+                          snapshot.entities.find(
+                            (e) =>
+                              e.id === target && e.study === currentStudy.id,
+                          ) || snapshot.entities.find((e) => e.id === root);
+                        if (entity) {
+                          setSelected(entity.id);
+                          setStudy(entity.study);
+                        }
+                        setDetailTab("overview");
+                        setSection("research");
+                        setTab("map");
+                        setInspectorOpen(true);
+                      } catch (error) {
+                        setToast(error.message);
                       }
-                    >
-                      <span className="timeline-point" />
-                      <div className="event-meta">
-                        <time>{e.time}</time>
-                        <span>{e.actor}</span>
-                        <code>v{e.id}</code>
-                      </div>
-                      <h3>{e.label}</h3>
-                      <p>{e.detail}</p>
-                      <div className="event-actions">
-                        <button
-                          className="text-link"
-                          onClick={() => select(e.target)}
-                        >
-                          {e.target}
-                        </button>
-                        <button
-                          className="button ghost"
-                          onClick={async () => {
-                            let snapshot = e.snapshot;
-                            if (live) {
-                              try {
-                                snapshot = await live.get("/history/" + e.id);
-                              } catch (error) {
-                                setToast(error.message);
-                                return;
+                    }}
+                  />
+                )}
+                {!live && (
+                  <div className="timeline">
+                    {[...state.history].reverse().map((e) => (
+                      <article
+                        key={e.id}
+                        className={
+                          "timeline-entry " +
+                          (historic === e.id ? "historical" : "")
+                        }
+                      >
+                        <span className="timeline-point" />
+                        <div className="event-meta">
+                          <time>{e.time}</time>
+                          <span>{e.actor}</span>
+                          <code>v{e.id}</code>
+                        </div>
+                        <h3>{e.label}</h3>
+                        <p>{e.detail}</p>
+                        <div className="event-actions">
+                          <button
+                            className="text-link"
+                            onClick={() => select(e.target)}
+                          >
+                            {e.target}
+                          </button>
+                          <button
+                            className="button ghost"
+                            onClick={async () => {
+                              let snapshot = e.snapshot;
+                              if (live) {
+                                try {
+                                  snapshot = await live.get("/history/" + e.id);
+                                } catch (error) {
+                                  setToast(error.message);
+                                  return;
+                                }
+                                setHistoricData(snapshot);
                               }
-                              setHistoricData(snapshot);
-                            }
-                            setHistoric(e.id);
-                            const target =
-                              snapshot.tasks.find((x) => x.id === e.target)?.target ||
-                              e.target;
-                            const t = snapshot.entities.find(
-                              (x) => x.id === target,
-                            ) || snapshot.entities.find((x) => x.id === selected) ||
-                              snapshot.entities[0];
-                            setSelected(t?.id || "");
-                            if (t) setStudy(t.study);
-                            setDetailTab("overview");
-                            setSection("research");
-                            setTab("map");
-                            setInspectorOpen(true);
-                          }}
-                        >
-                          <History size={14} />
-                          Открыть снимок
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                              setHistoric(e.id);
+                              const target =
+                                snapshot.tasks.find((x) => x.id === e.target)
+                                  ?.target || e.target;
+                              const t =
+                                snapshot.entities.find(
+                                  (x) => x.id === target,
+                                ) ||
+                                snapshot.entities.find(
+                                  (x) => x.id === selected,
+                                ) ||
+                                snapshot.entities[0];
+                              setSelected(t?.id || "");
+                              if (t) setStudy(t.study);
+                              setDetailTab("overview");
+                              setSection("research");
+                              setTab("map");
+                              setInspectorOpen(true);
+                            }}
+                          >
+                            <History size={14} />
+                            Открыть снимок
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1478,7 +1541,9 @@ function App({ live } = {}) {
                     <p className="statement">{item.statement}</p>
                     <div className="field-label">ОБЛАСТЬ И УСЛОВИЯ</div>
                     <p>
-                      {[item.domain, item.assumptions].filter(Boolean).join(". ")}
+                      {[item.domain, item.assumptions]
+                        .filter(Boolean)
+                        .join(". ")}
                     </p>
                     <div className="metadata">
                       <span>Версия</span>
@@ -1568,14 +1633,24 @@ function App({ live } = {}) {
                 {detailTab === "proof" && (
                   <>
                     <div className="field-label">АРГУМЕНТ</div>
-                    {live && item.formal_goal && item.proof
-                      ? <pre className="proof-source">{item.proof}</pre>
-                      : <p>{item.proof || "Обоснование еще не представлено."}</p>}
-                    {live && item.proofAuthor && <p className="muted">Автор: {item.proofAuthor}</p>}
-                    {live && item.proofAttempt && (
-                      <p className="muted">Источник: <code>{item.proofAttempt}</code></p>
+                    {live && item.formal_goal && item.proof ? (
+                      <pre className="proof-source">{item.proof}</pre>
+                    ) : (
+                      <p>{item.proof || "Обоснование еще не представлено."}</p>
                     )}
-                    {live && item.proofVerification && <p className="muted">Проверка: <code>{item.proofVerification}</code></p>}
+                    {live && item.proofAuthor && (
+                      <p className="muted">Автор: {item.proofAuthor}</p>
+                    )}
+                    {live && item.proofAttempt && (
+                      <p className="muted">
+                        Источник: <code>{item.proofAttempt}</code>
+                      </p>
+                    )}
+                    {live && item.proofVerification && (
+                      <p className="muted">
+                        Проверка: <code>{item.proofVerification}</code>
+                      </p>
+                    )}
                     {live && item.reviewReason && (
                       <>
                         <div className="field-label">РЕШЕНИЕ ОПЕРАТОРА</div>
@@ -1613,7 +1688,11 @@ function App({ live } = {}) {
                       <span>
                         {live
                           ? item.formal_goal
-                            ? proofCheck ? "Lean: подтверждено для версии " + item.revision + "." : "Lean: нет успешной проверки текущего доказательства."
+                            ? proofCheck
+                              ? "Lean: подтверждено для версии " +
+                                item.revision +
+                                "."
+                              : "Lean: нет успешной проверки текущего доказательства."
                             : "Формальная цель не закреплена."
                           : "Приемка здесь относится только к данным макета."}
                       </span>
@@ -1627,7 +1706,8 @@ function App({ live } = {}) {
                               readOnly ||
                               (live
                                 ? !item.proofAuthor ||
-                                  item.proofAuthor === "operator" || (item.formal_goal && !proofCheck)
+                                  item.proofAuthor === "operator" ||
+                                  (item.formal_goal && !proofCheck)
                                 : item.author === "user" ||
                                   item.kind === "application")
                             }

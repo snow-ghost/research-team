@@ -37,6 +37,9 @@ func researchMethod(id string) (ResearchMethod, bool) {
 }
 
 type ResearchBranch struct {
+	Held           bool              `json:"held,omitempty"`
+	Parent         string            `json:"parent,omitempty"`
+	Decisions      []BranchDecision  `json:"decisions,omitempty"`
 	Basis          *MethodBasis      `json:"basis,omitempty"`
 	Plan           string            `json:"plan,omitempty"`
 	ID             string            `json:"id"`
@@ -158,7 +161,7 @@ func (s *Service) ControlBranch(id string, r BranchCommand) error {
 				}
 				b.Priority = r.Priority
 			case "resume":
-				if !r.Confirm || b.Team != "" || b.Status != "blocked" {
+				if !r.Confirm || b.Team != "" || b.Status != "blocked" || b.Held {
 					return RuleError("Продолжение назначенной команды выполняется отдельно.")
 				}
 				b.Status = "ready"
@@ -194,6 +197,8 @@ func (s *Service) advanceBranches() {
 			status, reason = "invalidated", "Закрепленная принятая зависимость изменена."
 		} else if e.Status == "accepted" || e.Status == "refuted" {
 			status, reason = "completed", "Оператор принял результат выбранной цели."
+		} else if branch.Held {
+			status, reason = "paused", branch.Reason
 		} else if team != nil {
 			status, reason = team.Status, team.Reason
 			if status == "interrupted" {
@@ -245,6 +250,11 @@ func (s *Service) advanceBranches() {
 				busy = true
 			}
 		}
+		for _, a := range v.Attempts {
+			if e := v.entity(a.Target); e != nil && e.Study == b.Study && active(a.Status) {
+				busy = true
+			}
+		}
 		if busy {
 			continue
 		}
@@ -292,8 +302,20 @@ func (s *Service) advanceBranches() {
 					return errNoCycleChange
 				}
 			}
+			for _, a := range d.Attempts {
+				if e := d.entity(a.Target); e != nil && e.Study == current.Study && active(a.Status) {
+					return errNoCycleChange
+				}
+			}
 			method, _ := researchMethod(current.Method)
 			c := current.Configuration
+			methods := []string{current.Method}
+			for _, m := range c.Methods {
+				if m != current.Method {
+					methods = append(methods, m)
+				}
+			}
+			c.Methods = methods
 			basis := current.Basis
 			if basis == nil {
 				basis = &MethodBasis{Source: "legacy_unclassified", Method: current.Method, Procedure: method.Procedure, Rationale: current.Rationale, Plan: current.Plan}

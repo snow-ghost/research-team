@@ -25,6 +25,7 @@ type Workspace struct {
 	Path  string `json:"path"`
 }
 type Config struct {
+	Evaluations            []EvaluationWatch `json:"evaluations,omitempty"`
 	Workers                []WorkerConfig    `json:"workers,omitempty"`
 	Telegram               []TelegramChannel `json:"telegram,omitempty"`
 	LeanConfig             string            `json:"lean_config,omitempty"`
@@ -116,6 +117,9 @@ func LoadOptions(path string) (Options, error) {
 		return o, errors.New("invalid server directories or limits")
 	}
 	c.DataDir, c.WebDir = resolve(c.DataDir), resolve(c.WebDir)
+	if err := resolveEvaluationWatches(c, base); err != nil {
+		return o, err
+	}
 	if c.SecretFile != "" {
 		c.SecretFile = resolve(c.SecretFile)
 		values, err := readPrivateSecrets(c.SecretFile, c.WebDir)

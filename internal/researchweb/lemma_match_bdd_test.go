@@ -45,6 +45,16 @@ func TestLemmaMatchBDD_MissingPremiseBecomesPinnedObligationNotAcceptedFact(t *t
 				t.Fatal(err)
 			}
 			v = stateOf(t, s)
+			if scenario == "premise" {
+				if err := s.AddMemory(MemoryRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Target: target, Kind: "unmet_assumption", Match: id, Content: "This premise is still open; no claim that it is false."}); err != nil {
+					t.Fatal(err)
+				}
+				v = stateOf(t, s)
+				hits := memoryForTarget(v.Data, target)
+				if len(hits) != 1 || hits[0].Trust != "recorded_obligation" || !hits[0].AutoReuse || len(hits[0].Obligations) != 1 || v.entity(target).Status != "open" {
+					t.Fatal("open premise became a fact or was not recorded", hits)
+				}
+			}
 			r := ApplyMatchRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Confirm: true}
 			err := s.ApplyLemmaMatch(id, r)
 			if scenario != "premise" {

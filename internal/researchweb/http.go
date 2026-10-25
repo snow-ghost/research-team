@@ -382,6 +382,7 @@ func (h *HTTP) view(w http.ResponseWriter) {
 	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
 }
 func (h *HTTP) routes() {
+	h.researchProgressRoutes()
 	h.mux.HandleFunc("POST /api/skills/{id}/trial", func(w http.ResponseWriter, r *http.Request) {
 		var body SkillTrialRequest
 		if err := bodyJSON(w, r, &body); err != nil {

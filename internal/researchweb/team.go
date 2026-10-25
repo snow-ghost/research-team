@@ -182,112 +182,125 @@ func (s *Service) ControlTeam(id string, r TeamCommand) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	err := s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Команда: "+r.Kind, id, "operator", func(d *Data) error {
-		team := d.team(id)
-		if team == nil || (!teamActive(team.Status) && team.Status != "interrupted") {
-			return RuleError("Команда уже завершена.")
-		}
-		recordOperatorNote(team, r)
-		switch r.Kind {
-		case "pause":
-			team.Status = "paused"
-			team.Reason = "Приостановлена оператором."
-		case "reprocess":
-			if !r.Confirm || (team.Status != "blocked" && team.Status != "interrupted") || (team.Stage != "exploring" && team.Stage != "review" && team.Stage != "refutation_review") || r.MaxAttempts != 0 || len(r.RoleLimits) != 0 {
-				return RuleError("Повторная обработка доступна заблокированному отчету без изменения ограничений.")
-			}
-			for _, attempt := range team.Current {
-				if a := d.attempt(attempt); a == nil || a.Status != "candidate" {
-					return RuleError("Все текущие ответы должны быть завершены.")
-				}
-			}
-			team.RetryRole = ""
-			team.Status = "running"
-			team.OperatorNote = r.Note
-			team.Reason = "Разрешена повторная обработка сохраненных отчетов."
-		case "resume", "configure":
-			if studySearchSuspended(d, team.Study) {
-				return RuleError("Готовый результат основной цели ожидает решения оператора.")
-			}
-			if !r.Confirm {
-				return RuleError("Подтвердите продолжение и возможные расходы.")
-			}
-			if r.Kind == "resume" || r.Note != "" {
-				team.OperatorNote = r.Note
-			}
-			if team.Status != "paused" && team.Status != "blocked" && team.Status != "interrupted" {
-				return RuleError("Команда уже работает.")
-			}
-			if r.MaxAttempts != 0 {
-				if r.MaxAttempts < team.UsedAttempts {
-					return RuleError("Предел не может быть меньше числа использованных попыток.")
-				}
-				team.MaxAttempts = r.MaxAttempts
-			}
-			for _, other := range d.Teams {
-				if other.ID != id && other.Study == team.Study && teamActive(other.Status) {
-					return RuleError("Другая команда уже работает над исследованием.")
-				}
-			}
-			for role, limits := range r.RoleLimits {
-				profile, ok := s.lookupProfile(team.Profiles[role])
-				if !ok {
-					return RuleError("Неизвестная роль.")
-				}
-				profile.Limits = limits
-				if err := profile.Validate(); err != nil {
-					return err
-				}
-				if team.RoleLimits == nil {
-					team.RoleLimits = map[string]execution.Limits{}
-				}
-				team.RoleLimits[role] = limits
-			}
-			if r.Kind == "configure" {
-				team.Reason = "Ограничения обновлены без запуска новых попыток."
-				return nil
-			}
-			for role, attemptID := range team.Current {
-				a := d.attempt(attemptID)
-				if a != nil && !active(a.Status) && a.Status != "candidate" {
-					if err := s.queueTeamAttempt(d, team, role, a.ID); err != nil {
-						return err
-					}
-				}
-			}
-			if team.RetryRole != "" {
-				role := team.RetryRole
-				if err := s.queueTeamAttempt(d, team, role, team.Current[role]); err != nil {
-					return err
-				}
-				team.RetryRole = ""
-			}
-			team.Status = "running"
-			if team.Stage == "acceptance" || team.Stage == "refutation_acceptance" {
-				if e := d.entity(team.Target); e != nil && e.Status == "in_review" {
-					team.Status = "awaiting_review"
-				}
-			}
-			team.Reason = "Продолжение работы."
-		case "stop":
-			team.Status = "cancelled"
-			team.Reason = "Остановлена оператором."
-			cancelTeam(d, id)
-		default:
-			return RuleError("Неизвестная команда.")
-		}
-		return nil
+		return s.controlTeamData(d, id, r)
 	})
 	if err == nil {
 		s.cancelRequested()
 	}
 	return err
 }
+
+func (s *Service) controlTeamData(d *Data, id string, r TeamCommand) error {
+	team := d.team(id)
+	if team == nil || (!teamActive(team.Status) && team.Status != "interrupted") {
+		return RuleError("Команда уже завершена.")
+	}
+	if r.Kind == "resume" || r.Kind == "reprocess" {
+		for _, b := range d.Branches {
+			if b.Team == id && b.Held {
+				return RuleError("Сначала подтвердите продолжение приостановленной ветви.")
+			}
+		}
+	}
+	recordOperatorNote(team, r)
+	switch r.Kind {
+	case "pause":
+		team.Status = "paused"
+		team.Reason = "Приостановлена оператором."
+	case "reprocess":
+		if !r.Confirm || (team.Status != "blocked" && team.Status != "interrupted") || (team.Stage != "exploring" && team.Stage != "review" && team.Stage != "refutation_review") || r.MaxAttempts != 0 || len(r.RoleLimits) != 0 {
+			return RuleError("Повторная обработка доступна заблокированному отчету без изменения ограничений.")
+		}
+		for _, attempt := range team.Current {
+			if a := d.attempt(attempt); a == nil || a.Status != "candidate" {
+				return RuleError("Все текущие ответы должны быть завершены.")
+			}
+		}
+		team.RetryRole = ""
+		team.Status = "running"
+		team.OperatorNote = r.Note
+		team.Reason = "Разрешена повторная обработка сохраненных отчетов."
+	case "resume", "configure":
+		if studySearchSuspended(d, team.Study) {
+			return RuleError("Готовый результат основной цели ожидает решения оператора.")
+		}
+		if !r.Confirm {
+			return RuleError("Подтвердите продолжение и возможные расходы.")
+		}
+		if r.Kind == "resume" || r.Note != "" {
+			team.OperatorNote = r.Note
+		}
+		if team.Status != "paused" && team.Status != "blocked" && team.Status != "interrupted" {
+			return RuleError("Команда уже работает.")
+		}
+		if r.MaxAttempts != 0 {
+			if r.MaxAttempts < team.UsedAttempts {
+				return RuleError("Предел не может быть меньше числа использованных попыток.")
+			}
+			team.MaxAttempts = r.MaxAttempts
+		}
+		for _, other := range d.Teams {
+			if other.ID != id && other.Study == team.Study && teamActive(other.Status) {
+				return RuleError("Другая команда уже работает над исследованием.")
+			}
+		}
+		for role, limits := range r.RoleLimits {
+			profile, ok := s.lookupProfile(team.Profiles[role])
+			if !ok {
+				return RuleError("Неизвестная роль.")
+			}
+			profile.Limits = limits
+			if err := profile.Validate(); err != nil {
+				return err
+			}
+			if team.RoleLimits == nil {
+				team.RoleLimits = map[string]execution.Limits{}
+			}
+			team.RoleLimits[role] = limits
+		}
+		if r.Kind == "configure" {
+			team.Reason = "Ограничения обновлены без запуска новых попыток."
+			return nil
+		}
+		for role, attemptID := range team.Current {
+			a := d.attempt(attemptID)
+			if a != nil && !active(a.Status) && a.Status != "candidate" {
+				if err := s.queueTeamAttempt(d, team, role, a.ID); err != nil {
+					return err
+				}
+			}
+		}
+		if team.RetryRole != "" {
+			role := team.RetryRole
+			if err := s.queueTeamAttempt(d, team, role, team.Current[role]); err != nil {
+				return err
+			}
+			team.RetryRole = ""
+		}
+		team.Status = "running"
+		if team.Stage == "acceptance" || team.Stage == "refutation_acceptance" {
+			if e := d.entity(team.Target); e != nil && e.Status == "in_review" {
+				team.Status = "awaiting_review"
+			}
+		}
+		team.Reason = "Продолжение работы."
+	case "stop":
+		team.Status = "cancelled"
+		team.Reason = "Остановлена оператором."
+		cancelTeam(d, id)
+	default:
+		return RuleError("Неизвестная команда.")
+	}
+	return nil
+}
 func cancelTeam(d *Data, id string) {
 	for i := range d.Attempts {
 		a := &d.Attempts[i]
 		if a.TeamID == id && active(a.Status) {
-			if a.Status == "queued" {
+			if a.Status == "queued" || a.RemoteWorker != "" {
 				a.Status = "cancelled"
+				now := time.Now().UTC()
+				a.FinishedAt = &now
 			} else {
 				a.Status = "cancelling"
 			}

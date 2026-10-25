@@ -13,19 +13,20 @@ import (
 )
 
 type NativeLemmaMatch struct {
-	Reuse            *leancheck.ReuseReport `json:"reuse,omitempty"`
-	Libraries        []string               `json:"libraries,omitempty"`
-	Chain            *leancheck.ChainReport `json:"chain,omitempty"`
-	CatalogRequest   string                 `json:"catalog_request,omitempty"`
-	ID               string                 `json:"id"`
-	Target           string                 `json:"target"`
-	TargetRevision   int                    `json:"target_revision"`
-	TargetGoalSHA256 string                 `json:"target_goal_sha256"`
-	Library          string                 `json:"library"`
-	Goal             leancheck.Goal         `json:"goal"`
-	Report           leancheck.MatchReport  `json:"report"`
-	Application      string                 `json:"application,omitempty"`
-	CreatedAt        time.Time              `json:"created_at"`
+	Representation   *leancheck.RepresentationReport `json:"representation,omitempty"`
+	Reuse            *leancheck.ReuseReport          `json:"reuse,omitempty"`
+	Libraries        []string                        `json:"libraries,omitempty"`
+	Chain            *leancheck.ChainReport          `json:"chain,omitempty"`
+	CatalogRequest   string                          `json:"catalog_request,omitempty"`
+	ID               string                          `json:"id"`
+	Target           string                          `json:"target"`
+	TargetRevision   int                             `json:"target_revision"`
+	TargetGoalSHA256 string                          `json:"target_goal_sha256"`
+	Library          string                          `json:"library"`
+	Goal             leancheck.Goal                  `json:"goal"`
+	Report           leancheck.MatchReport           `json:"report"`
+	Application      string                          `json:"application,omitempty"`
+	CreatedAt        time.Time                       `json:"created_at"`
 }
 
 type MatchLemmaRequest struct {
@@ -48,6 +49,9 @@ func matchCurrent(d *Data, m NativeLemmaMatch) bool {
 	if m.Reuse != nil {
 		matcher = leancheck.ReuseDigest()
 	}
+	if m.Representation != nil {
+		matcher = leancheck.RepresentationDigest()
+	}
 	if m.Chain != nil {
 		matcher = leancheck.ChainDigest()
 	}
@@ -56,6 +60,11 @@ func matchCurrent(d *Data, m NativeLemmaMatch) bool {
 	}
 	if m.Reuse != nil && (m.Reuse.ProcedureSHA256 != leancheck.ReuseDigest() || m.Reuse.OriginalGoalSHA256 != m.TargetGoalSHA256 || leancheck.Digest(m.Reuse.With.Goal) != leancheck.Digest(m.Goal) || hash(m.Reuse.With.Report) != hash(m.Report.Verification)) {
 		return false
+	}
+	if r := m.Representation; r != nil {
+		if r.ProcedureSHA256 != leancheck.RepresentationDigest() || r.OriginalGoalSHA256 != m.TargetGoalSHA256 || r.Transferred != nil && (leancheck.Digest(r.Transferred.Goal) != leancheck.Digest(m.Goal) || r.Transferred.Source != m.Report.Source || hash(r.Transferred.Report) != hash(m.Report.Verification)) {
+			return false
+		}
 	}
 	if m.Chain != nil {
 		pins, ok := chainLibraryPins(d, m.Libraries)
@@ -245,6 +254,8 @@ func (s *Service) ApplyLemmaMatch(id string, r ApplyMatchRequest) error {
 			author := "procedure:lean-type-matcher@1"
 			if m.Reuse != nil {
 				author = "procedure:paired-native-reuse@1"
+			} else if m.Representation != nil {
+				author = "procedure:representation-transfer@1"
 			} else if m.Chain != nil {
 				author = "procedure:lean-chain-search@1"
 			}

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { GitBranch } from "lucide-react";
+import { BranchPolicyForm } from "./branch-policy.jsx";
 
 const kinds = {
   continue: "Продолжение",
@@ -26,6 +27,7 @@ export function BranchDecisionForm({ live, branch, methods }) {
   const entity = live.data.state.entities.find((e) => e.id === branch.target);
   return (
     <div className="branch-decisions">
+      <BranchPolicyForm live={live} branch={branch} methods={methods} />
       {!!branch.decisions?.length && (
         <details>
           <summary>Принятые решения: {branch.decisions.length}</summary>

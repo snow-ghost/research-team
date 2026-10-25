@@ -29,7 +29,29 @@ func ModuleSource(g Goal, source string) (string, error) {
 	if len(lines) != 2 || strings.TrimSpace(lines[0]) != "import Goal" {
 		return "", errors.New("library candidate must start with import Goal")
 	}
-	return g.Source + "\n" + lines[1], nil
+	// Candidate imports must stay before the inlined goal declarations. Only
+	// consecutive header lines are moved; Lean rejects unsupported header forms.
+	rest := lines[1]
+	var header strings.Builder
+	hasImport := false
+	for rest != "" {
+		line, tail, newline := strings.Cut(rest, "\n")
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "import ") {
+			break
+		}
+		header.WriteString(line)
+		header.WriteByte('\n')
+		hasImport = hasImport || strings.HasPrefix(trimmed, "import ")
+		rest = tail
+		if !newline {
+			break
+		}
+	}
+	if !hasImport {
+		return g.Source + "\n" + lines[1], nil
+	}
+	return header.String() + g.Source + "\n" + rest, nil
 }
 func (c DockerChecker) BuildModule(ctx context.Context, g Goal, source, module, dir string) (r ModuleReport, err error) {
 	if !regexp.MustCompile(`^ResearchLemma_[a-f0-9]{32}$`).MatchString(module) {

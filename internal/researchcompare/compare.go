@@ -73,6 +73,7 @@ type Report struct {
 	Runs                   []Run                   `json:"runs"`
 }
 type Runner struct {
+	Observe          func(Progress)
 	Simulation       bool
 	ResolveLeanPaths bool
 	Resume           bool
@@ -341,7 +342,19 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			return execution.Result{}, errors.New("executor configuration rejected")
 		}
 		started := time.Now()
-		result, err := executor.Run(execution.WithTools(ctx, handlers...), task)
+		runContext := execution.WithTools(ctx, handlers...)
+		if r.Observe != nil {
+			r.Observe(Progress{Case: item.ID, Mode: mode, Repetition: run.Repetition, Role: role, Phase: "preparation"})
+			runContext = execution.WithObserver(runContext, func(event execution.Event) {
+				if phase := visiblePhase(event); phase != "" {
+					r.Observe(Progress{Case: item.ID, Mode: mode, Repetition: run.Repetition, Role: role, Phase: phase})
+				}
+			})
+		}
+		result, err := executor.Run(runContext, task)
+		if r.Observe != nil {
+			r.Observe(Progress{Case: item.ID, Mode: mode, Repetition: run.Repetition, Role: role, Phase: "result_processing"})
+		}
 		body, _ := json.Marshal(result)
 		if os.WriteFile(filepath.Join(work, "result.json"), body, 0600) != nil {
 			return result, errors.New("cannot save comparison result")
@@ -409,6 +422,9 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 			work := filepath.Join(dir, "first-proof-verification")
 			if e := os.Mkdir(work, 0700); e != nil {
 				return e
+			}
+			if r.Observe != nil {
+				r.Observe(Progress{Case: item.ID, Mode: mode, Repetition: run.Repetition, Role: "proof", Phase: "lean_check"})
 			}
 			checked, checkErr := r.Checker.Check(ctx, g, proposed.Source, work)
 			body, _ := json.Marshal(checked)
@@ -494,6 +510,9 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		checkDir := filepath.Join(dir, fmt.Sprintf("verification-%d", repair))
 		_ = os.Mkdir(checkDir, 0700)
 		limited, cancel := context.WithTimeout(ctx, 90*time.Second)
+		if r.Observe != nil {
+			r.Observe(Progress{Case: item.ID, Mode: mode, Repetition: run.Repetition, Role: "verification", Phase: "lean_check"})
+		}
 		verification, err = r.Checker.Check(limited, goal, selected.Source, checkDir)
 		cancel()
 		run.Verification = &verification

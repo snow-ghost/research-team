@@ -7,25 +7,35 @@ import (
 	"os"
 
 	"github.com/snow-ghost/research-team/internal/researchcompare"
-	"github.com/snow-ghost/research-team/internal/researchweb"
 )
 
 func main() {
 	input := flag.String("report", "", "Private report.json")
 	out := flag.String("out", "", "New summary file")
+	analysis := flag.Bool("analysis", false, "Describe task-clustered effects and native/review disagreements")
+	artifacts := flag.String("artifacts-dir", "", "Private comparison directory for digest-bound review findings")
 	flag.Parse()
-	if err := writeSummary(*input, *out); err != nil {
+	if err := writeOutput(*input, *out, *analysis, *artifacts); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 func writeSummary(input, out string) error {
-	var report researchcompare.Report
-	if err := researchweb.ReadJSON(input, &report); err != nil {
+	return writeOutput(input, out, false, "")
+}
+
+func writeOutput(input, out string, analysis bool, artifacts string) error {
+	report, err := researchcompare.ReadReport(input)
+	if err != nil {
 		return err
 	}
-	summary, err := researchcompare.Summarize(report)
+	var summary any
+	if analysis {
+		summary, err = researchcompare.Analyze(report, artifacts)
+	} else {
+		summary, err = researchcompare.Summarize(report)
+	}
 	if err != nil {
 		return err
 	}

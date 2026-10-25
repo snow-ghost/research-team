@@ -5,8 +5,23 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestLibraryBDD_CandidateImportsPrecedeInlinedDefinitions(t *testing.T) {
+	g := Goal{Source: "def Statement : Prop := True\n", Declaration: "Statement", Candidate: "candidate"}
+	source := "import Goal\nimport Mathlib\n\ntheorem candidate : Statement := by trivial\n"
+	combined, err := ModuleSource(g, source)
+	if err != nil || !strings.HasPrefix(combined, "import Mathlib\n\ndef Statement") || strings.Count(combined, "import Mathlib") != 1 || strings.Contains(combined, "import Goal") {
+		t.Fatal(combined, err)
+	}
+	plain := "import Goal\n\ntheorem candidate : Statement := by trivial\n"
+	got, err := ModuleSource(g, plain)
+	if err != nil || got != g.Source+"\n"+strings.TrimPrefix(plain, "import Goal\n") {
+		t.Fatal("existing module source changed", got, err)
+	}
+}
 
 func TestLibraryBDD_RealModuleImportAndTampering(t *testing.T) {
 	file := os.Getenv("RESEARCH_TEST_LEAN_CONFIG")
@@ -22,7 +37,7 @@ func TestLibraryBDD_RealModuleImportAndTampering(t *testing.T) {
 		t.Fatal(err)
 	}
 	goal := Goal{Source: "namespace Shared\ndef Statement : Prop := forall n : Nat, 0 + n = n\nend Shared\n", Declaration: "Shared.Statement", Candidate: "Shared.candidate"}
-	source := "import Goal\nnamespace Shared\ntheorem candidate : Statement := by\n  intro n\n  exact Nat.zero_add n\nend Shared\n"
+	source := "import Goal\nimport Mathlib\nnamespace Shared\ntheorem candidate : Statement := by\n  intro n\n  exact Nat.zero_add n\nend Shared\n"
 	dir := filepath.Join(t.TempDir(), "module")
 	if err = os.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)

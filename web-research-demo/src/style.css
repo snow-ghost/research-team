@@ -2169,6 +2169,14 @@ td small {
 .evaluation-row .table-wrap { overflow-x: auto; }
 .process-section > h3:has(svg) { display: flex; align-items: center; gap: 8px; }
 .evaluation-row p { margin: 8px 0; line-height: 1.5; }
+.comparison-analysis, .memory-relations, .representation-trial, .branch-policy { min-width: 0; overflow-wrap: anywhere; }
+.comparison-analysis { margin: 16px 0; padding: 12px 0; border-block: 1px solid #dce1e7; }
+.comparison-analysis .table-wrap { overflow-x: auto; }
+.comparison-analysis table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; overflow-wrap: normal; }
+.comparison-analysis th, .comparison-analysis td { text-align: left; padding: 8px; border-bottom: 1px solid #dce1e7; }
+.representation-trial, .branch-policy, .relation-row { padding: 12px 0; border-bottom: 1px solid #dce1e7; }
+.branch-policy fieldset { min-width: 0; border: 0; padding: 0; display: grid; gap: 8px; }
+.representation-result p, .relation-row p { margin: 8px 0; line-height: 1.5; }
 .evaluation-row table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .evaluation-row th, .evaluation-row td {
   text-align: left;

@@ -10,25 +10,26 @@ import (
 )
 
 type MemoryEntry struct {
-	ScopeSHA256      string    `json:"scope_sha256,omitempty"`
-	ConditionsSHA256 string    `json:"conditions_sha256,omitempty"`
-	Method           string    `json:"method,omitempty"`
-	FailureClass     string    `json:"failure_class,omitempty"`
-	Branch           string    `json:"branch,omitempty"`
-	Match            string    `json:"match,omitempty"`
-	EvidenceSHA256   string    `json:"evidence_sha256,omitempty"`
-	Obligations      []string  `json:"obligations,omitempty"`
-	ID               string    `json:"id"`
-	Target           string    `json:"target"`
-	TargetRevision   int       `json:"target_revision"`
-	GoalSHA256       string    `json:"goal_sha256,omitempty"`
-	Kind             string    `json:"kind"`
-	Content          string    `json:"content"`
-	Conditions       string    `json:"conditions"`
-	Attempt          string    `json:"attempt,omitempty"`
-	Check            string    `json:"check,omitempty"`
-	Verification     string    `json:"verification,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	Relations        []MemoryRelation `json:"relations,omitempty"`
+	ScopeSHA256      string           `json:"scope_sha256,omitempty"`
+	ConditionsSHA256 string           `json:"conditions_sha256,omitempty"`
+	Method           string           `json:"method,omitempty"`
+	FailureClass     string           `json:"failure_class,omitempty"`
+	Branch           string           `json:"branch,omitempty"`
+	Match            string           `json:"match,omitempty"`
+	EvidenceSHA256   string           `json:"evidence_sha256,omitempty"`
+	Obligations      []string         `json:"obligations,omitempty"`
+	ID               string           `json:"id"`
+	Target           string           `json:"target"`
+	TargetRevision   int              `json:"target_revision"`
+	GoalSHA256       string           `json:"goal_sha256,omitempty"`
+	Kind             string           `json:"kind"`
+	Content          string           `json:"content"`
+	Conditions       string           `json:"conditions"`
+	Attempt          string           `json:"attempt,omitempty"`
+	Check            string           `json:"check,omitempty"`
+	Verification     string           `json:"verification,omitempty"`
+	CreatedAt        time.Time        `json:"created_at"`
 }
 type MemoryRequest struct {
 	Method           string `json:"method,omitempty"`

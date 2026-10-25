@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/snow-ghost/research-team/internal/leancheck"
 	"github.com/snow-ghost/research-team/internal/researchcompare"
 	"github.com/snow-ghost/research-team/internal/researchweb"
 )
@@ -21,9 +22,10 @@ func main() {
 	resume := flag.Bool("resume", false, "Continue only unstarted runs; interrupted requests are held and never replayed")
 	resolvePaths := flag.Bool("resolve-lean-paths", false, "Resolve current aliases to the same Lean directories without rewriting the experiment configuration")
 	validateOnly := flag.Bool("validate-only", false, "Validate configuration without loading credentials, calling models, Lean or writing results")
+	progressFile := flag.String("progress-file", "", "Optional new private observer file; does not change model instructions")
 	flag.Parse()
 	if *validateOnly {
-		if *config == "" || *server != "" || *out != "" || *confirm || *resume || *resolvePaths {
+		if *config == "" || *server != "" || *out != "" || *confirm || *resume || *resolvePaths || *progressFile != "" {
 			fmt.Fprintln(os.Stderr, "Pass only -config and -validate-only.")
 			os.Exit(2)
 		}
@@ -55,7 +57,27 @@ func main() {
 	if err == nil {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		r, runErr := researchcompare.RunComparison(ctx, c, *out, researchcompare.Runner{Lookup: o.Lookup, Resume: *resume, ResolveLeanPaths: *resolvePaths})
+		runner := researchcompare.Runner{Lookup: o.Lookup, Resume: *resume, ResolveLeanPaths: *resolvePaths}
+		var observer *researchcompare.ProgressWriter
+		if *progressFile != "" {
+			observer, err = researchcompare.NewProgressWriter(*progressFile, leancheck.Digest(c), *resume)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			runner.Observe = observer.Observe
+			go observer.Heartbeat(ctx)
+		}
+		r, runErr := researchcompare.RunComparison(ctx, c, *out, runner)
+		if observer != nil {
+			state := "completed"
+			if runErr != nil {
+				state = "failed"
+			}
+			if observeErr := observer.Finish(state); observeErr != nil {
+				fmt.Fprintln(os.Stderr, "Progress observation failed; report retained")
+			}
+		}
 		err = runErr
 		if err == nil {
 			fmt.Printf("Completed runs: %d. Maximum requests: %d. Results are not operator acceptance.\n", len(r.Runs), r.MaxRequests)

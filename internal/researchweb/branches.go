@@ -37,6 +37,7 @@ func researchMethod(id string) (ResearchMethod, bool) {
 }
 
 type ResearchBranch struct {
+	Policy         *BranchPolicy     `json:"policy,omitempty"`
 	Held           bool              `json:"held,omitempty"`
 	Parent         string            `json:"parent,omitempty"`
 	Decisions      []BranchDecision  `json:"decisions,omitempty"`

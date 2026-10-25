@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Activity } from "lucide-react";
+import { Activity, ChartColumn } from "lucide-react";
+import { ComparisonAnalysis } from "./comparison-analysis.jsx";
 
 const modeNames = {
   single: "Один исследователь",
@@ -21,6 +22,7 @@ const stateNames = {
 };
 
 export function EvaluationProgress({ live }) {
+  const [analysis, setAnalysis] = useState({});
   const [items, setItems] = useState([]),
     [error, setError] = useState("");
   useEffect(() => {
@@ -61,6 +63,59 @@ export function EvaluationProgress({ live }) {
             <strong>{item.label}</strong>
             <span>{stateNames[item.status] || item.status}</span>
           </div>
+          {item.health && (
+            <div
+              className={
+                item.health.needs_attention ? "api-error" : "evaluation-health"
+              }
+              role={item.health.needs_attention ? "status" : undefined}
+            >
+              <p>
+                Процесс:{" "}
+                {{
+                  running: "работает",
+                  stopped: "остановлен",
+                  failed: "ошибка",
+                  completed: "завершен",
+                  unknown: "не подтвержден",
+                }[item.health.process_state] || "не подтвержден"}
+                . {item.health.report_stale ? "Давно нет новых записей." : ""}
+              </p>
+              <p>
+                Этап:{" "}
+                {{
+                  last_checkpoint_only: "только последний сохраненный этап",
+                  preparation: "подготовка",
+                  waiting_model: "ожидание модели",
+                  model_response: "ответ модели",
+                  lean_check: "проверка Lean",
+                  tool_execution: "инструмент",
+                  tool_completed: "инструмент завершен",
+                  result_processing: "обработка ответа",
+                  finished: "завершение",
+                }[item.health.phase] || "не подтвержден"}
+                {item.health.role ? " · " + item.health.role : ""}.
+              </p>
+            </div>
+          )}
+          <button
+            className="button secondary"
+            onClick={async () => {
+              try {
+                setAnalysis((old) => ({ ...old, [item.id]: null }));
+                const value = await live.get(
+                  `/evaluations/${item.id}/analysis`,
+                );
+                setAnalysis((old) => ({ ...old, [item.id]: value }));
+              } catch (e) {
+                setError(e.message);
+              }
+            }}
+          >
+            <ChartColumn size={15} />
+            Разобрать результаты
+          </button>
+          <ComparisonAnalysis value={analysis[item.id]} />
           {item.summary && (
             <>
               <p>

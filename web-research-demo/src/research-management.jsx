@@ -10,6 +10,7 @@ import {
   FlaskConical,
 } from "lucide-react";
 import { api } from "./api.js";
+import { RepresentationTrial } from "./representation-trial.jsx";
 
 const roles = {
   proof: "Доказательство",
@@ -1128,6 +1129,12 @@ function NativeLemmaMatching({ live, target }) {
   return (
     <section className="process-section" aria-label="Подбор типов Lean">
       <h3>Подбор типов Lean</h3>
+      <RepresentationTrial
+        key={selectedTarget}
+        live={live}
+        target={selectedTarget}
+        libraries={libraries}
+      />
       <form
         className="runtime-form"
         aria-label="Поиск по каталогу Lean"
@@ -1363,6 +1370,27 @@ function NativeLemmaMatching({ live, target }) {
                 Поиск цепочки: наборов {m.chain.trials.length} /{" "}
                 {m.chain.max_trials}, глубина {m.chain.depth}.
               </p>
+            )}
+            {m.representation && (
+              <div className="representation-result">
+                <strong>Смена представления</strong>
+                <p>
+                  Исходная цель: {m.representation.original.status}. Прямая
+                  цель: {m.representation.direct.status}. Эквивалентность:{" "}
+                  {m.representation.bridge.status}. Перенос:{" "}
+                  {m.representation.transferred?.status || "не выполнен"}.
+                </p>
+                <p>
+                  Автор эквивалентности: {m.representation.bridge_author}.
+                  Обращений к модели: {m.representation.model_calls}.
+                </p>
+                <details>
+                  <summary>Протокол четырех проверок</summary>
+                  <pre className="proof-source">
+                    {JSON.stringify(m.representation, null, 2)}
+                  </pre>
+                </details>
+              </div>
             )}
             {m.reuse && (
               <div className="reuse-summary">

@@ -12,6 +12,9 @@ import (
 )
 
 type EvaluationWatch struct {
+	ProgressFile        string `json:"progress_file,omitempty"`
+	ProcessFile         string `json:"process_file,omitempty"`
+	StaleSeconds        int    `json:"stale_seconds,omitempty"`
 	ID                  string `json:"id"`
 	Label               string `json:"label"`
 	File                string `json:"file"`
@@ -19,6 +22,7 @@ type EvaluationWatch struct {
 }
 
 type EvaluationStatus struct {
+	Health            *EvaluationHealth                  `json:"health,omitempty"`
 	ID                string                             `json:"id"`
 	Label             string                             `json:"label"`
 	Status            string                             `json:"status"`
@@ -30,6 +34,7 @@ type EvaluationStatus struct {
 	MaxRequests       int                                `json:"max_requests"`
 }
 type EvaluationRunStatus struct {
+	LastRecordedRole   string  `json:"last_recorded_role,omitempty"`
 	Case               string  `json:"case"`
 	Class              string  `json:"class"`
 	Mode               string  `json:"mode"`
@@ -60,6 +65,22 @@ func resolveEvaluationWatches(c *Config, base string) error {
 		rel, err := filepath.Rel(c.WebDir, w.File)
 		if err != nil || rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return RuleError("Отчет сравнения должен находиться вне веб-каталога.")
+		}
+		if w.StaleSeconds != 0 && (w.StaleSeconds < 60 || w.StaleSeconds > 3600) {
+			return RuleError("Предел отсутствия записей должен быть от 60 до 3600 секунд.")
+		}
+		for _, path := range []*string{&w.ProgressFile, &w.ProcessFile} {
+			if *path == "" {
+				continue
+			}
+			if !filepath.IsAbs(*path) {
+				*path = filepath.Join(base, *path)
+			}
+			*path = filepath.Clean(*path)
+			rel, err := filepath.Rel(c.WebDir, *path)
+			if err != nil || rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return RuleError("Сведения наблюдения должны быть вне веб-каталога.")
+			}
 		}
 	}
 	return nil
@@ -99,8 +120,13 @@ func (s *Service) EvaluationStatuses() []EvaluationStatus {
 			at := info.ModTime().UTC()
 			x.UpdatedAt = &at
 		}
+		x.Health = evaluationHealth(w, x.UpdatedAt, summary.Complete, time.Now().UTC())
 		for _, r := range report.Runs {
-			x.Runs = append(x.Runs, EvaluationRunStatus{Case: r.Case, Class: r.Class, Mode: r.Mode, Repetition: r.Repetition, Status: r.Status, MathematicalStatus: r.MathematicalStatus, UsageIncomplete: r.UsageIncomplete, RequestUpperBound: r.RequestUpperBound, MeasuredRequests: r.MeasuredRequests, Seconds: r.Seconds})
+			last := ""
+			if len(r.Stages) > 0 {
+				last = r.Stages[len(r.Stages)-1].Role
+			}
+			x.Runs = append(x.Runs, EvaluationRunStatus{LastRecordedRole: last, Case: r.Case, Class: r.Class, Mode: r.Mode, Repetition: r.Repetition, Status: r.Status, MathematicalStatus: r.MathematicalStatus, UsageIncomplete: r.UsageIncomplete, RequestUpperBound: r.RequestUpperBound, MeasuredRequests: r.MeasuredRequests, Seconds: r.Seconds})
 			x.RequestUpperBound += r.RequestUpperBound
 			x.MeasuredRequests += r.MeasuredRequests
 		}

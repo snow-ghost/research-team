@@ -1,11 +1,105 @@
 package researchweb
 
 import (
+	"github.com/snow-ghost/research-team/internal/researchcompare"
 	"net/http"
+	"path/filepath"
 	"strconv"
 )
 
 func (h *HTTP) researchProgressRoutes() {
+	h.mux.HandleFunc("GET /api/evaluations/{id}/analysis", func(w http.ResponseWriter, r *http.Request) {
+		for _, watch := range h.service.Options.Config.Evaluations {
+			if watch.ID != r.PathValue("id") {
+				continue
+			}
+			report, err := researchcompare.ReadReport(watch.File)
+			if err != nil || report.Simulation || report.ConfigurationSHA256 != watch.ConfigurationSHA256 {
+				h.fail(w, RuleError("Отчет наблюдаемого опыта недоступен."))
+				return
+			}
+			value, err := researchcompare.Analyze(report, filepath.Dir(watch.File))
+			if err != nil {
+				h.fail(w, err)
+				return
+			}
+			h.json(w, value)
+			return
+		}
+		h.fail(w, RuleError("Опыт не найден."))
+	})
+	h.mux.HandleFunc("GET /api/comparisons/{id}/analysis", func(w http.ResponseWriter, r *http.Request) {
+		v, err := h.service.Store.Read()
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		for _, c := range v.Comparisons {
+			if c.ID == r.PathValue("id") {
+				value, err := researchcompare.Analyze(c.Report, "")
+				if err != nil {
+					h.fail(w, err)
+					return
+				}
+				h.json(w, value)
+				return
+			}
+		}
+		h.fail(w, RuleError("Сравнение не найдено."))
+	})
+	h.mux.HandleFunc("GET /api/branches/recommendations", func(w http.ResponseWriter, r *http.Request) {
+		value, err := h.service.BranchRecommendations(r.URL.Query().Get("study"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, value)
+	})
+	h.mux.HandleFunc("POST /api/branches/{id}/policy", func(w http.ResponseWriter, r *http.Request) {
+		var body BranchPolicyRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.SetBranchPolicy(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/memory/suggestions", func(w http.ResponseWriter, r *http.Request) {
+		value, err := h.service.MemorySuggestions(r.URL.Query().Get("target"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, value)
+	})
+	h.mux.HandleFunc("POST /api/memory/relations", func(w http.ResponseWriter, r *http.Request) {
+		var body MemoryRelationRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.CreateMemoryRelation(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/experiments/representation", func(w http.ResponseWriter, r *http.Request) {
+		var body RepresentationRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		value, err := h.service.CompareRepresentation(r.Context(), body)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, value)
+	})
 	h.mux.HandleFunc("POST /api/lemmas/reuse-trial", func(w http.ResponseWriter, r *http.Request) {
 		var body ReuseTrialRequest
 		if err := bodyJSON(w, r, &body); err != nil {

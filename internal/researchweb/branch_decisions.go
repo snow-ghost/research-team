@@ -8,6 +8,8 @@ import (
 )
 
 type BranchDecision struct {
+	Actor           string    `json:"actor,omitempty"`
+	PolicySHA256    string    `json:"policy_sha256,omitempty"`
 	ID              string    `json:"id"`
 	Kind            string    `json:"kind"`
 	Note            string    `json:"note"`
@@ -48,101 +50,113 @@ func (s *Service) DecideBranch(id string, r BranchDecisionRequest) error {
 		ID      string
 		Request BranchDecisionRequest
 	}{id, r}), "Решение по исследовательской ветви", id, "operator", func(d *Data) error {
-		index := -1
-		for i := range d.Branches {
-			if d.Branches[i].ID == id {
-				index = i
-				break
-			}
-		}
-		if index < 0 {
-			return RuleError("Ветвь не найдена.")
-		}
-		b := d.Branches[index]
-		e := d.entity(b.Target)
-		if e == nil || e.FormalGoal == nil || b.Team == "" && e.Revision != b.TargetRevision || leancheck.Digest(*e.FormalGoal) != b.GoalSHA256 || studyClosed(d, b.Study) || !branchLibrariesMatch(d, b) || slices.Contains([]string{"completed", "invalidated", "abandoned", "cancelled"}, b.Status) {
-			return RuleError("Нужна действующая открытая версия ветви.")
-		}
-		if len(b.Decisions) >= 100 {
-			return ErrLimit
-		}
-		decision := BranchDecision{ID: r.RequestID, Kind: r.Kind, Note: r.Note, NoteKind: r.NoteKind, TargetRevision: e.Revision, GoalSHA256: b.GoalSHA256, EvidenceAttempt: r.EvidenceAttempt, CreatedAt: time.Now().UTC()}
-		if r.EvidenceAttempt != "" {
-			a := d.attempt(r.EvidenceAttempt)
-			if a == nil || a.Target != e.ID || a.TargetRevision != e.Revision || active(a.Status) {
-				return RuleError("Основание должно ссылаться на завершенную попытку этой версии цели.")
-			}
-			decision.EvidenceSHA256 = a.ResultSHA256
-		}
-		teamCommand := TeamCommand{RequestID: r.RequestID, Kind: "pause", Note: r.Note, NoteKind: r.NoteKind, Confirm: true}
-		switch r.Kind {
-		case "continue":
-			if studySearchSuspended(d, b.Study) {
-				return RuleError("Готовый результат ожидает решения о приемке.")
-			}
-			if b.Team != "" {
-				d.Branches[index].Held = false
-				team := d.team(b.Team)
-				if team == nil {
-					return ErrConflict
-				}
-				if team.Status != "running" {
-					teamCommand.Kind = "resume"
-					if err := s.controlTeamData(d, b.Team, teamCommand); err != nil {
-						return err
-					}
-				}
-				b.Status = team.Status
-			} else {
-				b.Status = "ready"
-			}
-			b.Held = false
-			decision.Outcome = "continued"
-		case "split":
-			if b.Team != "" {
-				if err := s.controlTeamData(d, b.Team, teamCommand); err != nil {
-					return err
-				}
-			}
-			b.Held = true
-			b.Status = "paused"
-			decision.Outcome = "awaiting_separate_plan"
-		case "stop", "change_method":
-			if b.Team != "" {
-				teamCommand.Kind = "stop"
-				if err := s.controlTeamData(d, b.Team, teamCommand); err != nil {
-					return err
-				}
-			}
-			b.Held = true
-			b.Status = "abandoned"
-			decision.Outcome = "stopped"
-			if r.Kind == "change_method" {
-				method, ok := researchMethod(r.Method)
-				if !ok || r.Method == b.Method {
-					return RuleError("Выберите другой исследовательский прием.")
-				}
-				next := b
-				next.ID, next.Parent, next.Plan, next.Team = identifier("branch"), b.ID, "", ""
-				next.Method, next.Rationale, next.Status, next.Reason = r.Method, r.Note, "ready", "Новая ветвь после явной смены приема."
-				next.Held = false
-				next.Decisions = nil
-				next.CreatedAt = time.Now().UTC()
-				next.TargetRevision = e.Revision
-				next.Configuration.Methods = []string{r.Method}
-				next.Basis = &MethodBasis{Source: "operator", Method: r.Method, Procedure: method.Procedure, Rationale: r.Note, ConfirmedAt: next.CreatedAt}
-				decision.Replacement = next.ID
-				decision.Outcome = "replacement_created"
-				d.Branches = append(d.Branches, next)
-			}
-		}
-		b.Reason = r.Note
-		b.Decisions = append(b.Decisions, decision)
-		d.Branches[index] = b
-		return nil
+		return s.decideBranchData(d, id, r, "operator", "")
 	})
 	if err == nil {
 		s.cancelRequested()
 	}
 	return err
+}
+
+func (s *Service) decideBranchData(d *Data, id string, r BranchDecisionRequest, actor, policy string) error {
+	index := -1
+	for i := range d.Branches {
+		if d.Branches[i].ID == id {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return RuleError("Ветвь не найдена.")
+	}
+	b := d.Branches[index]
+	e := d.entity(b.Target)
+	if e == nil || e.FormalGoal == nil || b.Team == "" && e.Revision != b.TargetRevision || leancheck.Digest(*e.FormalGoal) != b.GoalSHA256 || studyClosed(d, b.Study) || !branchLibrariesMatch(d, b) || slices.Contains([]string{"completed", "invalidated", "abandoned", "cancelled"}, b.Status) {
+		return RuleError("Нужна действующая открытая версия ветви.")
+	}
+	if len(b.Decisions) >= 100 {
+		return ErrLimit
+	}
+	decision := BranchDecision{Actor: actor, PolicySHA256: policy, ID: r.RequestID, Kind: r.Kind, Note: r.Note, NoteKind: r.NoteKind, TargetRevision: e.Revision, GoalSHA256: b.GoalSHA256, EvidenceAttempt: r.EvidenceAttempt, CreatedAt: time.Now().UTC()}
+	if r.EvidenceAttempt != "" {
+		a := d.attempt(r.EvidenceAttempt)
+		if a == nil || a.Target != e.ID || a.TargetRevision != e.Revision || active(a.Status) {
+			return RuleError("Основание должно ссылаться на завершенную попытку этой версии цели.")
+		}
+		decision.EvidenceSHA256 = a.ResultSHA256
+	}
+	teamCommand := TeamCommand{RequestID: r.RequestID, Kind: "pause", Note: r.Note, NoteKind: r.NoteKind, Confirm: true}
+	switch r.Kind {
+	case "continue":
+		if studySearchSuspended(d, b.Study) {
+			return RuleError("Готовый результат ожидает решения о приемке.")
+		}
+		if b.Team != "" {
+			d.Branches[index].Held = false
+			team := d.team(b.Team)
+			if team == nil {
+				return ErrConflict
+			}
+			if team.Status != "running" {
+				teamCommand.Kind = "resume"
+				if err := s.controlTeamData(d, b.Team, teamCommand); err != nil {
+					return err
+				}
+			}
+			b.Status = team.Status
+		} else {
+			b.Status = "ready"
+		}
+		b.Held = false
+		decision.Outcome = "continued"
+	case "split":
+		if b.Team != "" {
+			if err := s.controlTeamData(d, b.Team, teamCommand); err != nil {
+				return err
+			}
+		}
+		b.Held = true
+		b.Status = "paused"
+		decision.Outcome = "awaiting_separate_plan"
+	case "stop", "change_method":
+		if b.Team != "" {
+			teamCommand.Kind = "stop"
+			if err := s.controlTeamData(d, b.Team, teamCommand); err != nil {
+				return err
+			}
+		}
+		b.Held = true
+		b.Status = "abandoned"
+		decision.Outcome = "stopped"
+		if r.Kind == "change_method" {
+			method, ok := researchMethod(r.Method)
+			if !ok || r.Method == b.Method {
+				return RuleError("Выберите другой исследовательский прием.")
+			}
+			next := b
+			next.ID, next.Parent, next.Plan, next.Team = identifier("branch"), b.ID, "", ""
+			next.Method, next.Rationale, next.Status, next.Reason = r.Method, r.Note, "ready", "Новая ветвь после явной смены приема."
+			next.Held = false
+			next.Decisions = nil
+			next.CreatedAt = time.Now().UTC()
+			next.TargetRevision = e.Revision
+			next.Configuration.Methods = []string{r.Method}
+			next.Basis = &MethodBasis{Source: actor, Method: r.Method, Procedure: method.Procedure, Rationale: r.Note, ConfirmedAt: next.CreatedAt}
+			if next.Policy != nil {
+				p := *next.Policy
+				p.Tried = append([]string{}, p.Tried...)
+				if !slices.Contains(p.Tried, r.Method) {
+					p.Tried = append(p.Tried, r.Method)
+				}
+				next.Policy = &p
+			}
+			decision.Replacement = next.ID
+			decision.Outcome = "replacement_created"
+			d.Branches = append(d.Branches, next)
+		}
+	}
+	b.Reason = r.Note
+	b.Decisions = append(b.Decisions, decision)
+	d.Branches[index] = b
+	return nil
 }

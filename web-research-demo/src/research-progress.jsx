@@ -12,6 +12,7 @@ import { api } from "./api.js";
 import { verificationCurrent } from "./proof-state.js";
 import { BranchDecisionForm } from "./branch-decision.jsx";
 import { ResearchMethodSelect } from "./assignment.jsx";
+import { MemoryRelations } from "./memory-relations.jsx";
 
 const statusNames = {
   ready: "Ожидает",
@@ -427,6 +428,7 @@ export function MemoryPanel({ live, study, selected, onSelect }) {
         ))}
         {!hits.length && <p>Записей не найдено.</p>}
       </div>
+      <MemoryRelations live={live} target={entity?.id} />
     </section>
   );
 }

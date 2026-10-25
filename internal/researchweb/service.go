@@ -419,6 +419,7 @@ func (s *Service) schedule() {
 			s.expireWorkerLeases()
 			s.advanceCycles()
 			s.advanceTeams()
+			s.advanceBranchPolicies()
 			s.advanceBranches()
 			s.startChecks()
 			s.startLibraryBuilds()

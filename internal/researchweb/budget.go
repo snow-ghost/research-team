@@ -149,6 +149,9 @@ func (s *Service) observeBudget(d *Data, study string) BudgetObservation {
 
 // Output reservation is a scheduling bound, not a price or an input-token estimate.
 func (s *Service) reserveStudyBudget(d *Data, target string, p execution.Profile) (int64, error) {
+	if providerHeld(d, p) {
+		return 0, RuleError("Новые передачи поставщику удержаны после отказов; требуется решение оператора.")
+	}
 	e := d.entity(target)
 	if e == nil {
 		return 0, RuleError("Утверждение не найдено.")

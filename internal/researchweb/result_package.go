@@ -145,6 +145,9 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 		return ResultPackage{}, RuleError("Нужен действующий результат с точными исходными связями проверок.")
 	}
 	e := v.entity(result.Target)
+	if counterHasObligations(result.Counter) {
+		return ResultPackage{}, RuleError("Перенос результата с отдельным разбором вопросов контрпримеров пока требует полного архива области.")
+	}
 	if study := v.study(e.Study); study != nil && study.Definitions != nil {
 		return ResultPackage{}, RuleError("Перенос отдельных результатов с общими определениями пока не поддерживается; используйте полный проверенный архив области.")
 	}
@@ -292,6 +295,9 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 }
 
 func validateResultPackage(p ResultPackage) error {
+	if counterHasObligations(p.Result.Counter) || validateCounterReport(p.Result.Counter) != nil {
+		return RuleError("Отчет контрпримеров содержит непереносимый разбор вопросов или некорректные поля.")
+	}
 	if p.Study.Definitions != nil {
 		return RuleError("Пакет отдельных результатов не содержит полного набора общих определений.")
 	}

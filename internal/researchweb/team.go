@@ -469,9 +469,17 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 				return block("Отчет получен до исправления разделения текста Coddy. Нужна новая проверка контрпримеров.")
 			}
 			var found CounterReport
-			if decodeAgentReport(report.Candidate, &found) != nil || (found.Outcome != "none_found" && found.Outcome != "counterexample_candidate" && found.Outcome != "inconclusive") || !textOK(found.Evidence, 4000) {
+			if decodeAgentReport(report.Candidate, &found) != nil || validateCounterReport(found) != nil {
 				team.RetryRole = "counterexample"
 				return block("Ответ проверяющего контрпримеры не соответствует форме отчета.")
+			}
+			if !counterCleared(d, counter, found) {
+				team.RetryRole = ""
+				return block("Незакрытые вопросы отчета контрпримеров требуют отдельного разбора; ответ сохранен.")
+			}
+			if found.Outcome == "inconclusive" {
+				team.RetryRole = ""
+				return block("Проверка контрпримеров не завершена; новые расходы требуют отдельного решения.")
 			}
 			if found.Outcome == "counterexample_candidate" {
 				if team.Strategy == "demand" && team.Verification != "" {
@@ -729,6 +737,7 @@ func (s *Service) queueTeamAttempt(d *Data, team *ResearchTeam, role, parent str
 		objectives[role] = "Исследуй точное утверждение. Подготовь доказательство и, если можешь, один завершенный блок lean с import Goal и указанным именем кандидата. Не меняй цель, не используй sorry и дополнительные аксиомы. Если исходник не готов, явно укажи незакрытые обязательства; координатор подключит формализатора."
 	}
 	if role == "counterexample" {
+		objectives[role] += ` Схема counterexample-report@2: schema, outcome, evidence, assumptions, limitations, unresolved_obligations. Последнее поле — массив объектов {kind: mathematical|operational, text: текст}; при отсутствии вопросов верни []. Незакрытые математические вопросы запрещают готовность к приемке. Не записывай отсутствие вопросов строкой. Допустимо необязательное refutation_source. Верни ровно один JSON без пояснений снаружи.`
 		objectives[role] += " Если найден контрпример и доступен check_refutation, подготовь исходник отрицания из tool_goals. Добавь в JSON поле refutation_source с полным Lean-файлом. Проверка отрицания не является доказательством исходной цели. При none_found поле не требуется."
 	}
 	if role == "formalize" && team.Refuting {

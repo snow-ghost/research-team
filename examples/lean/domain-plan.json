@@ -1,0 +1,19 @@
+{
+  "domain": {
+    "source": "namespace SharedDomain\ndef next (n : Nat) : Nat := n + 1\ndef Marker : Prop := True\nend SharedDomain\n",
+    "declaration": "SharedDomain.Marker",
+    "candidate": "SharedDomain.markerProbe"
+  },
+  "goals": [
+    {
+      "source": "namespace DomainGoals\ndef First : Prop := forall n : Nat, SharedDomain.next n = n + 1\nend DomainGoals\n",
+      "declaration": "DomainGoals.First",
+      "candidate": "DomainGoals.firstProof"
+    },
+    {
+      "source": "namespace DomainGoals\ndef Second : Prop := SharedDomain.next 0 = 1\nend DomainGoals\n",
+      "declaration": "DomainGoals.Second",
+      "candidate": "DomainGoals.secondProof"
+    }
+  ]
+}

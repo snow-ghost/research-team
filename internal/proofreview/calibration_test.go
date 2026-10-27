@@ -63,3 +63,47 @@ func TestCalibrationBDD_RealLeanChecksAllFixtureProofs(t *testing.T) {
 		})
 	}
 }
+
+func TestCalibrationBDD_ExpandedCasesSeparateExpositionFromCheckedProof(t *testing.T) {
+	cases := ExpandedCalibrationCases()
+	if len(cases) != 12 {
+		t.Fatal("expanded experiment requires 48 calls")
+	}
+	seen := map[string]bool{}
+	for _, c := range cases {
+		if seen[c.ID] {
+			t.Fatal("duplicate case")
+		}
+		seen[c.ID] = true
+	}
+	for _, c := range cases[6:] {
+		if c.Exposition == "" {
+			t.Fatal("missing exposition")
+		}
+		for _, issue := range c.Expected {
+			if issue.ID == "" || issue.Description == "" {
+				t.Fatal("missing reference annotation")
+			}
+		}
+	}
+	file := os.Getenv("RESEARCH_TEST_LEAN_CONFIG")
+	if file == "" {
+		t.Skip("set RESEARCH_TEST_LEAN_CONFIG")
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg leancheck.Config
+	if err = json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases[6:] {
+		t.Run(c.ID, func(t *testing.T) {
+			r, err := (leancheck.DockerChecker{Config: cfg}).Check(context.Background(), c.Goal, c.Source, t.TempDir())
+			if err != nil || r.Status != "verified" {
+				t.Fatal(r, err)
+			}
+		})
+	}
+}

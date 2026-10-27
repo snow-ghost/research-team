@@ -45,8 +45,16 @@ func run() error {
 	config := flag.String("server-config", "", "Trusted server configuration with credentials")
 	profile := flag.String("profile", "", "Existing native model profile")
 	out := flag.String("out", "", "New private result directory")
-	confirm := flag.Bool("confirm", false, "Explicit authorization for 24 model calls on the built-in cases")
+	suite := flag.String("suite", "core", "core (24 calls) or expanded (48 calls)")
+	confirm := flag.Bool("confirm", false, "Explicit authorization for the selected suite's bounded model calls")
 	flag.Parse()
+	cases := proofreview.CalibrationCases()
+	if *suite == "expanded" {
+		cases = proofreview.ExpandedCalibrationCases()
+	} else if *suite != "core" {
+		return errors.New("unknown suite")
+	}
+	maxRequests := len(cases) * 4
 	if !*confirm || *config == "" || *profile == "" || *out == "" {
 		return errors.New("require -server-config, -profile, -out and -confirm; no automatic resume")
 	}
@@ -61,6 +69,9 @@ func run() error {
 	p.Limits = execution.Limits{TimeoutSeconds: 900, MaxSteps: 1, MaxToolCalls: 0, MaxOutputTokens: 32768, MaxOutputBytes: 16777216}
 	p.Model.Tools = nil
 	p.Skills = []execution.Skill{{ID: "static-review-calibration", Version: "1", Instructions: "Проверь соответствие естественной постановки statement и assumptions формальной цели, затем проверенное доказательство или отрицание. Успешный отчет Lean не подтверждает соответствие естественного и формального текста. Верни только JSON proof-review@2, без вступления. Приемка не выполняется."}}
+	if *suite == "expanded" {
+		p.Skills[0].Instructions += " Если есть exposition, независимо проверь каждый переход этого текста. Правильный Lean-файл не подтверждает правильность изложения. Различай дефект изложения, ложность теоремы и ошибку Lean. Не требуй от корректного краткого изложения раскрывать стандартное правило, которое в нем явно названо."
+	}
 	if err := p.Validate(); err != nil {
 		return err
 	}
@@ -71,13 +82,12 @@ func run() error {
 	if err := os.Mkdir(root, 0700); err != nil {
 		return err
 	}
-	if err := save(filepath.Join(root, "authorization.json"), map[string]any{"max_requests": 24, "max_output_tokens": 32768, "timeout_seconds": 900, "profile_sha256": leancheck.Digest(p), "endpoint": p.Model.BaseURL, "model": p.Model.Model, "automatic_retry": false}); err != nil {
+	if err := save(filepath.Join(root, "authorization.json"), map[string]any{"suite": *suite, "max_requests": maxRequests, "max_output_tokens": 32768, "timeout_seconds": 900, "profile_sha256": leancheck.Digest(p), "endpoint": p.Model.BaseURL, "model": p.Model.Model, "automatic_retry": false}); err != nil {
 		return err
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	checker := leancheck.DockerChecker{Config: *o.Lean}
-	cases := proofreview.CalibrationCases()
 	reports := map[string]leancheck.Report{}
 	if err := save(filepath.Join(root, "reference-private.json"), cases); err != nil {
 		return err
@@ -116,12 +126,16 @@ func run() error {
 				negative.Candidate = "ResearchRefutation.candidate"
 				negativeTemplate, _ := leancheck.CandidateTemplate(negative)
 				var material any = map[string]any{"statement": c.Statement, "assumptions": c.Assumptions, "goal": c.Goal, "candidate_templates": map[string]string{"proof": positive, "refutation": negativeTemplate}, "previous_unverified": map[string]any{"original_goal": c.Goal, "goal": claim, "outcome": map[string]string{"outcome": c.Kind, "source": c.Source}, "report": r}}
+				if c.Exposition != "" {
+					material.(map[string]any)["exposition"] = c.Exposition
+				}
 				if arm == 1 {
 					input, err := proofreview.NewInput(c.Goal, claim, c.Source, r, c.Kind, c.Statement, "fixture")
 					if err != nil {
 						return err
 					}
 					input.Assumptions = c.Assumptions
+					input.Exposition = c.Exposition
 					material = input
 					name = "typed"
 					objective = proofreview.InputInstructions
@@ -157,7 +171,7 @@ func run() error {
 					return err
 				}
 				reserved++
-				if reserved > 24 {
+				if reserved > maxRequests {
 					return errors.New("shared calibration limit exhausted")
 				}
 				if err := save(filepath.Join(dir, "reserved.json"), map[string]any{"request": reserved, "reserved_at": time.Now().UTC(), "outcome": "unknown_until_result"}); err != nil {
@@ -199,5 +213,5 @@ func run() error {
 			}
 		}
 	}
-	return save(filepath.Join(root, "report.json"), map[string]any{"version": "review-calibration@1", "runs": rows, "max_requests": 24, "operator_acceptance": false, "manual_annotations_required": true, "completed_at": time.Now().UTC()})
+	return save(filepath.Join(root, "report.json"), map[string]any{"version": "review-calibration@1", "suite": *suite, "runs": rows, "max_requests": maxRequests, "operator_acceptance": false, "manual_annotations_required": true, "completed_at": time.Now().UTC()})
 }

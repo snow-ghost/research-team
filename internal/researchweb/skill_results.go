@@ -26,7 +26,7 @@ func checkSkillResult(p execution.Profile, candidate string) []execution.SkillRe
 				passed = decodeAgentReport(candidate, &review) == nil && proofreview.Validate(review) == nil && review.Rubric == proofreview.Rubric
 			case "counterexample_report":
 				var report CounterReport
-				passed = decodeAgentReport(candidate, &report) == nil && slices.Contains([]string{"none_found", "counterexample_candidate", "inconclusive"}, report.Outcome) && textOK(report.Evidence, 4000)
+				passed = decodeAgentReport(candidate, &report) == nil && validateCounterReport(report) == nil
 			}
 			out = append(out, execution.SkillResultCheck{Skill: fmt.Sprint(skill.ID, "@", skill.Version), Check: check, Passed: passed})
 		}

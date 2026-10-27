@@ -131,7 +131,7 @@ func (s *Service) CreateWorkflow(r WorkflowRequest) error {
 }
 
 func (s *Service) ControlWorkflow(studyID string, r WorkflowCommand) error {
-	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || !textOK(r.Note, 4000) || !slices.Contains([]string{"pause", "resume", "approve_plan", "stop"}, r.Kind) {
+	if !r.Confirm || r.ExpectedRevision < 1 || !requestPattern.MatchString(r.RequestID) || !textOK(r.Note, 4000) || !slices.Contains([]string{"pause", "resume", "reprocess", "approve_plan", "stop"}, r.Kind) {
 		return RuleError("Подтвердите действие полного цикла и его основание.")
 	}
 	v, err := s.Store.Read()
@@ -160,7 +160,12 @@ func (s *Service) ControlWorkflow(studyID string, r WorkflowCommand) error {
 			return RuleError("Цикл закрыт.")
 		}
 		w := st.Workflow
-		if r.Kind == "pause" {
+		if r.Kind == "reprocess" {
+			if w.Status != "needs_operator" || !s.workflowReportsReprocessable(d, w, studyID) {
+				return RuleError("Повторная обработка требует примененного плана и уже полученных текущих ответов; неизвестные передачи не повторяются.")
+			}
+			w.Status = "running"
+		} else if r.Kind == "pause" {
 			if w.Status == "paused" {
 				return RuleError("Цикл уже на паузе.")
 			}

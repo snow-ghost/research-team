@@ -48,14 +48,15 @@ type RunRequest struct {
 	Confirm            bool              `json:"confirm"`
 }
 type ProfileView struct {
-	Limits    execution.Limits `json:"limits"`
-	ID        string           `json:"id"`
-	Label     string           `json:"label"`
-	Kind      string           `json:"kind"`
-	Provider  string           `json:"provider"`
-	Model     string           `json:"model"`
-	Available bool             `json:"available"`
-	Skills    []string         `json:"skills"`
+	ProviderKey string           `json:"provider_key"`
+	Limits      execution.Limits `json:"limits"`
+	ID          string           `json:"id"`
+	Label       string           `json:"label"`
+	Kind        string           `json:"kind"`
+	Provider    string           `json:"provider"`
+	Model       string           `json:"model"`
+	Available   bool             `json:"available"`
+	Skills      []string         `json:"skills"`
 }
 
 func NewService(o Options) (*Service, error) {
@@ -216,7 +217,7 @@ func active(status string) bool {
 func (s *Service) Profiles() []ProfileView {
 	out := []ProfileView{}
 	for id, p := range s.profileList() {
-		v := ProfileView{ID: id, Label: s.Options.Labels[id], Kind: p.Kind, Limits: p.Limits, Available: true, Skills: []string{}}
+		v := ProfileView{ProviderKey: providerKey(p), ID: id, Label: s.Options.Labels[id], Kind: p.Kind, Limits: p.Limits, Available: true, Skills: []string{}}
 		s.profileMu.RLock()
 		if label := s.profileLabels[id]; label != "" {
 			v.Label = label
@@ -343,6 +344,9 @@ func (s *Service) Start(r RunRequest) error {
 	return s.Store.Change(r.ExpectedRevision, r.RequestID, hash(r), "Попытка поставлена в очередь", r.TaskID, "operator", func(d *Data) error {
 		if d.Paused {
 			return RuleError("Новые запуски приостановлены.")
+		}
+		if providerHeld(d, profile) {
+			return RuleError("Новые передачи этому поставщику удержаны; требуется решение оператора.")
 		}
 		t := d.task(r.TaskID)
 		if t == nil || t.State != "queued" || t.Attempt != "" {
@@ -480,7 +484,7 @@ func (s *Service) schedule() {
 				continue
 			}
 			for _, a := range v.Attempts {
-				if a.Status == "queued" && !a.QueueHeld {
+				if a.Status == "queued" && !a.QueueHeld && !providerHeld(&v.Data, attemptProfile(s, a)) {
 					if a.TeamID != "" {
 						team := v.team(a.TeamID)
 						if team == nil || team.Status != "running" {
@@ -496,6 +500,9 @@ func (s *Service) schedule() {
 					err = s.Store.Change(0, "", "", "Подготовка снимка входных файлов", a.Target, "server", func(d *Data) error {
 						current := d.attempt(a.ID)
 						if current == nil || current.Status != "queued" || current.QueueHeld || d.Paused {
+							return ErrConflict
+						}
+						if providerHeld(d, attemptProfile(s, *current)) {
 							return ErrConflict
 						}
 						if current.CycleID != "" {
@@ -580,6 +587,7 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 		}
 		current.FinishedAt = &now
 		current.RemoteOutcome = result.RemoteOutcome
+		recordProviderOutcome(d, *current, attemptProfile(s, *current), result)
 		task := d.task(a.TaskID)
 		task.State = result.Status
 		for i := range d.Questions {

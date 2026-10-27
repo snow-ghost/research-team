@@ -66,7 +66,7 @@ func (s *Service) queueRefutation(d *Data, attempt string) (string, error) {
 			return "", err
 		}
 	} else {
-		if decodeAgentReport(result.Candidate, &report) != nil || report.Outcome != "counterexample_candidate" || !textOK(report.Evidence, 4000) || !textOK(report.RefutationSource, 64000) {
+		if decodeAgentReport(result.Candidate, &report) != nil || validateCounterReport(report) != nil || !counterCleared(d, a, report) || report.Outcome != "counterexample_candidate" || !textOK(report.RefutationSource, 64000) {
 			return "", RuleError("Нужны описание контрпримера и исходник доказательства отрицания.")
 		}
 	}

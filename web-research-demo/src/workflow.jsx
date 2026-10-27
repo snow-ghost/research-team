@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Check, Pause, Play, Plus, Square } from "lucide-react";
+import { Check, Pause, Play, Plus, Square, RotateCcw } from "lucide-react";
 import { api } from "./api.js";
 import { TeamFields } from "./research-management.jsx";
 import { PlanPreparationPanel } from "./plan-preparation.jsx";
@@ -228,6 +228,16 @@ export function WorkflowPanel({ live, study }) {
           )}
           {!closed(w) && (
             <div className="action-row">
+              {w.status === "needs_operator" && (
+                <button
+                  className="button secondary"
+                  disabled={live.busy}
+                  onClick={() => setDecision("reprocess")}
+                >
+                  <RotateCcw size={15} />
+                  Обработать сохраненные ответы
+                </button>
+              )}
               {w.status === "awaiting_plan" && (
                 <button
                   className="button primary"
@@ -281,6 +291,8 @@ export function WorkflowPanel({ live, study }) {
               approve_plan: "Подтверждаю постановки, покрытие и запуск ветвей",
               pause: "Подтверждаю паузу цикла",
               resume: "Подтверждаю продолжение в прежнем бюджете",
+              reprocess:
+                "Подтверждаю повторную обработку полученных ответов без новых попыток",
               stop: "Подтверждаю остановку цикла",
             }[decision]
           }

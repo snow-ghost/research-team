@@ -13,6 +13,7 @@ type ExpectedIssue struct {
 	Description string `json:"description"`
 }
 type CalibrationCase struct {
+	Exposition  string          `json:"exposition,omitempty"`
 	ID          string          `json:"id"`
 	Statement   string          `json:"statement"`
 	Assumptions string          `json:"assumptions"`
@@ -20,6 +21,23 @@ type CalibrationCase struct {
 	Goal        leancheck.Goal  `json:"goal"`
 	Source      string          `json:"source"`
 	Expected    []ExpectedIssue `json:"expected"`
+}
+
+// Exposition defects are independent of the correctness of the supplied Lean term.
+func ExpandedCalibrationCases() []CalibrationCase {
+	cases := CalibrationCases()
+	add := func(id, body, statement, exposition, proof string, issues []ExpectedIssue) {
+		name := fmt.Sprintf("CalibrationTarget%03d", len(cases)+1)
+		g := leancheck.Goal{Source: "import Mathlib\ndef " + name + " : Prop := " + body + "\n", Declaration: name, Candidate: name + "Proof"}
+		cases = append(cases, CalibrationCase{ID: id, Kind: "proof", Statement: statement, Assumptions: "Только явно перечисленные предпосылки формальной цели.", Exposition: exposition, Goal: g, Source: "import Goal\ntheorem " + g.Candidate + " : " + g.Declaration + " := by\n" + proof + "\n", Expected: issues})
+	}
+	add("exposition_correct", "forall n : Nat, n + 0 = n", "Для любого натурального n верно n+0=n.", "Сложение натурального числа с нулем справа по определению дает исходное число; равенство рефлексивно.", "  intro n\n  rfl", []ExpectedIssue{})
+	add("exposition_circle", "forall n : Nat, n < n + 1", "Для любого натурального n верно n<n+1.", "Зафиксируем произвольное n. Предположим, что n<n+1. Тогда n<n+1. Поскольку n произвольно, без дополнительных предпосылок получено утверждение для всех n.", "  intro n\n  exact Nat.lt_succ_self n", []ExpectedIssue{{ID: "circular_argument", Category: "logic", Description: "Из допущения требуемого утверждения получено только P -> P, а не P; гипотеза не устранена. Корректный Lean-файл не исправляет этот круг в изложении."}})
+	add("exposition_lemma_misuse", "forall a b : Nat, a + 1 = b + 1 -> a = b", "Если a+1=b+1 для натуральных a,b, то a=b.", "Из a+1=b+1 получаем рефлексивное a=a. Применяя правило рефлексивности равенства к a=a, заключаем a=b. Рефлексивность позволяет заменить правую часть равенства произвольным b.", "  intro a b h\n  omega", []ExpectedIssue{{ID: "invalid_lemma_application", Category: "lemma", Description: "Рефлексивность дает только a=a и не позволяет заключить a=b с произвольным b. Само утверждение истинно, но указанное применение правила неверно."}})
+	add("exposition_missing_case", "forall n : Nat, n <= n + 1", "Для любого натурального n верно n<=n+1.", "Рассмотрим только четные n=2*k. Из неотрицательности единицы следует 2*k<=2*k+1. Этим доказано утверждение для всех натуральных n; нечетные числа не рассматриваются и перехода к ним нет.", "  intro n\n  omega", []ExpectedIssue{{ID: "missing_case", Category: "coverage", Description: "Изложение проверяет только четные числа, но заявляет общий вывод без случая нечетных чисел и без основания его исключения."}})
+	add("exposition_hidden_premise", "forall x : Real, 0 <= x * x", "Квадрат любого действительного x неотрицателен.", "Зафиксируем действительное x и дополнительно предположим x>0. Произведение двух положительных чисел положительно, следовательно x*x>=0. Дополнительная гипотеза x>0 не устраняется; результат объявляется доказанным для всех действительных x.", "  intro x\n  exact mul_self_nonneg x", []ExpectedIssue{{ID: "unremoved_positive_premise", Category: "premise", Description: "Изложение использует x>0, которого нет в исходной постановке, и не разбирает x<=0. Это дефект изложения, не опровержение утверждения или Lean-файла."}})
+	add("exposition_composition_correct", "forall p q r : Prop, (p -> q) -> (q -> r) -> p -> r", "Из P->Q, Q->R и P следует R.", "Из первой импликации и P по правилу отделения получаем Q. Из второй импликации и Q тем же правилом получаем R. Все три исходные предпосылки перечислены в постановке.", "  intro p q r hpq hqr hp\n  exact hqr (hpq hp)", []ExpectedIssue{})
+	return cases
 }
 
 // Expected issues are reference annotations and must never be sent to a reviewer.

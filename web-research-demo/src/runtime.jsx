@@ -5,6 +5,7 @@ import { EvidencePanel } from "./evidence.jsx";
 import { MemoryPanel } from "./research-progress.jsx";
 import { ResearchMethodSelect } from "./assignment.jsx";
 import { EvaluationProgress } from "./evaluation-progress.jsx";
+import { ProviderControlPanel, CounterReportPanel } from "./reliability.jsx";
 import {
   TeamPanel,
   FormalGoalPanel,
@@ -99,6 +100,7 @@ export function RuntimePanel({
   return (
     <div className="scroll-content runtime-panel">
       <EvaluationProgress live={live} />
+      {providers && <ProviderControlPanel live={live} />}
       <TeamPanel
         live={live}
         study={study}
@@ -615,6 +617,10 @@ export function RuntimePanel({
               </>
             )}
           </div>
+          {state.tasks.find((t) => t.id === result.attempt.task_id)?.kind ===
+            "counterexample" && (
+            <CounterReportPanel live={live} attempt={result.attempt} />
+          )}
           <button
             className="button secondary"
             type="button"

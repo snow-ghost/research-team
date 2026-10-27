@@ -144,6 +144,8 @@ type Delegation struct {
 	Target string `json:"target"`
 }
 type Data struct {
+	CounterAudits    []CounterAudit     `json:"counter_audits,omitempty"`
+	ProviderControls []ProviderControl  `json:"provider_controls,omitempty"`
 	LemmaMatches     []NativeLemmaMatch `json:"lemma_matches,omitempty"`
 	Maintenance      *MaintenanceHold   `json:"maintenance,omitempty"`
 	SkillRevisions   []SkillRevision    `json:"skill_revisions,omitempty"`

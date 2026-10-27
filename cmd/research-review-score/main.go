@@ -36,7 +36,7 @@ func run() error {
 	if err := readJSON(*annotation, &labels); err != nil {
 		return err
 	}
-	for _, c := range proofreview.CalibrationCases() {
+	for _, c := range proofreview.ExpandedCalibrationCases() {
 		if c.ID != *caseID {
 			continue
 		}

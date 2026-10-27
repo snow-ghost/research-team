@@ -100,6 +100,7 @@ func NewHTTP(s *Service, key string) (*HTTP, error) {
 		workerKeys[value] = true
 	}
 	h.routes()
+	h.reliabilityRoutes()
 	return h, nil
 }
 func (h *HTTP) Close() error { return h.root.Close() }

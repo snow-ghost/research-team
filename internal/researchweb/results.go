@@ -1,6 +1,7 @@
 package researchweb
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -45,9 +46,13 @@ func reviewMaterials(d Data, a Attempt) any {
 type ReviewReport = proofreview.Report
 type ReviewFinding = proofreview.Finding
 type CounterReport struct {
-	RefutationSource string `json:"refutation_source,omitempty"`
-	Outcome          string `json:"outcome"`
-	Evidence         string `json:"evidence"`
+	RefutationSource string          `json:"refutation_source,omitempty"`
+	Outcome          string          `json:"outcome"`
+	Evidence         string          `json:"evidence"`
+	Schema           string          `json:"schema,omitempty"`
+	Assumptions      string          `json:"assumptions,omitempty"`
+	Limitations      string          `json:"limitations,omitempty"`
+	Unresolved       json.RawMessage `json:"unresolved_obligations,omitempty"`
 }
 type ResearchResult struct {
 	Transfer            *ResultTransfer `json:"transfer,omitempty"`
@@ -171,8 +176,11 @@ func (s *Service) bindResult(d *Data, r ResultRequest) error {
 			return RuleError("Некорректное замечание.")
 		}
 	}
-	if decodeAgentReport(cr.Candidate, &checked) != nil || !textOK(checked.Evidence, 4000) || (checked.Outcome != "none_found" && checked.Outcome != "inconclusive" && checked.Outcome != "counterexample_candidate") {
+	if decodeAgentReport(cr.Candidate, &checked) != nil || validateCounterReport(checked) != nil {
 		return RuleError("Некорректный отчет контрпримеров.")
+	}
+	if !counterCleared(d, counter, checked) {
+		return RuleError("Незакрытые вопросы отчета контрпримеров требуют отдельного разбора.")
 	}
 	if input, err := s.readInput(*counter); err != nil {
 		return err
@@ -219,7 +227,7 @@ func resultMatches(d *Data, r ResearchResult) bool {
 		}
 	}
 	ra, ca := d.attempt(r.ReviewAttempt), d.attempt(r.CounterAttempt)
-	return ra != nil && ca != nil && ra.ResultSHA256 == r.ReviewResultSHA256 && ca.ResultSHA256 == r.CounterResultSHA256
+	return ra != nil && ca != nil && ra.ResultSHA256 == r.ReviewResultSHA256 && ca.ResultSHA256 == r.CounterResultSHA256 && counterCleared(d, ca, r.Counter)
 }
 func refreshEvidence(d *Data) {
 	for i := range d.Proposals {

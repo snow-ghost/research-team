@@ -694,7 +694,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		if l.Status == "ready" && libraryMatches(&d, l) {
 			for _, e := range relevant {
 				if e.ID == l.Lemma {
-					modules = append(modules, map[string]any{"module": l.Module, "lemma": l.Lemma, "revision": l.LemmaRevision, "declaration": l.Goal.Declaration, "candidate": l.Goal.Candidate, "artifact_sha256": l.Report.ArtifactSHA256})
+					modules = append(modules, libraryModuleMaterial(e, l))
 				}
 			}
 		}

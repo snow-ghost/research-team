@@ -27,6 +27,10 @@ const labels = {
   inconclusive: "Проверка не завершена",
   failed: "Ошибка",
   interrupted: "Прервано",
+  cancelled: "Отменено",
+  preparing: "Подготовка",
+  awaiting_worker: "Ожидается исполнитель",
+  cancelling: "Отмена",
   queued: "В очереди",
   running: "Выполняется",
   candidate: "Кандидат",
@@ -39,6 +43,9 @@ const labels = {
   dns_timeout: "Срок определения имени",
   connect_timeout: "Срок соединения",
   tls_timeout: "Срок защищенного соединения",
+  dns_failure: "Ошибка определения имени",
+  connect_failure: "Ошибка соединения",
+  tls_failure: "Ошибка защищенного соединения",
   output_limit: "Предел вывода",
   tool_limit: "Предел инструментов или шагов",
   report_format: "Формат отчета",
@@ -125,7 +132,7 @@ export function ProofInspectionPanel({ live, study, target, onSelect }) {
         <select
           aria-label="Утверждение для проверки"
           value={target || ""}
-          onChange={(e) => onSelect?.(e.target.value)}
+          onChange={(e) => onSelect?.(e.target.value, { openInspector: false })}
         >
           {live.data.state.entities
             .filter((e) => e.study === study)
@@ -340,7 +347,7 @@ export function ProofInspectionPanel({ live, study, target, onSelect }) {
                       className="icon-button"
                       title={`Открыть ${d.title}`}
                       aria-label={`Открыть ${d.title}`}
-                      onClick={() => onSelect?.(d.id)}
+                      onClick={() => onSelect?.(d.id, { openInspector: false })}
                     >
                       <ArrowRight size={16} />
                     </button>

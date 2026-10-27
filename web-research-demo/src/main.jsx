@@ -626,9 +626,9 @@ function App({ live } = {}) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
-  const select = useCallback((id) => {
+  const select = useCallback((id, options = {}) => {
     setSelected(id);
-    setInspectorOpen(true);
+    setInspectorOpen(options.openInspector !== false);
     setQuery("");
   }, []);
   function openModal(kind, target = selected) {

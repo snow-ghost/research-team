@@ -30,6 +30,17 @@ test("просмотр разделяет проверку Lean и приемк�
   const target = created.state.studies.find(
     (s) => s.title === "Просмотр проверенного файла",
   ).goal;
+  const study = created.state.studies.find((s) => s.goal === target).id;
+  await command("/actions", {
+    type: "LEMMA",
+    study,
+    title: "Дополнительная цель",
+    statement: "Отдельная цель без доказательства",
+    assumptions: "Prop",
+  });
+  const other = (await snapshot()).state.entities.find(
+    (e) => e.study === study && e.title === "Дополнительная цель",
+  ).id;
   await command(`/entities/${target}/formal-goal`, {
     goal: {
       source: "def Statement : Prop := True\n",
@@ -96,6 +107,27 @@ test("просмотр разделяет проверку Lean и приемк�
   expect((await download).suggestedFilename()).toBe("Candidate.lean");
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 960 });
+    await panel
+      .getByLabel("Утверждение для проверки", { exact: true })
+      .selectOption(other);
+    await expect(
+      panel.getByText("Отдельная цель без доказательства", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("complementary", {
+        name: "Сведения об объекте",
+        exact: true,
+      }),
+    ).toBeHidden();
+    await panel
+      .getByLabel("Утверждение для проверки", { exact: true })
+      .selectOption(target);
+    await expect(
+      panel.getByRole("region", {
+        name: "Фактический исходник доказательства",
+        exact: true,
+      }),
+    ).toContainText("theorem Candidate");
     for (const name of ["Файлы", "Проверки", "Зависимости", "Расход"]) {
       await panel.getByRole("tab", { name, exact: true }).click();
       await expect(

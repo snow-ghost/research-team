@@ -1,8 +1,10 @@
 package researchweb
 
 import (
+	"fmt"
 	"github.com/snow-ghost/research-team/internal/execution"
 	"github.com/snow-ghost/research-team/internal/leancheck"
+	"os"
 	"path/filepath"
 )
 
@@ -38,7 +40,28 @@ func prepareGoalFiles(d Data, a Attempt, dir string, files []FileDigest) ([]File
 	if err != nil {
 		return nil, err
 	}
-	for _, material := range []struct{ name, content string }{{"Goal.lean", g.Source}, {"Candidate.template.lean", template}} {
+	materials := []struct{ name, content string }{{"Goal.lean", g.Source}, {"Candidate.template.lean", template}}
+	e, task := d.entity(a.Target), d.task(a.TaskID)
+	if e != nil && task != nil {
+		original, readErr := readBoundedFile(filepath.Join(dir, "TASK.md"), 65536)
+		if readErr != nil && !os.IsNotExist(readErr) {
+			return nil, readErr
+		}
+		if readErr == nil {
+			name := "ResearchBackground_" + bytesDigest(original) + ".md"
+			existing, readErr := readBoundedFile(filepath.Join(dir, name), 65536)
+			if readErr != nil && !os.IsNotExist(readErr) {
+				return nil, readErr
+			}
+			if readErr == nil && string(existing) != string(original) {
+				return nil, RuleError("Архив описания задания не соответствует исходнику.")
+			}
+			materials = append(materials, struct{ name, content string }{name, string(original)})
+		}
+		current := fmt.Sprintf("# Текущее задание\n\nОбъект: %s, версия %d.\nВид задания: %s.\n\n## Утверждение\n\n%s\n\n## Предпосылки\n\n%s\n\n## Задача исполнителя\n\n%s\n\n## Текущая цель Lean\n\nФайл: Goal.lean\nДекларация: %s\nКандидат: %s\n\nПроверяется это обязательство. Исходные описания исследования сохранены в файлах ResearchBackground_*.md; они не заменяют текущее задание и его цель.\n", e.ID, e.Revision, task.Kind, e.Statement, e.Assumptions, task.Objective, g.Declaration, g.Candidate)
+		materials = append(materials, struct{ name, content string }{"TASK.md", current})
+	}
+	for _, material := range materials {
 		path := filepath.Join(dir, material.name)
 		if err := atomicFile(path, []byte(material.content)); err != nil {
 			return nil, err

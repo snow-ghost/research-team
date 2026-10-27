@@ -69,7 +69,7 @@ func TestStorageRecoveryBDD_ReacquiresOwnershipPausesAndKeepsCommandLedger(t *te
 		t.Fatal("old snapshot remained writable", err)
 	}
 	h := s.Health()
-	if !h.Available || h.Generation != 2 || h.LastFailure != "connection_lost" || h.RecoveredAt == nil {
+	if !h.Available || h.Generation != 2 || h.LastFailure != "connection_lost" || h.RecoveredAt == nil || h.LastFailureClass == "" || h.LastFailureAt == nil {
 		t.Fatal(h)
 	}
 	history, err := s.Snapshot(before.Revision)

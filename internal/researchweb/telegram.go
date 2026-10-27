@@ -244,7 +244,7 @@ func (s *Service) telegramLoop() {
 		}
 		return nil
 	}); err != nil && !errors.Is(err, errNoCycleChange) {
-		s.cancel()
+		s.stopExecution("telegram_recovery", err)
 		return
 	}
 	for {
@@ -334,7 +334,7 @@ func (s *Service) pollTelegram(client TelegramClient, c TelegramChannel) {
 			return nil
 		})
 		if err != nil && !errors.Is(err, errNoCycleChange) {
-			s.cancel()
+			s.stopExecution("telegram_receive", err)
 			return
 		}
 	}
@@ -374,7 +374,7 @@ func (s *Service) pollTelegram(client TelegramClient, c TelegramChannel) {
 			}
 			return errNoCycleChange
 		}); err != nil {
-			s.cancel()
+			s.stopExecution("telegram_delivery", err)
 		}
 		break
 	}

@@ -329,7 +329,7 @@ func (s *Service) advanceTeams() {
 			return s.advanceTeam(d, current)
 		})
 		if err != nil && !errors.Is(err, errNoCycleChange) {
-			s.cancel()
+			s.stopExecution("team_step", err)
 			return
 		}
 	}

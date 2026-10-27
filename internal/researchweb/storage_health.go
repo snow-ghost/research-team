@@ -8,11 +8,13 @@ import (
 )
 
 type StorageHealth struct {
-	Driver      string     `json:"driver"`
-	Available   bool       `json:"available"`
-	Generation  int        `json:"generation"`
-	LastFailure string     `json:"last_failure,omitempty"`
-	RecoveredAt *time.Time `json:"recovered_at,omitempty"`
+	Driver           string     `json:"driver"`
+	Available        bool       `json:"available"`
+	Generation       int        `json:"generation"`
+	LastFailure      string     `json:"last_failure,omitempty"`
+	LastFailureClass string     `json:"last_failure_class,omitempty"`
+	LastFailureAt    *time.Time `json:"last_failure_at,omitempty"`
+	RecoveredAt      *time.Time `json:"recovered_at,omitempty"`
 }
 
 // Never replay an ambiguous write. Reconnection is performed before a new transaction.
@@ -20,8 +22,15 @@ func (p *postgresStore) ensureConnection(ctx context.Context) error {
 	if p.closed {
 		return errors.New("storage closed")
 	}
-	if p.conn != nil && p.conn.PingContext(ctx) == nil {
-		return nil
+	var pingErr error
+	if p.conn != nil {
+		pingErr = p.conn.PingContext(ctx)
+		if pingErr == nil {
+			return nil
+		}
+		p.lastFailureClass = safeErrorClass(pingErr)
+		nowFailure := time.Now().UTC()
+		p.lastFailureAt = &nowFailure
 	}
 	p.lastFailure = "connection_lost"
 	if p.conn != nil {
@@ -135,5 +144,5 @@ func (s *Store) Health() StorageHealth {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err := p.ensureConnection(ctx)
-	return StorageHealth{Driver: "postgres", Available: err == nil, Generation: p.generation, LastFailure: p.lastFailure, RecoveredAt: p.recoveredAt}
+	return StorageHealth{Driver: "postgres", Available: err == nil, Generation: p.generation, LastFailure: p.lastFailure, LastFailureClass: p.lastFailureClass, LastFailureAt: p.lastFailureAt, RecoveredAt: p.recoveredAt}
 }

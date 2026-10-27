@@ -101,6 +101,7 @@ func NewHTTP(s *Service, key string) (*HTTP, error) {
 	}
 	h.routes()
 	h.reliabilityRoutes()
+	h.inspectionRoutes()
 	return h, nil
 }
 func (h *HTTP) Close() error { return h.root.Close() }
@@ -380,7 +381,7 @@ func (h *HTTP) view(w http.ResponseWriter) {
 		key, _ := h.service.Options.Lookup(c.TokenEnv)
 		workers = append(workers, map[string]any{"id": c.ID, "label": c.Label, "profiles": c.Profiles, "available": len(key) >= 32})
 	}
-	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
+	h.json(w, map[string]any{"state": v, "profiles": profiles, "workspaces": workspaces, "coddy": coddyInfo, "database": h.service.Store.Backend(), "operational": h.service.ctx.Err() == nil, "execution": h.service.ExecutionHealth(), "lean": map[string]any{"configured": h.service.Options.Checker != nil}, "telegram": channels, "workers": workers})
 }
 func (h *HTTP) routes() {
 	h.researchProgressRoutes()
@@ -740,7 +741,7 @@ func (h *HTTP) routes() {
 		h.view(w)
 	})
 	h.mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		h.json(w, map[string]any{"storage": h.service.Store.Health(), "operational": h.service.ctx.Err() == nil})
+		h.json(w, map[string]any{"storage": h.service.Store.Health(), "operational": h.service.ctx.Err() == nil, "execution": h.service.ExecutionHealth()})
 	})
 	h.mux.HandleFunc("POST /api/studies/{id}/budget", func(w http.ResponseWriter, r *http.Request) {
 		var body BudgetRequest

@@ -23,15 +23,17 @@ var migrationFiles embed.FS
 const postgresOwnerLock int64 = 731946218057
 
 type postgresStore struct {
-	closed      bool
-	generation  int
-	lastFailure string
-	recoveredAt *time.Time
-	dir         string
-	mu          sync.Mutex
-	db          *sql.DB
-	conn        *sql.Conn
-	release     func()
+	closed           bool
+	generation       int
+	lastFailure      string
+	lastFailureClass string
+	lastFailureAt    *time.Time
+	recoveredAt      *time.Time
+	dir              string
+	mu               sync.Mutex
+	db               *sql.DB
+	conn             *sql.Conn
+	release          func()
 }
 
 type collectionSpec struct{ field, table string }

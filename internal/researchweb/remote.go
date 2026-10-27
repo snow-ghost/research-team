@@ -418,7 +418,7 @@ func (s *Service) expireWorkerLeases() {
 		})
 		s.mu.Unlock()
 		if err != nil && !errors.Is(err, errNoCycleChange) {
-			s.cancel()
+			s.stopExecution("worker_expiry", err)
 			return
 		}
 	}

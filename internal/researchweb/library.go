@@ -182,7 +182,7 @@ func (s *Service) buildLibrary(ctx context.Context, l LibraryEntry) {
 		return ErrConflict
 	})
 	if err != nil {
-		s.cancel()
+		s.stopExecution("library_completion", err)
 	}
 }
 func (s *Service) libraryEnvironment(d *Data, e *Entity) (*leancheck.Config, map[string]string) {

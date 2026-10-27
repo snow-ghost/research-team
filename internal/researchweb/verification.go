@@ -360,7 +360,7 @@ func (s *Service) checkProof(ctx context.Context, v Verification) {
 		return nil
 	})
 	if err != nil {
-		s.cancel()
+		s.stopExecution("verification_completion", err)
 	}
 }
 func verificationMatches(d *Data, v Verification) bool {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { ProofInspectionPanel } from "./proof-inspection.jsx";
 import {
   Link,
   BookOpen,
@@ -31,7 +32,7 @@ const download = (entry) => {
   a.click();
   URL.revokeObjectURL(url);
 };
-export function EvidencePanel({ live, study, selected }) {
+export function EvidencePanel({ live, study, selected, onSelect }) {
   const { state } = live.data;
   const [error, setError] = useState(""),
     [importOpen, setImportOpen] = useState(false),
@@ -94,6 +95,12 @@ export function EvidencePanel({ live, study, selected }) {
           Связать проверки
         </button>
       </div>
+      <ProofInspectionPanel
+        live={live}
+        study={study}
+        target={target?.id}
+        onSelect={onSelect}
+      />
       <button
         className="button secondary"
         disabled={live.busy || !state.paused}

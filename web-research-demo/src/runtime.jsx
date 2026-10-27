@@ -111,7 +111,12 @@ export function RuntimePanel({
         <FormalGoalPanel live={live} study={study} selected={selected} />
       )}
       {!providers && (
-        <EvidencePanel live={live} study={study} selected={selected} />
+        <EvidencePanel
+          live={live}
+          study={study}
+          selected={selected}
+          onSelect={onSelect}
+        />
       )}
       {!providers && (
         <MemoryPanel

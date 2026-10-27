@@ -46,6 +46,7 @@ func run() error {
 	profile := flag.String("profile", "", "Existing native model profile")
 	out := flag.String("out", "", "New private result directory")
 	suite := flag.String("suite", "core", "core (24 calls) or expanded (48 calls)")
+	continueFrom := flag.String("continue-from", "", "Explicitly continue only unreserved cases of a stopped run; never repeat reserved or unknown requests")
 	confirm := flag.Bool("confirm", false, "Explicit authorization for the selected suite's bounded model calls")
 	flag.Parse()
 	cases := proofreview.CalibrationCases()
@@ -75,6 +76,13 @@ func run() error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
+	var previous *continuation
+	if *continueFrom != "" {
+		previous, err = loadContinuation(*continueFrom, *suite, leancheck.Digest(p), cases)
+		if err != nil {
+			return err
+		}
+	}
 	root, err := filepath.Abs(*out)
 	if err != nil {
 		return err
@@ -84,6 +92,14 @@ func run() error {
 	}
 	if err := save(filepath.Join(root, "authorization.json"), map[string]any{"suite": *suite, "max_requests": maxRequests, "max_output_tokens": 32768, "timeout_seconds": 900, "profile_sha256": leancheck.Digest(p), "endpoint": p.Model.BaseURL, "model": p.Model.Model, "automatic_retry": false}); err != nil {
 		return err
+	}
+	if previous != nil {
+		if err := claimContinuation(previous, root); err != nil {
+			return errors.New("stopped allocation already claimed; no model calls started")
+		}
+		if err := save(filepath.Join(root, "continuation.json"), map[string]any{"previous_directory": previous.Directory, "rows": previous.Rows, "tasks": previous.Tasks, "inherited_reserved": len(previous.Rows), "remaining_requests": maxRequests - len(previous.Rows), "max_cumulative_requests": maxRequests, "automatic_retry": false}); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -108,6 +124,10 @@ func run() error {
 	}
 	rows := []map[string]any{}
 	reserved := 0
+	if previous != nil {
+		rows = append(rows, previous.Rows...)
+		reserved = len(previous.Rows)
+	}
 	for _, c := range cases {
 		for rep := 1; rep <= 2; rep++ {
 			for order := 0; order < 2; order++ {
@@ -150,6 +170,14 @@ func run() error {
 					}
 				}
 				id := fmt.Sprintf("%s-%d-%s", c.ID, rep, name)
+				if previous != nil {
+					if frozen, ok := previous.Tasks[id]; ok {
+						if frozen.Context != string(b) || frozen.Objective != objective {
+							return errors.New("frozen input changed; continuation held without new calls")
+						}
+						continue
+					}
+				}
 				dir := filepath.Join(root, id)
 				if err := os.Mkdir(dir, 0700); err != nil {
 					return err

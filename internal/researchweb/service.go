@@ -21,6 +21,8 @@ import (
 )
 
 type Service struct {
+	stopReason      atomic.Pointer[ExecutionStop]
+	lastStop        atomic.Pointer[ExecutionStop]
 	schedulerCycles atomic.Int64
 	profileMu       sync.RWMutex
 	profileCatalog  map[string]execution.Profile
@@ -86,6 +88,7 @@ func NewService(o Options) (*Service, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{Options: o, Store: store, running: map[string]context.CancelFunc{}, profileCatalog: map[string]execution.Profile{}, profileLabels: map[string]string{}, ctx: ctx, cancel: cancel}
+	s.loadExecutionStop()
 	if err := validateWorkers(o.Config.Workers); err != nil {
 		s.Close()
 		return nil, err
@@ -606,7 +609,7 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 		return nil
 	})
 	if changeErr != nil {
-		s.cancel()
+		s.stopExecution("attempt_completion", changeErr)
 	} // Fail closed if completion cannot be persisted.
 }
 func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Result) error {

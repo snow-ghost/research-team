@@ -204,7 +204,7 @@ func cancelCycle(d *Data, id string) {
 func (s *Service) cancelRequested() {
 	v, err := s.Store.Read()
 	if err != nil {
-		s.cancel()
+		s.stopExecution("cancellation_read", err)
 		return
 	}
 	for _, a := range v.Attempts {
@@ -223,7 +223,7 @@ func (s *Service) advanceCycles() {
 	defer s.mu.Unlock()
 	v, err := s.Store.Read()
 	if err != nil {
-		s.cancel()
+		s.stopExecution("cycle_read", err)
 		return
 	}
 	for _, c := range v.Cycles {
@@ -238,7 +238,7 @@ func (s *Service) advanceCycles() {
 			return s.advanceCycle(d, current)
 		})
 		if err != nil && !errors.Is(err, errNoCycleChange) {
-			s.cancel()
+			s.stopExecution("cycle_step", err)
 			return
 		}
 	}

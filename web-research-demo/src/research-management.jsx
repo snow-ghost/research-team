@@ -491,7 +491,7 @@ export function ComparisonPanel({ live }) {
   );
 }
 
-function TeamFields({ live }) {
+export function TeamFields({ live }) {
   return (
     <>
       {Object.entries(roles).map(([role, label]) => (

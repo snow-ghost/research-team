@@ -89,6 +89,10 @@ func (s *Service) ImportDecomposition(r ProposalRequest) error {
 			}
 		}
 		d.Proposals = append(d.Proposals, Decomposition{ID: identifier("proposal"), Target: e.ID, TargetRevision: e.Revision, Attempt: a.ID, ResultSHA256: a.ResultSHA256, Report: report, Status: "proposed", CreatedAt: time.Now().UTC()})
+		if w := d.study(e.Study).Workflow; w != nil && w.PlanningAttempt == a.ID && w.Status == "planning" {
+			w.Proposal = d.Proposals[len(d.Proposals)-1].ID
+			w.Status, w.Reason = "awaiting_plan", "Проверьте части, покрытие и стратегии до подтверждения."
+		}
 		return nil
 	})
 }
@@ -121,6 +125,29 @@ func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 		a := d.attempt(p.Attempt)
 		if e == nil || e.Revision != p.TargetRevision || e.Status == "accepted" || e.Status == "refuted" || a == nil || a.ResultSHA256 != p.ResultSHA256 {
 			return RuleError("Предложение устарело.")
+		}
+		workflow := d.study(e.Study).Workflow
+		if workflow != nil && workflow.Proposal == p.ID {
+			if workflow.Status != "awaiting_plan" || r.Team == nil || hash(*r.Team) != hash(workflow.Team) {
+				return RuleError("План полного цикла требует закрепленной команды и ожидания подтверждения.")
+			}
+			for role, pin := range workflow.ProfileHashes {
+				if hash(s.profile(workflow.Team.Profiles[role])) != pin {
+					return RuleError("Профиль команды изменился после подготовки полного цикла.")
+				}
+			}
+			covered := map[int]bool{}
+			for _, strategy := range p.Report.Strategies {
+				covered[strategy.Target] = true
+			}
+			for i, claim := range append(append([]ProposedClaim{}, p.Report.Claims...), p.Report.Coverage) {
+				if claim.FormalGoal == nil || !covered[i] {
+					return RuleError("Каждой части и покрытию нужны формальная цель и стратегия.")
+				}
+			}
+			if !covered[-1] {
+				return RuleError("Нужна отдельная стратегия точной исходной цели.")
+			}
 		}
 		result, err := s.readResult(*a)
 		if err != nil {
@@ -173,6 +200,9 @@ func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 			}
 		}
 		p.Status = "applied"
+		if workflow != nil && workflow.Proposal == p.ID {
+			workflow.Status, workflow.Reason = "running", "Подтвержденные части и покрытие исследуются командами в общем бюджете."
+		}
 		return nil
 	})
 }

@@ -12,6 +12,7 @@ import (
 )
 
 type EvaluationWatch struct {
+	ProcessUnit         string `json:"process_unit,omitempty"`
 	ProgressFile        string `json:"progress_file,omitempty"`
 	ProcessFile         string `json:"process_file,omitempty"`
 	StaleSeconds        int    `json:"stale_seconds,omitempty"`
@@ -22,6 +23,7 @@ type EvaluationWatch struct {
 }
 
 type EvaluationStatus struct {
+	CanStop           bool                               `json:"can_stop"`
 	Health            *EvaluationHealth                  `json:"health,omitempty"`
 	ID                string                             `json:"id"`
 	Label             string                             `json:"label"`
@@ -58,6 +60,9 @@ func resolveEvaluationWatches(c *Config, base string) error {
 			return RuleError("Неверные настройки наблюдения сравнения.")
 		}
 		seen[w.ID] = true
+		if w.ProcessUnit != "" && !evaluationUnit.MatchString(w.ProcessUnit) {
+			return RuleError("Остановка разрешена только отдельной службе исследовательского сравнения.")
+		}
 		if !filepath.IsAbs(w.File) {
 			w.File = filepath.Join(base, w.File)
 		}
@@ -89,7 +94,7 @@ func resolveEvaluationWatches(c *Config, base string) error {
 func (s *Service) EvaluationStatuses() []EvaluationStatus {
 	items := []EvaluationStatus{}
 	for _, w := range s.Options.Config.Evaluations {
-		x := EvaluationStatus{ID: w.ID, Label: w.Label, Status: "not_started", Runs: []EvaluationRunStatus{}}
+		x := EvaluationStatus{ID: w.ID, Label: w.Label, Status: "not_started", Runs: []EvaluationRunStatus{}, CanStop: w.ProcessUnit != ""}
 		body, err := readBoundedFile(w.File, 8<<20)
 		if err != nil {
 			if !os.IsNotExist(err) {

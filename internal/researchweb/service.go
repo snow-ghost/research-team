@@ -17,6 +17,7 @@ import (
 
 	"github.com/snow-ghost/research-team/internal/execution"
 	"github.com/snow-ghost/research-team/internal/leancheck"
+	"github.com/snow-ghost/research-team/internal/proofreview"
 )
 
 type Service struct {
@@ -136,6 +137,7 @@ func NewService(o Options) (*Service, error) {
 	}
 	if interrupted && !maintenanceValid(v.Data) {
 		err = store.Change(0, "", "", "Прерванные попытки восстановлены как неизвестный исход", "", "server", func(d *Data) error {
+			d.Paused = true
 			for i := range d.Library {
 				if d.Library[i].Status == "running" {
 					d.Library[i].Status = "interrupted"
@@ -160,6 +162,11 @@ func NewService(o Options) (*Service, error) {
 			}
 			for i := range d.Attempts {
 				a := &d.Attempts[i]
+				if queuedBeforeExecution(*a) {
+					a.QueueHeld = true
+					a.QueueReason = "Сервер перезапущен до запуска исполнителя; очередь сохранена до подтверждения оператора."
+					continue
+				}
 				if active(a.Status) {
 					a.Status = "interrupted"
 					if a.RemoteOutcome != "not_started" {
@@ -417,6 +424,7 @@ func (s *Service) schedule() {
 			s.schedulerCycles.Add(1)
 			s.expireStudyBudgets()
 			s.expireWorkerLeases()
+			s.advanceWorkflows()
 			s.advanceCycles()
 			s.advanceTeams()
 			s.advanceBranchPolicies()
@@ -457,7 +465,7 @@ func (s *Service) schedule() {
 				continue
 			}
 			for _, a := range v.Attempts {
-				if a.Status == "queued" {
+				if a.Status == "queued" && !a.QueueHeld {
 					if a.TeamID != "" {
 						team := v.team(a.TeamID)
 						if team == nil || team.Status != "running" {
@@ -472,7 +480,7 @@ func (s *Service) schedule() {
 					}
 					err = s.Store.Change(0, "", "", "Подготовка снимка входных файлов", a.Target, "server", func(d *Data) error {
 						current := d.attempt(a.ID)
-						if current == nil || current.Status != "queued" || d.Paused {
+						if current == nil || current.Status != "queued" || current.QueueHeld || d.Paused {
 							return ErrConflict
 						}
 						if current.CycleID != "" {
@@ -690,7 +698,24 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		}
 		contextData, _ = json.Marshal(map[string]any{"candidate_template": candidateTemplateFor(d, a), "entities": selected, "questions": questionsFor(d, a.Target), "materials": workerMaterials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
 	}
+	if a.ProofBinding != nil && task.Kind == "review" {
+		materials := reviewMaterials(d, a)
+		if materials == nil {
+			return RuleError("Не удалось закрепить точный вход рецензии.")
+		}
+		reviewContext := map[string]any{"review_materials": materials}
+		if a.RemoteWorker == "" {
+			reviewContext["accepted_lemmas"], reviewContext["lean_modules"] = acceptedLemmas(d, a.Target), modules
+		}
+		contextData, err = json.Marshal(reviewContext)
+		if err != nil {
+			return err
+		}
+	}
 	t := execution.Task{ID: task.ID, AttemptID: a.ID, Snapshot: inputSHA, LeaseEpoch: 1, Workspace: filepath.Join(dir, "workspace"), Objective: task.Objective, Context: string(contextData)}
+	if a.ProofBinding != nil && task.Kind == "review" {
+		t.Objective = proofreview.InputInstructions
+	}
 	if method, ok := researchMethod(a.AssignmentMethod); ok {
 		t.Objective += " Метод: " + method.Label + ". " + method.Procedure
 	}
@@ -707,6 +732,13 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		executor, err = s.Options.Factory(profile, s.Options.Lookup)
 	}
 	if err != nil {
+		return err
+	}
+	packet, err := execution.TaskPacket(profile, t)
+	if err != nil {
+		return err
+	}
+	if err := atomicFile(filepath.Join(dir, "request-packet.json"), []byte(packet)); err != nil {
 		return err
 	}
 	if a.RemoteWorker != "" {

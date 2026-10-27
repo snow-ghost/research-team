@@ -8,6 +8,94 @@ import (
 )
 
 func (h *HTTP) researchProgressRoutes() {
+	h.mux.HandleFunc("POST /api/evaluations/{id}/control", func(w http.ResponseWriter, r *http.Request) {
+		var body EvaluationCommand
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ControlEvaluation(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/questions/{id}/workflow-answer", func(w http.ResponseWriter, r *http.Request) {
+		var body WorkflowAnswer
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.AnswerWorkflowQuestion(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/attempts/{id}/request-packet", func(w http.ResponseWriter, r *http.Request) {
+		v, err := h.service.Store.Read()
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		a := v.attempt(r.PathValue("id"))
+		if a == nil {
+			h.fail(w, RuleError("Попытка не найдена."))
+			return
+		}
+		body, err := readBoundedFile(filepath.Join(h.service.Options.Config.DataDir, "attempts", a.ID, "request-packet.json"), 1<<20)
+		if err != nil {
+			h.fail(w, RuleError("Точный вход не сохранен для этой попытки; старые входы автоматически не восстанавливаются."))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(body)
+	})
+	h.mux.HandleFunc("POST /api/workflows", func(w http.ResponseWriter, r *http.Request) {
+		var body WorkflowRequest
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.CreateWorkflow(body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/studies/{id}/workflow", func(w http.ResponseWriter, r *http.Request) {
+		var body WorkflowCommand
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ControlWorkflow(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("GET /api/queue", func(w http.ResponseWriter, r *http.Request) {
+		value, err := h.service.Queue(r.URL.Query().Get("study"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.json(w, value)
+	})
+	h.mux.HandleFunc("POST /api/attempts/{id}/queue", func(w http.ResponseWriter, r *http.Request) {
+		var body QueueCommand
+		if err := bodyJSON(w, r, &body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.ControlQueue(r.PathValue("id"), body); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("GET /api/evaluations/{id}/analysis", func(w http.ResponseWriter, r *http.Request) {
 		for _, watch := range h.service.Options.Config.Evaluations {
 			if watch.ID != r.PathValue("id") {

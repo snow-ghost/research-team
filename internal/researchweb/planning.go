@@ -42,6 +42,13 @@ func (s *Service) RequestPlanning(r PlanningRequest) error {
 		if d.Paused || e == nil || e.FormalGoal == nil || e.Status == "accepted" || e.Status == "refuted" {
 			return RuleError("Нужна открытая формальная цель и разрешенные запуски.")
 		}
+		workflow := d.study(e.Study).Workflow
+		if workflow != nil && !workflowClosed(workflow.Status) {
+			if workflow.Status != "prepared" || workflow.Target != e.ID || workflow.Planner != r.Profile || workflow.PlanningRound >= 2 {
+				return RuleError("План полного цикла уже назначен или требует отдельного решения.")
+			}
+			objective += ` При нехватке условий верни {"outcome":"needs_input","questions":["конкретный вопрос"]}. Иначе для каждой части, покрытия и исходной цели задай хотя бы одну стратегию; формальные цели обязательны. Имена определений разных модулей не должны конфликтовать при совместном импорте.`
+		}
 		selections, err := selectStandaloneSkills(d, e.ID, "decompose", r.Method, "", &p)
 		if err != nil {
 			return err
@@ -55,6 +62,12 @@ func (s *Service) RequestPlanning(r PlanningRequest) error {
 		id := identifier("run")
 		t.Attempt, t.Agent = id, p.ID
 		d.Attempts = append(d.Attempts, Attempt{ID: id, TaskID: t.ID, Target: e.ID, TargetRevision: e.Revision, Profile: p.ID, ProfileConfiguration: &p, SkillSelections: selections, AssignmentMethod: r.Method, Limits: &p.Limits, ReservedOutputTokens: reservation, ReservedModelRequests: p.Limits.MaxSteps, Workspace: r.Workspace, Status: "queued", CreatedAt: time.Now().UTC(), InputSnapshot: d.Revision + 1, RemoteOutcome: "not_started"})
+		if workflow != nil && !workflowClosed(workflow.Status) {
+			workflow.PlanningAttempt = id
+			workflow.PlanningRound++
+			workflow.Status = "planning"
+			workflow.Reason = "Ожидание предложения плана."
+		}
 		return nil
 	})
 }

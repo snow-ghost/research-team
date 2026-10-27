@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { api } from "./api.js";
 import { CyclePanel } from "./cycles.jsx";
 import { EvidencePanel } from "./evidence.jsx";
 import { MemoryPanel } from "./research-progress.jsx";
@@ -614,6 +615,33 @@ export function RuntimePanel({
               </>
             )}
           </div>
+          <button
+            className="button secondary"
+            type="button"
+            disabled={live.busy}
+            onClick={async () => {
+              try {
+                const packet = await api(
+                  `/attempts/${encodeURIComponent(result.attempt.id)}/request-packet`,
+                );
+                const url = URL.createObjectURL(
+                  new Blob([JSON.stringify(packet, null, 2)], {
+                    type: "application/json",
+                  }),
+                );
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = result.attempt.id + ".request.json";
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+              } catch (e) {
+                setError(e.message);
+              }
+            }}
+          >
+            <Download size={15} />
+            Скачать точный вход
+          </button>
           {!!result.result.diagnostics?.length && (
             <section aria-label="Диагностика исполнителя">
               <div className="section-intro">

@@ -2,6 +2,7 @@ package researchweb
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -46,6 +47,7 @@ type DatabaseConfig struct {
 	DSNEnv string `json:"dsn_env,omitempty"`
 }
 type Options struct {
+	StopEvaluation func(context.Context, string) error
 	Matcher        leancheck.ModuleMatcher
 	ChainChecker   leancheck.Checker
 	TelegramClient TelegramClient

@@ -17,6 +17,7 @@ import { BranchList, RefutationActions } from "./research-progress.jsx";
 import { PlanningPanel } from "./research-management.jsx";
 import { verificationCurrent } from "./proof-state.js";
 import { ProofProgressPanel } from "./proof-progress.jsx";
+import { WorkflowPanel, QueuePanel } from "./workflow.jsx";
 
 const roles = {
   proof: "Поиск доказательства",
@@ -90,6 +91,8 @@ export function TeamPanel({ live, study, all, onSelect }) {
         </p>
       )}
       {!all && study && <StudyBudgetPanel live={live} study={study} />}
+      {!all && study && <WorkflowPanel live={live} study={study} />}
+      <QueuePanel live={live} study={all ? "" : study} />
       {!all && study && <PlanningPanel live={live} study={study} />}
       <ProofProgressPanel live={live} study={study} onSelect={onSelect} />
       {open && (

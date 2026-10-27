@@ -224,7 +224,7 @@ func (p Profile) Validate() error {
 			return ErrUnsupported
 		}
 		if e.ExpectedVersion != supportedVersions[e.Provider] &&
-			!(e.Provider == "coddy-agent" && (e.ExpectedVersion == "1.2.1" || e.ExpectedVersion == "1.2.54" || e.ExpectedVersion == "1.3.42")) {
+			!(e.Provider == "coddy-agent" && (e.ExpectedVersion == "1.2.1" || e.ExpectedVersion == "1.2.54" || e.ExpectedVersion == "1.3.42" || e.ExpectedVersion == "1.3.55")) {
 			return errors.New("external version requires a reviewed adapter revision")
 		}
 		if !filepath.IsAbs(e.Executable) || e.ExpectedVersion == "" || e.Model == "" || e.SearchPath == "" {
@@ -247,8 +247,8 @@ func (p Profile) Validate() error {
 		}
 		if e.Provider == "coddy-agent" {
 			if len(e.Tools) > 0 {
-				if (e.ExpectedVersion != "1.2.54" && e.ExpectedVersion != "1.3.42") || !filepath.IsAbs(e.ToolProxy) || p.Limits.MaxToolCalls < 1 || p.Limits.MaxToolCalls > 4 {
-					return errors.New("coddy Lean tools require version 1.2.54 or 1.3.42, an absolute proxy and 1..4 calls")
+				if (e.ExpectedVersion != "1.2.54" && e.ExpectedVersion != "1.3.42" && e.ExpectedVersion != "1.3.55") || !filepath.IsAbs(e.ToolProxy) || p.Limits.MaxToolCalls < 1 || p.Limits.MaxToolCalls > 4 {
+					return errors.New("coddy Lean tools require a reviewed tool-capable version, an absolute proxy and 1..4 calls")
 				}
 				seenTools := map[string]bool{}
 				for _, name := range e.Tools {
@@ -330,6 +330,13 @@ func Build(p Profile, lookup func(string) (string, bool)) (Executor, error) {
 		return &externalExecutor{profile: p, lookup: lookup}, nil
 	}
 	return newModelExecutor(p, lookup)
+}
+
+// TaskPacket returns exactly the initial task-and-skills message, without the
+// local workspace path or credentials. It performs no executor or network work.
+func TaskPacket(p Profile, t Task) (string, error) {
+	_, packet, err := prepare(p, t)
+	return packet, err
 }
 
 func prepare(p Profile, t Task) (Result, string, error) {

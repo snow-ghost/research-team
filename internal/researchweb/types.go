@@ -22,13 +22,14 @@ type RuleError string
 func (e RuleError) Error() string { return string(e) }
 
 type Study struct {
-	PauseOnReady bool         `json:"pause_on_ready,omitempty"`
-	Budget       *StudyBudget `json:"budget,omitempty"`
-	ID           string       `json:"id"`
-	Title        string       `json:"title"`
-	Goal         string       `json:"goal"`
-	Category     string       `json:"category"`
-	Formula      string       `json:"formula"`
+	Workflow     *ResearchWorkflow `json:"workflow,omitempty"`
+	PauseOnReady bool              `json:"pause_on_ready,omitempty"`
+	Budget       *StudyBudget      `json:"budget,omitempty"`
+	ID           string            `json:"id"`
+	Title        string            `json:"title"`
+	Goal         string            `json:"goal"`
+	Category     string            `json:"category"`
+	Formula      string            `json:"formula"`
 }
 type Entity struct {
 	RequiredLibraries      []string        `json:"required_libraries,omitempty"`
@@ -99,6 +100,8 @@ type Application struct {
 	State         string `json:"state"`
 }
 type Attempt struct {
+	QueueHeld             bool               `json:"queue_held,omitempty"`
+	QueueReason           string             `json:"queue_reason,omitempty"`
 	MissingMaterials      []string           `json:"missing_materials,omitempty"`
 	ImportedPackageSHA256 string             `json:"imported_package_sha256,omitempty"`
 	SkillSelections       []SkillSelection   `json:"skill_selections,omitempty"`

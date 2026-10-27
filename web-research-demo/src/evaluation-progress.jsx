@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Activity, ChartColumn } from "lucide-react";
+import { Activity, ChartColumn, Square, Save } from "lucide-react";
 import { ComparisonAnalysis } from "./comparison-analysis.jsx";
+import { DecisionForm } from "./workflow.jsx";
 
 const modeNames = {
   single: "Один исследователь",
@@ -22,6 +23,7 @@ const stateNames = {
 };
 
 export function EvaluationProgress({ live }) {
+  const [decision, setDecision] = useState(null);
   const [analysis, setAnalysis] = useState({});
   const [items, setItems] = useState([]),
     [error, setError] = useState("");
@@ -116,6 +118,42 @@ export function EvaluationProgress({ live }) {
             Разобрать результаты
           </button>
           <ComparisonAnalysis value={analysis[item.id]} />
+          <div className="action-row">
+            {item.can_stop && item.status !== "completed" && (
+              <button
+                className="button secondary"
+                disabled={live.busy}
+                onClick={() => setDecision({ id: item.id, kind: "stop" })}
+              >
+                <Square size={15} />
+                Остановить службу
+              </button>
+            )}
+            {item.status === "completed" && (
+              <button
+                className="button secondary"
+                disabled={live.busy}
+                onClick={() => setDecision({ id: item.id, kind: "deliver" })}
+              >
+                <Save size={15} />
+                Записать завершенный отчет
+              </button>
+            )}
+          </div>
+          {decision?.id === item.id && (
+            <DecisionForm
+              live={live}
+              title={
+                decision.kind === "stop"
+                  ? "Подтверждаю остановку без повторного запуска"
+                  : "Подтверждаю запись отчета без приемки доказательств"
+              }
+              route={`/evaluations/${encodeURIComponent(item.id)}/control`}
+              kind={decision.kind}
+              onDone={() => setDecision(null)}
+              onError={setError}
+            />
+          )}
           {item.summary && (
             <>
               <p>

@@ -150,6 +150,22 @@ func TestRoleToolsBDD_RefutationCapabilityCannotBeAssignedToPositiveProof(t *tes
 	}
 }
 
+func TestLeanToolBDD_EachTemplateImportsItsPinnedGoal(t *testing.T) {
+	g := leancheck.Goal{Source: "namespace Topic\ndef Statement : Prop := True\nend Topic\n", Declaration: "Topic.Statement", Candidate: "Topic.candidate"}
+	e := Entity{FormalGoal: &g}
+	p := execution.Profile{Model: &execution.ModelConfig{Tools: []string{"check_lean", "check_refutation"}}}
+	templates := toolCandidateTemplates(toolGoals(&e, p))
+	if len(templates) != 2 {
+		t.Fatal("missing separate proof/refutation templates")
+	}
+	for name, declaration := range map[string]string{"check_lean": "theorem Topic.candidate : Topic.Statement", "check_refutation": "theorem ResearchRefutation.candidate : ResearchRefutation.Statement"} {
+		text := templates[name]
+		if !strings.HasPrefix(text, "import Goal\n") || !strings.Contains(text, declaration) || strings.Contains(text, "def Statement") {
+			t.Fatal("template redefines or changes the trusted goal", name, text)
+		}
+	}
+}
+
 func toolCompletion(w http.ResponseWriter, source string, n int, extra bool) {
 	args := map[string]string{"source": source}
 	if extra {
@@ -165,16 +181,37 @@ func TestLeanToolBDD_FailedIntermediateCorrectedBeforeFinalCandidate(t *testing.
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Messages []struct{ Role, Content string }
+			Tools    []struct {
+				Function struct{ Name, Description string }
+			}
 		}
 		json.NewDecoder(r.Body).Decode(&body)
 		n := int(calls.Add(1))
 		if n == 1 {
+			if len(body.Tools) != 1 || !strings.Contains(body.Tools[0].Function.Description, "must import Goal") || !strings.Contains(body.Tools[0].Function.Description, "Do not copy or redefine") {
+				t.Error("trusted goal import contract missing")
+			}
+			foundTemplates := false
+			for _, m := range body.Messages {
+				if strings.Contains(m.Content, "tool_candidate_templates") {
+					foundTemplates = true
+				}
+			}
+			if !foundTemplates {
+				t.Error("per-tool candidate templates missing")
+			}
 			toolCompletion(w, bad, n, false)
 			return
 		}
 		last := body.Messages[len(body.Messages)-1]
 		if last.Role != "tool" || !strings.Contains(last.Content, `"accepted":false`) {
 			t.Error("checker result missing", last)
+		}
+		var feedback struct {
+			Template string `json:"candidate_template"`
+		}
+		if json.Unmarshal([]byte(last.Content), &feedback) != nil || !strings.HasPrefix(feedback.Template, "import Goal\n") || !strings.Contains(feedback.Template, "theorem Candidate : Statement") {
+			t.Error("checker feedback lost exact candidate template")
 		}
 		if n == 2 {
 			if !strings.Contains(last.Content, `"status":"failed"`) {

@@ -84,7 +84,12 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 			checker = leancheck.DockerChecker{Config: pinned}
 		}
 		toolName := name
-		tools = append(tools, execution.RuntimeTool{Name: toolName, Description: "Check a Lean candidate against the server-pinned " + purpose + " goal. Only source is accepted; compilation runs in an isolated environment and does not accept the result.", Parameters: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string"}},"required":["source"],"additionalProperties":false}`), Validate: func(raw string) error { _, err := leanSourceArgument(raw); return err }, Run: func(ctx context.Context, raw string) (string, error) {
+		template, err := leancheck.CandidateTemplate(goal)
+		if err != nil {
+			return ctx, err
+		}
+		description := "Check a Lean candidate against the server-pinned " + purpose + " goal. The source must import Goal and declare theorem " + goal.Candidate + " : " + goal.Declaration + ". Use tool_candidate_templates; tool_goals.source contains read-only definitions, not candidate examples. Do not copy or redefine the goal declarations in the candidate. Compilation is isolated and does not accept the result. After a verified check, return that candidate; another check is needed only after a change."
+		tools = append(tools, execution.RuntimeTool{Name: toolName, Description: description, Parameters: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string"}},"required":["source"],"additionalProperties":false}`), Validate: func(raw string) error { _, err := leanSourceArgument(raw); return err }, Run: func(ctx context.Context, raw string) (string, error) {
 			checkMu.Lock()
 			defer checkMu.Unlock()
 			if checks >= 4 {
@@ -115,7 +120,7 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 			if purpose != "refutation" {
 				missing = missingRequiredLemmas(&d, e, pins, &check.Report)
 			}
-			response, _ := json.Marshal(map[string]any{"check": check.ID, "purpose": purpose, "report": check.Report, "missing_required_libraries": missing, "accepted": false, "remaining_checks": 4 - checks})
+			response, _ := json.Marshal(map[string]any{"check": check.ID, "purpose": purpose, "report": check.Report, "candidate_template": template, "missing_required_libraries": missing, "accepted": false, "remaining_checks": 4 - checks})
 			if len(response) > 60000 {
 				return fmt.Sprintf(`{"check":%q,"status":"failed","reason":"report_limit"}`, check.ID), execution.ErrLimit
 			}
@@ -161,4 +166,14 @@ func toolGoals(e *Entity, p execution.Profile) map[string]leancheck.Goal {
 		}
 	}
 	return goals
+}
+
+func toolCandidateTemplates(goals map[string]leancheck.Goal) map[string]string {
+	templates := map[string]string{}
+	for name, goal := range goals {
+		if template, err := leancheck.CandidateTemplate(goal); err == nil {
+			templates[name] = template
+		}
+	}
+	return templates
 }

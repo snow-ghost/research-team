@@ -700,6 +700,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		CandidateTemplate string                    `json:"candidate_template,omitempty"`
 		Memory            []MemoryHit               `json:"research_memory,omitempty"`
 		ToolGoals         map[string]leancheck.Goal `json:"tool_goals,omitempty"`
+		ToolTemplates     map[string]string         `json:"tool_candidate_templates,omitempty"`
 		Entities          []Entity                  `json:"entities"`
 		Questions         []Question                `json:"questions"`
 		Materials         []map[string]string       `json:"materials"`
@@ -708,7 +709,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		Library           []Entity                  `json:"accepted_lemmas,omitempty"`
 		Modules           []map[string]any          `json:"lean_modules,omitempty"`
 		Review            any                       `json:"review_materials,omitempty"`
-	}{candidateTemplateFor(d, a), memoryForTarget(d, a.Target), attemptToolGoals(d, a, profile), relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
+	}{candidateTemplateFor(d, a), memoryForTarget(d, a.Target), attemptToolGoals(d, a, profile), toolCandidateTemplates(attemptToolGoals(d, a, profile)), relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
 	if a.RemoteWorker != "" {
 		selected := []Entity{}
 		for _, e := range relevant {

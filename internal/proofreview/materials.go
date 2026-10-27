@@ -10,6 +10,7 @@ const InputSchema = "proof-review-input@1"
 const InputInstructions = Instructions + ` Вход proof-review-input@1 разделяет original_goal и claim_under_review. Сопоставь естественную постановку statement и assumptions с original_goal; успешная проверка Lean сама по себе не устанавливает их соответствие. При проверке исходника проверяй claim_under_review и переданный source. claim_kind=refutation означает доказательство отрицания исходной цели; не требуй доказательства самой опровергаемой цели. Исходник исходной цели дан в original_goal.source. Не подменяй математическое замечание общим требованием повторить уже выполненную проверку службы.`
 
 type Input struct {
+	CheckedFiles     *CheckedFiles    `json:"checked_files,omitempty"`
 	Exposition       string           `json:"exposition,omitempty"`
 	Schema           string           `json:"schema"`
 	ClaimKind        string           `json:"claim_kind"`

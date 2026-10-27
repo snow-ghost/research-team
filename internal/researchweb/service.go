@@ -696,6 +696,10 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 			}
 		}
 	}
+	reviewInput, err := s.reviewMaterialsWithFiles(d, a)
+	if err != nil {
+		return err
+	}
 	contextData, _ := json.Marshal(struct {
 		CandidateTemplate string                    `json:"candidate_template,omitempty"`
 		Memory            []MemoryHit               `json:"research_memory,omitempty"`
@@ -709,7 +713,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		Library           []Entity                  `json:"accepted_lemmas,omitempty"`
 		Modules           []map[string]any          `json:"lean_modules,omitempty"`
 		Review            any                       `json:"review_materials,omitempty"`
-	}{candidateTemplateFor(d, a), memoryForTarget(d, a.Target), attemptToolGoals(d, a, profile), toolCandidateTemplates(attemptToolGoals(d, a, profile)), relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewMaterials(d, a)})
+	}{candidateTemplateFor(d, a), memoryForTarget(d, a.Target), attemptToolGoals(d, a, profile), toolCandidateTemplates(attemptToolGoals(d, a, profile)), relevant, questionsFor(d, a.Target), materials, previous, s.teamContext(d, a), acceptedLemmas(d, a.Target), modules, reviewInput})
 	if a.RemoteWorker != "" {
 		selected := []Entity{}
 		for _, e := range relevant {
@@ -723,10 +727,10 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 				workerMaterials = append(workerMaterials, material)
 			}
 		}
-		contextData, _ = json.Marshal(map[string]any{"candidate_template": candidateTemplateFor(d, a), "entities": selected, "questions": questionsFor(d, a.Target), "materials": workerMaterials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewMaterials(d, a)})
+		contextData, _ = json.Marshal(map[string]any{"candidate_template": candidateTemplateFor(d, a), "entities": selected, "questions": questionsFor(d, a.Target), "materials": workerMaterials, "team_materials": s.teamContext(d, a), "previous_unverified": previous, "review_materials": reviewInput})
 	}
 	if a.ProofBinding != nil && task.Kind == "review" {
-		materials := reviewMaterials(d, a)
+		materials := reviewInput
 		if materials == nil {
 			return RuleError("Не удалось закрепить точный вход рецензии.")
 		}
@@ -742,6 +746,9 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	t := execution.Task{ID: task.ID, AttemptID: a.ID, Snapshot: inputSHA, LeaseEpoch: 1, Workspace: filepath.Join(dir, "workspace"), Objective: task.Objective, Context: string(contextData)}
 	if a.ProofBinding != nil && task.Kind == "review" {
 		t.Objective = proofreview.InputInstructions
+		if reviewInput != nil && reviewInput.CheckedFiles != nil {
+			t.Objective = proofreview.FileInputInstructions
+		}
 	}
 	if method, ok := researchMethod(a.AssignmentMethod); ok {
 		t.Objective += " Метод: " + method.Label + ". " + method.Procedure

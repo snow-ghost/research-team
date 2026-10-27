@@ -52,9 +52,9 @@ const fake = http.createServer(async (req, res) => {
                       statement: "True",
                       assumptions: "Prop",
                       formal_goal: {
-                        source: "def Statement : Prop := True",
-                        declaration: "Statement",
-                        candidate: "Candidate",
+                        source: "def FixturePlanPart : Prop := True",
+                        declaration: "FixturePlanPart",
+                        candidate: "fixturePlanPartProof",
                       },
                     },
                   ],
@@ -63,9 +63,9 @@ const fake = http.createServer(async (req, res) => {
                     statement: "Из леммы следует точная исходная цель.",
                     assumptions: "Принятая лемма",
                     formal_goal: {
-                      source: "def Statement : Prop := True",
-                      declaration: "Statement",
-                      candidate: "Candidate",
+                      source: "def FixturePlanCoverage : Prop := True",
+                      declaration: "FixturePlanCoverage",
+                      candidate: "fixturePlanCoverageProof",
                     },
                   },
                   strategies: [

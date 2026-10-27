@@ -88,6 +88,9 @@ func TestWorkflowBDD_PlanGatePartsAndIndependentAcceptance(t *testing.T) {
 	}))
 	defer provider.Close()
 	o := teamOptions(t, provider.URL+"/v1")
+	o.Preparer = goalPreparerFunc(func(_ context.Context, goals []leancheck.Goal, _ string) (leancheck.GoalPreparation, error) {
+		return leancheck.GoalPreparation{Version: leancheck.PreparationVersion, Status: "ready", GoalsSHA256: leancheck.Digest(goals)}, nil
+	})
 	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
 		return leancheck.Report{Status: "verified", AuditSHA256: leancheck.AuditDigest(), GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
 	})
@@ -123,6 +126,16 @@ func TestWorkflowBDD_PlanGatePartsAndIndependentAcceptance(t *testing.T) {
 	w := v.study(study).Workflow
 	if w.Status != "awaiting_plan" || len(v.Branches) != 0 || len(v.Entities) != 1 {
 		t.Fatal("plan not gated", w)
+	}
+	if err := s.RequestPlanPreparation(w.Proposal, WorkflowCommand{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Note: "Compile all fixture goals before approval", Confirm: true}); err != nil {
+		t.Fatal(err)
+	}
+	for time.Now().Before(deadline) {
+		v = stateOf(t, s)
+		if v.proposal(w.Proposal).Preparation.Status == "ready" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if err := s.ControlWorkflow(study, WorkflowCommand{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Kind: "approve_plan", Note: "Explicit approval of statements and coverage", Confirm: true}); err != nil {
 		t.Fatal(err)

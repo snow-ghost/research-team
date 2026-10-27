@@ -2,6 +2,7 @@ package leancheck
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,11 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed SharedModuleAudit.lean
+var sharedModuleAudit string
+
+func SharedModuleAuditDigest() string { return Digest(sharedModuleAudit) }
 
 type ModuleReport struct {
 	Artifacts         map[string]string `json:"artifacts,omitempty"`
@@ -54,7 +60,36 @@ func ModuleSource(g Goal, source string) (string, error) {
 	return header.String() + g.Source + "\n" + rest, nil
 }
 func (c DockerChecker) BuildModule(ctx context.Context, g Goal, source, module, dir string) (r ModuleReport, err error) {
-	if !regexp.MustCompile(`^ResearchLemma_[a-f0-9]{32}$`).MatchString(module) {
+	return c.buildModule(ctx, g, source, module, dir, nil)
+}
+
+func (c DockerChecker) BuildSharedModule(ctx context.Context, g Goal, source, module, dir string, definition PreparedDefinition) (ModuleReport, error) {
+	if Digest(g) != Digest(definition.Goal) || definition.Module != "ResearchDefinitions_"+Digest(g)[:32] || definition.Report.Module != definition.Module || definition.Report.AuditSHA256 != AuditDigest() {
+		return ModuleReport{}, errors.New("shared goal binding mismatch")
+	}
+	probe, identity := definitionProbe(g)
+	combined, err := ModuleSource(probe, identity)
+	if err != nil || definition.Source != combined || definition.Report.SourceSHA256 != Digest(combined) {
+		return ModuleReport{}, errors.New("definition source binding mismatch")
+	}
+	count := 0
+	for _, library := range c.Config.Libraries {
+		if _, err := os.Lstat(filepath.Join(library, definition.Module+".olean")); err == nil {
+			count++
+			if err := VerifyModuleArtifacts(library, definition.Report); err != nil {
+				return ModuleReport{}, err
+			}
+		}
+	}
+	if count != 1 {
+		return ModuleReport{}, errors.New("pinned definition module missing or shadowed")
+	}
+	g.Source = "import " + definition.Module + "\n"
+	return c.buildModule(ctx, g, source, module, dir, &definition)
+}
+
+func (c DockerChecker) buildModule(ctx context.Context, g Goal, source, module, dir string, definition *PreparedDefinition) (r ModuleReport, err error) {
+	if !regexp.MustCompile(`^Research(Lemma|Definitions)_[a-f0-9]{32}$`).MatchString(module) {
 		return r, errors.New("invalid library module name")
 	}
 	combined, err := ModuleSource(g, source)
@@ -62,6 +97,11 @@ func (c DockerChecker) BuildModule(ctx context.Context, g Goal, source, module, 
 		return r, err
 	}
 	r = ModuleReport{Status: "failed", Module: module, SourceSHA256: Digest(combined), EnvironmentSHA256: Digest(c.Config), AuditSHA256: AuditDigest(), Artifacts: map[string]string{}}
+	auditProgram := auditSource
+	if definition != nil {
+		auditProgram = sharedModuleAudit
+		r.AuditSHA256 = SharedModuleAuditDigest()
+	}
 	if err = c.Config.Validate(); err != nil {
 		return r, err
 	}
@@ -78,7 +118,7 @@ func (c DockerChecker) BuildModule(ctx context.Context, g Goal, source, module, 
 	if err = os.WriteFile(filepath.Join(dir, "input", module+".lean"), []byte(combined), 0600); err != nil {
 		return r, err
 	}
-	if err = os.WriteFile(filepath.Join(dir, "trusted", "Audit.lean"), []byte(auditSource), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(dir, "trusted", "Audit.lean"), []byte(auditProgram), 0600); err != nil {
 		return r, err
 	}
 	bind := func(src, dst string, ro bool) string {
@@ -136,7 +176,11 @@ func (c DockerChecker) BuildModule(ctx context.Context, g Goal, source, module, 
 		r.Diagnostics = preview(out, 24000)
 		return r, e
 	}
-	out, e = c.run(ctx, "/lean/bin/lean", []string{"--run", "Audit.lean", g.Declaration, g.Candidate, module}, appendCopy(checked, bind(filepath.Join(dir, "trusted"), "/trusted", true)), strings.Join(search, ":"), "/trusted")
+	auditArgs := []string{"--run", "Audit.lean", g.Declaration, g.Candidate, module}
+	if definition != nil {
+		auditArgs = append(auditArgs, definition.Module)
+	}
+	out, e = c.run(ctx, "/lean/bin/lean", auditArgs, appendCopy(checked, bind(filepath.Join(dir, "trusted"), "/trusted", true)), strings.Join(search, ":"), "/trusted")
 	if e != nil {
 		r.Diagnostics = preview(out, 24000)
 		return r, e

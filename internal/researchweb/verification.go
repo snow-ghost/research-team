@@ -285,6 +285,15 @@ func (s *Service) checkProof(ctx context.Context, v Verification) {
 	dir := filepath.Join(s.Options.Config.DataDir, "verifications", v.ID)
 	var report leancheck.Report
 	err := os.MkdirAll(dir, 0700)
+	if err == nil {
+		view, readErr := s.Store.Read()
+		err = readErr
+		if err == nil {
+			if e := view.entity(v.Target); e != nil {
+				err = s.verifyDefinitions(&view.Data, e.ID)
+			}
+		}
+	}
 	if err == nil && len(v.LibraryPins) > 0 {
 		view, readErr := s.Store.Read()
 		err = readErr

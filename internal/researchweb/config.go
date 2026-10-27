@@ -47,6 +47,7 @@ type DatabaseConfig struct {
 	DSNEnv string `json:"dsn_env,omitempty"`
 }
 type Options struct {
+	Preparer       leancheck.GoalPreparer
 	StopEvaluation func(context.Context, string) error
 	Matcher        leancheck.ModuleMatcher
 	ChainChecker   leancheck.Checker

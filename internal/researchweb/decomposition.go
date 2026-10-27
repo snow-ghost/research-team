@@ -19,6 +19,11 @@ type DecompositionReport struct {
 	Coverage   ProposedClaim      `json:"coverage"`
 }
 type Decomposition struct {
+	Workflow       string              `json:"workflow,omitempty"`
+	Parent         string              `json:"parent,omitempty"`
+	Author         string              `json:"author,omitempty"`
+	Note           string              `json:"note,omitempty"`
+	Preparation    *PlanPreparation    `json:"preparation,omitempty"`
 	ID             string              `json:"id"`
 	Target         string              `json:"target"`
 	TargetRevision int                 `json:"target_revision"`
@@ -90,6 +95,7 @@ func (s *Service) ImportDecomposition(r ProposalRequest) error {
 		}
 		d.Proposals = append(d.Proposals, Decomposition{ID: identifier("proposal"), Target: e.ID, TargetRevision: e.Revision, Attempt: a.ID, ResultSHA256: a.ResultSHA256, Report: report, Status: "proposed", CreatedAt: time.Now().UTC()})
 		if w := d.study(e.Study).Workflow; w != nil && w.PlanningAttempt == a.ID && w.Status == "planning" {
+			d.Proposals[len(d.Proposals)-1].Workflow = w.ID
 			w.Proposal = d.Proposals[len(d.Proposals)-1].ID
 			w.Status, w.Reason = "awaiting_plan", "Проверьте части, покрытие и стратегии до подтверждения."
 		}
@@ -127,6 +133,14 @@ func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 			return RuleError("Предложение устарело.")
 		}
 		workflow := d.study(e.Study).Workflow
+		if p.Workflow != "" && (workflow == nil || workflow.ID != p.Workflow) || workflow != nil && !workflowClosed(workflow.Status) && workflow.Target == e.ID && workflow.Proposal != p.ID {
+			return RuleError("Предложение относится к другому или замененному полному циклу.")
+		}
+		if s.Options.Preparer != nil || workflow != nil && workflow.Proposal == p.ID {
+			if err := s.planPreparationMatches(d, p); err != nil {
+				return err
+			}
+		}
 		if workflow != nil && workflow.Proposal == p.ID {
 			if workflow.Status != "awaiting_plan" || r.Team == nil || hash(*r.Team) != hash(workflow.Team) {
 				return RuleError("План полного цикла требует закрепленной команды и ожидания подтверждения.")
@@ -157,6 +171,13 @@ func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 			return RuleError("Некорректный источник предложения.")
 		}
 		study := e.Study
+		if p.Preparation != nil && s.Options.Lean != nil {
+			st := d.study(study)
+			if st.Definitions != nil {
+				return RuleError("Общие определения уже закреплены; замена требует отдельного исследования.")
+			}
+			st.Definitions = &PreparedPlanDefinitions{Proposal: p.ID, CheckID: p.Preparation.ID, Report: *p.Preparation.Report}
+		}
 		ids := []string{}
 		for _, c := range p.Report.Claims {
 			id := identifier("L")
@@ -178,6 +199,7 @@ func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 		d.Entities = append(d.Entities, cover)
 		e = d.entity(p.Target)
 		e.Dependencies = append(e.Dependencies, cover.ID)
+		e.RequireDependencyProofs = p.Preparation != nil && s.Options.Lean != nil
 		e.Revision++
 		e.Status = "open"
 		e.Proof = ""
@@ -201,6 +223,7 @@ func (s *Service) ApplyDecomposition(id string, r ProposalRequest) error {
 		}
 		p.Status = "applied"
 		if workflow != nil && workflow.Proposal == p.ID {
+			workflow.ScopeSHA256 = memoryScope(*e)
 			workflow.Status, workflow.Reason = "running", "Подтвержденные части и покрытие исследуются командами в общем бюджете."
 		}
 		return nil

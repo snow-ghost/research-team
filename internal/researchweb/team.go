@@ -862,6 +862,16 @@ func (s *Service) teamContext(d Data, a Attempt) any {
 			}
 		}
 		out["required_proof_references"] = required
+		if e.RequireDependencyProofs {
+			for _, dep := range requiredProofDependencies(&d, e) {
+				for _, l := range d.Library {
+					if l.Lemma == dep && l.Status == "ready" {
+						required = append(required, map[string]string{"library": l.ID, "module": l.Module, "declaration": l.Goal.Candidate})
+					}
+				}
+			}
+			out["required_proof_references"] = required
+		}
 	}
 	if v := d.verification(team.Verification); v != nil {
 		out["lean_verification"] = v.Report

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Check, Pause, Play, Plus, Square } from "lucide-react";
 import { api } from "./api.js";
 import { TeamFields } from "./research-management.jsx";
+import { PlanPreparationPanel } from "./plan-preparation.jsx";
 
 const labels = {
   prepared: "Подготовлен",
@@ -157,6 +158,7 @@ export function WorkflowPanel({ live, study }) {
             <span>Предложений плана: {w.planning_round} / 2</span>
           </div>
           <p>{w.reason}</p>
+          {proposal && <PlanPreparationPanel live={live} proposal={proposal} />}
           {(w.question_ids || []).map((id) => {
             const q = state.questions.find((q) => q.id === id);
             if (!q) return null;
@@ -229,7 +231,9 @@ export function WorkflowPanel({ live, study }) {
               {w.status === "awaiting_plan" && (
                 <button
                   className="button primary"
-                  disabled={live.busy}
+                  disabled={
+                    live.busy || proposal?.preparation?.status !== "ready"
+                  }
                   onClick={() => setDecision("approve_plan")}
                 >
                   <Check size={15} />

@@ -38,6 +38,7 @@ func reviewMaterials(d Data, a Attempt) any {
 	if err != nil {
 		return nil
 	}
+	input.Assumptions = e.Assumptions
 	return input
 }
 

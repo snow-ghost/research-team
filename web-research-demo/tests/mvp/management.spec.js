@@ -214,6 +214,7 @@ test("версии профилей сохраняют навыки и дост�
 test("план создает лемму и покрытие только после подтверждения", async ({
   page,
 }) => {
+  test.setTimeout(120000);
   test.skip(
     !process.env.MVP_LEAN_CONFIG,
     "Real Lean enables approved method branches",
@@ -266,6 +267,13 @@ test("план создает лемму и покрытие только пос
   expect(
     (view.state.branches || []).some((b) => b.plan === proposal.id),
   ).toBeFalsy();
+  await expect(
+    panel.getByRole("button", { name: "Проверить и подтвердить", exact: true }),
+  ).toBeDisabled();
+  await panel
+    .getByRole("button", { name: "Проверить цели", exact: true })
+    .click();
+  await expect(panel).toContainText("Определения собраны", { timeout: 90000 });
   await panel
     .getByRole("button", { name: "Проверить и подтвердить", exact: true })
     .click();

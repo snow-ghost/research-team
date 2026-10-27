@@ -58,6 +58,24 @@ func packageFixture(t *testing.T) (*Service, ResultPackage) {
 	return s, p
 }
 
+func TestResultPackageBDD_SharedDefinitionsCannotBeTransferredPartially(t *testing.T) {
+	s, p := packageFixture(t)
+	p.Study.Definitions = &PreparedPlanDefinitions{Proposal: "shared-plan"}
+	p.SHA256 = packageDigest(p)
+	if validateResultPackage(p) == nil {
+		t.Fatal("partial package with shared definitions accepted")
+	}
+	if err := s.Store.Change(0, "", "", "Shared definition fixture", p.Target.ID, "test", func(d *Data) error {
+		d.study(p.Study.ID).Definitions = p.Study.Definitions
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ExportResultPackage(p.Result.ID); err == nil {
+		t.Fatal("partial shared definition package exported")
+	}
+}
+
 func TestResultPackageBDD_UnstartedIncompleteHistoryTransfersWithoutInventingArtifacts(t *testing.T) {
 	s, p := packageFixture(t)
 	profile := s.profile("proof")

@@ -59,6 +59,9 @@ type ProfileView struct {
 }
 
 func NewService(o Options) (*Service, error) {
+	if o.Preparer == nil && o.Lean != nil {
+		o.Preparer = leancheck.DockerChecker{Config: *o.Lean}
+	}
 	if o.Lookup == nil {
 		o.Lookup = os.LookupEnv
 	}
@@ -110,6 +113,11 @@ func NewService(o Options) (*Service, error) {
 		}
 	}
 	interrupted := false
+	for _, p := range v.Proposals {
+		if p.Preparation != nil && p.Preparation.Status == "running" {
+			interrupted = true
+		}
+	}
 	for _, l := range v.Library {
 		if l.Status == "running" {
 			interrupted = true
@@ -138,6 +146,12 @@ func NewService(o Options) (*Service, error) {
 	if interrupted && !maintenanceValid(v.Data) {
 		err = store.Change(0, "", "", "Прерванные попытки восстановлены как неизвестный исход", "", "server", func(d *Data) error {
 			d.Paused = true
+			for i := range d.Proposals {
+				if p := d.Proposals[i].Preparation; p != nil && p.Status == "running" {
+					p.Status = "interrupted"
+					p.Diagnostics = "Сборка целей прервана; нужна отдельная проверка, автоматического повтора нет."
+				}
+			}
 			for i := range d.Library {
 				if d.Library[i].Status == "running" {
 					d.Library[i].Status = "interrupted"
@@ -431,6 +445,7 @@ func (s *Service) schedule() {
 			s.advanceBranches()
 			s.startChecks()
 			s.startLibraryBuilds()
+			s.startPlanPreparations()
 			if s.ctx.Err() != nil {
 				return
 			}
@@ -635,6 +650,9 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	}
 	// Keep the complete research snapshot on disk; send only the selected study and dependencies.
 	entity := d.entity(a.Target)
+	if err := s.verifyDefinitions(&d, entity.ID); err != nil {
+		return err
+	}
 	relevant := []Entity{}
 	seen := map[string]bool{}
 	var visit func(string)

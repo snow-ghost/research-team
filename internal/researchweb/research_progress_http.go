@@ -8,6 +8,30 @@ import (
 )
 
 func (h *HTTP) researchProgressRoutes() {
+	h.mux.HandleFunc("POST /api/decompositions/{id}/prepare", func(w http.ResponseWriter, r *http.Request) {
+		var b WorkflowCommand
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.RequestPlanPreparation(r.PathValue("id"), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
+	h.mux.HandleFunc("POST /api/decompositions/{id}/revisions", func(w http.ResponseWriter, r *http.Request) {
+		var b PlanRevisionRequest
+		if err := bodyJSON(w, r, &b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		if err := h.service.RevisePlan(r.PathValue("id"), b); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.view(w)
+	})
 	h.mux.HandleFunc("POST /api/evaluations/{id}/control", func(w http.ResponseWriter, r *http.Request) {
 		var body EvaluationCommand
 		if err := bodyJSON(w, r, &body); err != nil {

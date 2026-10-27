@@ -66,6 +66,9 @@ func proofAudit(d *Data, e Entity) ([]ProofCheckView, []BranchTrace, []AttemptTr
 			for _, id := range e.RequiredLibraries {
 				use.Required = use.Required || id == l.ID
 			}
+			for _, id := range requiredProofDependencies(d, &e) {
+				use.Required = use.Required || id == l.Lemma
+			}
 			if v.Report != nil {
 				use.Referenced = v.Report.Dependencies.Uses(l.Module, l.Goal.Candidate)
 			}

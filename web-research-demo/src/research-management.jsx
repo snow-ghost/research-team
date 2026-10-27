@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { api } from "./api.js";
 import { RepresentationTrial } from "./representation-trial.jsx";
+import { PlanPreparationPanel } from "./plan-preparation.jsx";
 
 const roles = {
   proof: "Доказательство",
@@ -685,10 +686,12 @@ export function PlanningPanel({ live, study }) {
                 applied: "Подтвержден",
                 proposed: "Предложен",
                 stale: "Устарел",
+                superseded: "Заменен редакцией",
               }[p.status] || p.status}
             </span>
           </div>
           <p>{p.report.summary}</p>
+          <PlanPreparationPanel live={live} proposal={p} />
           {[...p.report.claims, p.report.coverage].map((c, i) => (
             <details key={i}>
               <summary>
@@ -719,7 +722,10 @@ export function PlanningPanel({ live, study }) {
           {p.status === "proposed" && (
             <button
               className="button secondary"
-              disabled={live.busy}
+              disabled={
+                live.busy ||
+                (live.data.lean.configured && p.preparation?.status !== "ready")
+              }
               onClick={() => setApply(apply === p.id ? "" : p.id)}
             >
               <GitBranch size={15} />

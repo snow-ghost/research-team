@@ -1,11 +1,15 @@
 package researchweb
 
 func memoryScope(e Entity) string {
-	return hash(struct {
+	base := hash(struct {
 		Statement, Assumptions string
 		Goal                   any
 		Required               []string
 	}{e.Statement, e.Assumptions, e.FormalGoal, e.RequiredLibraries})
+	if e.RequireDependencyProofs {
+		return hash([]string{base, "dependency-proof-references-required@1"})
+	}
+	return base
 }
 
 func memoryReusable(d *Data, m MemoryEntry) bool {

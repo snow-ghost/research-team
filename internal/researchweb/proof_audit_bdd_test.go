@@ -8,6 +8,27 @@ import (
 	"github.com/snow-ghost/research-team/internal/leancheck"
 )
 
+func TestAssemblyBDD_TransitivelyDeclaredProofsMustAppearInTheKernelTerm(t *testing.T) {
+	root := Entity{ID: "root", RequireDependencyProofs: true, Dependencies: []string{"cover"}}
+	d := emptyData()
+	d.Entities = []Entity{root, {ID: "cover", Dependencies: []string{"part"}}, {ID: "part"}}
+	d.Library = []LibraryEntry{{ID: "cover-lib", Lemma: "cover", Status: "ready", Module: "CoverModule", Goal: leancheck.Goal{Candidate: "coverProof"}, Report: &leancheck.ModuleReport{ArtifactSHA256: "cover-pin"}}, {ID: "part-lib", Lemma: "part", Status: "ready", Module: "PartModule", Goal: leancheck.Goal{Candidate: "partProof"}, Report: &leancheck.ModuleReport{ArtifactSHA256: "part-pin"}}}
+	pins := map[string]string{"cover-lib": "cover-pin", "part-lib": "part-pin"}
+	r := leancheck.Report{Dependencies: &leancheck.ProofDependencies{ProcedureSHA256: leancheck.DependencyDigest(), LibraryReferences: []leancheck.DeclarationReference{{Module: "CoverModule", Declaration: "coverProof"}}}}
+	missing := missingRequiredLemmas(&d, &root, pins, &r)
+	if len(missing) != 1 || missing[0] != "dependency:part" {
+		t.Fatal("transitive proof omitted", missing)
+	}
+	r.Dependencies.LibraryReferences = append(r.Dependencies.LibraryReferences, leancheck.DeclarationReference{Module: "PartModule", Declaration: "partProof"})
+	if len(missingRequiredLemmas(&d, &root, pins, &r)) != 0 {
+		t.Fatal("exact proof references rejected")
+	}
+	delete(pins, "part-lib")
+	if len(missingRequiredLemmas(&d, &root, pins, &r)) != 1 {
+		t.Fatal("unpinned proof used")
+	}
+}
+
 func TestProofAuditBDD_RequiredModuleMustBeReferencedByExactDeclaration(t *testing.T) {
 	s, p := packageFixture(t)
 	d := stateOf(t, s).Data

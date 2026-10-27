@@ -10,18 +10,19 @@ import (
 )
 
 type LibraryEntry struct {
-	ID            string                  `json:"id"`
-	Lemma         string                  `json:"lemma"`
-	LemmaRevision int                     `json:"lemma_revision"`
-	Result        string                  `json:"result"`
-	Module        string                  `json:"module"`
-	Source        string                  `json:"source"`
-	Goal          leancheck.Goal          `json:"goal"`
-	Candidate     string                  `json:"candidate"`
-	Environment   leancheck.Config        `json:"environment"`
-	Status        string                  `json:"status"`
-	Report        *leancheck.ModuleReport `json:"report,omitempty"`
-	CreatedAt     time.Time               `json:"created_at"`
+	Definition    *leancheck.PreparedDefinition `json:"definition,omitempty"`
+	ID            string                        `json:"id"`
+	Lemma         string                        `json:"lemma"`
+	LemmaRevision int                           `json:"lemma_revision"`
+	Result        string                        `json:"result"`
+	Module        string                        `json:"module"`
+	Source        string                        `json:"source"`
+	Goal          leancheck.Goal                `json:"goal"`
+	Candidate     string                        `json:"candidate"`
+	Environment   leancheck.Config              `json:"environment"`
+	Status        string                        `json:"status"`
+	Report        *leancheck.ModuleReport       `json:"report,omitempty"`
+	CreatedAt     time.Time                     `json:"created_at"`
 }
 type PublishRequest struct {
 	ExpectedRevision int    `json:"expected_revision"`
@@ -65,7 +66,22 @@ func (s *Service) PublishLemma(r PublishRequest) error {
 		if v == nil || v.Report.AuditSHA256 != leancheck.AuditDigest() {
 			return RuleError("Нужна новая проверка Lean актуальной программой аудита.")
 		}
-		source, err := leancheck.ModuleSource(v.Goal, v.Source)
+		if err := s.verifyDefinitions(d, e.ID); err != nil {
+			return err
+		}
+		moduleGoal := v.Goal
+		var shared *leancheck.PreparedDefinition
+		if st := d.study(e.Study); st != nil && st.Definitions != nil {
+			for _, definition := range st.Definitions.Report.Definitions {
+				if leancheck.Digest(definition.Goal) == leancheck.Digest(v.Goal) {
+					copy := definition
+					shared = &copy
+					moduleGoal.Source = "import " + definition.Module + "\n"
+					break
+				}
+			}
+		}
+		source, err := leancheck.ModuleSource(moduleGoal, v.Source)
 		if err != nil {
 			return err
 		}
@@ -89,7 +105,7 @@ func (s *Service) PublishLemma(r PublishRequest) error {
 		if v.Environment != nil {
 			env = *v.Environment
 		}
-		d.Library = append(d.Library, LibraryEntry{ID: id, Lemma: e.ID, LemmaRevision: e.Revision, Result: e.ResearchResult, Module: module, Source: source, Goal: v.Goal, Candidate: v.Source, Environment: env, Status: "queued", CreatedAt: time.Now().UTC()})
+		d.Library = append(d.Library, LibraryEntry{Definition: shared, ID: id, Lemma: e.ID, LemmaRevision: e.Revision, Result: e.ResearchResult, Module: module, Source: source, Goal: v.Goal, Candidate: v.Source, Environment: env, Status: "queued", CreatedAt: time.Now().UTC()})
 		return nil
 	})
 }
@@ -132,7 +148,12 @@ func (s *Service) buildLibrary(ctx context.Context, l LibraryEntry) {
 	err := os.MkdirAll(dir, 0700)
 	var report leancheck.ModuleReport
 	if err == nil {
-		report, err = (leancheck.DockerChecker{Config: l.Environment}).BuildModule(ctx, l.Goal, l.Candidate, l.Module, dir)
+		checker := leancheck.DockerChecker{Config: l.Environment}
+		if l.Definition != nil {
+			report, err = checker.BuildSharedModule(ctx, l.Goal, l.Candidate, l.Module, dir, *l.Definition)
+		} else {
+			report, err = checker.BuildModule(ctx, l.Goal, l.Candidate, l.Module, dir)
+		}
 	}
 	if err != nil {
 		report.Status = "failed"
@@ -170,6 +191,14 @@ func (s *Service) libraryEnvironment(d *Data, e *Entity) (*leancheck.Config, map
 	}
 	env := *s.Options.Lean
 	env.Libraries = append([]string{}, env.Libraries...)
+	definitionDirs := map[string]bool{}
+	addDefinitions := func(study string) {
+		if st := d.study(study); st != nil && st.Definitions != nil && !definitionDirs[st.Definitions.CheckID] {
+			definitionDirs[st.Definitions.CheckID] = true
+			env.Libraries = append(env.Libraries, filepath.Join(s.Options.Config.DataDir, "preparations", st.Definitions.CheckID, "checked"))
+		}
+	}
+	addDefinitions(e.Study)
 	pins := map[string]string{}
 	seen := map[string]bool{}
 	var visit func(string)
@@ -178,6 +207,9 @@ func (s *Service) libraryEnvironment(d *Data, e *Entity) (*leancheck.Config, map
 			return
 		}
 		seen[id] = true
+		if dep := d.entity(id); dep != nil {
+			addDefinitions(dep.Study)
+		}
 		for _, l := range d.Library {
 			if l.Lemma == id && l.Status == "ready" && l.Report != nil && libraryMatches(d, l) {
 				env.Libraries = append(env.Libraries, filepath.Join(s.Options.Config.DataDir, "library", l.ID, "checked"))

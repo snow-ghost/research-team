@@ -15,6 +15,16 @@ type MaintenanceRequest struct {
 
 func maintenanceQueue(d Data) (map[string]string, error) {
 	queue := map[string]string{}
+	for _, p := range d.Proposals {
+		if c := p.Preparation; c != nil {
+			if c.Status == "running" {
+				return nil, RuleError("Сначала завершите проверку целей плана.")
+			}
+			if c.Status == "queued" {
+				queue["preparation:"+c.ID] = hash(c)
+			}
+		}
+	}
 	for _, a := range d.Attempts {
 		if !active(a.Status) {
 			continue

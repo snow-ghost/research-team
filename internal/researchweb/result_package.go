@@ -145,6 +145,9 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 		return ResultPackage{}, RuleError("Нужен действующий результат с точными исходными связями проверок.")
 	}
 	e := v.entity(result.Target)
+	if study := v.study(e.Study); study != nil && study.Definitions != nil {
+		return ResultPackage{}, RuleError("Перенос отдельных результатов с общими определениями пока не поддерживается; используйте полный проверенный архив области.")
+	}
 	check := proofVerification(&v.Data, e)
 	if check == nil || check.Report == nil || check.Report.AuditSHA256 != leancheck.AuditDigest() {
 		return ResultPackage{}, RuleError("Нужна текущая проверка Lean.")
@@ -289,6 +292,9 @@ func (s *Service) exportResultPackage(v View, id string) (ResultPackage, error) 
 }
 
 func validateResultPackage(p ResultPackage) error {
+	if p.Study.Definitions != nil {
+		return RuleError("Пакет отдельных результатов не содержит полного набора общих определений.")
+	}
 	body, err := json.Marshal(p)
 	if err != nil || len(body) > maxResultPackage {
 		return ErrLimit

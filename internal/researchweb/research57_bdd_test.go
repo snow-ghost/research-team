@@ -62,6 +62,25 @@ func TestRepresentationBDD_ServiceStoresFourChecksWithoutAcceptingTarget(t *test
 	if again, err := s.CompareRepresentation(context.Background(), r); err != nil || again.ID != m.ID || calls != 4 {
 		t.Fatal("idempotent command reran checks", again, err, calls)
 	}
+	if err := s.AddMemory(MemoryRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Target: target, Kind: "note", Content: "Related representation", Conditions: "Explicit equivalence"}); err != nil {
+		t.Fatal(err)
+	}
+	v = act(t, s, Action{Type: "LEMMA", Study: v.entity(target).Study, Title: "Related representation", Statement: "A separate relation", Assumptions: "Explicit equivalence"})
+	related := v.Entities[len(v.Entities)-1].ID
+	if err := s.SetFormalGoal(related, FormalGoalRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Goal: o, Libraries: []string{id}}); err != nil {
+		t.Fatal(err)
+	}
+	v = stateOf(t, s)
+	if err := s.CreateMemoryRelation(MemoryRelationRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Memory: v.Memory[len(v.Memory)-1].ID, Target: related, Goal: leancheck.Goal{Source: "import " + module + "\ndef Relation : Prop := True", Declaration: "Relation", Candidate: "relationProof"}, Note: "Separate obligation needs the accepted module, not either unproved goal", Confirm: true}); err != nil {
+		t.Fatal(err)
+	}
+	v = stateOf(t, s)
+	relation := v.Memory[len(v.Memory)-1].Relations[0]
+	obligation := v.entity(relation.Obligation)
+	_, pins := s.libraryEnvironment(&v.Data, obligation)
+	if len(obligation.RequiredLibraries) != 0 || len(obligation.Dependencies) != 1 || obligation.Dependencies[0] != p.Target.ID || pins[id] != leancheck.Digest(artifact) || relation.AutoReuse {
+		t.Fatal("relation lost the module or assumed an unproved target", obligation, pins)
+	}
 }
 
 func TestMemoryRelationBDD_SuggestionsAndObligationsNeverReuseFailureAcrossGoals(t *testing.T) {
@@ -183,6 +202,28 @@ func TestBranchPolicyBDD_ApprovedBoundedChangePreservesBudgetAndManualHold(t *te
 	}
 	if s.recommendBranch(&d, d.Branches[1]).Executable {
 		t.Fatal("authorization limit reset through replacement")
+	}
+	// Stop background scheduling so the transactional policy step can be
+	// checked without launching the replacement branch's executor.
+	s.cancel()
+	s.wg.Wait()
+	if err := s.Store.Change(0, "", "", "Enable isolated policy step", target, "test", func(d *Data) error {
+		d.Paused = false
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.advanceBranchPolicies()
+	v = stateOf(t, s)
+	if len(v.Branches) != 2 || v.Branches[1].Policy.Used != 1 || len(v.Branches[0].Decisions) != 1 || v.Branches[0].Decisions[0].Actor != "policy" || v.Branches[0].Decisions[0].PolicySHA256 != v.Branches[1].Policy.SHA256 || v.study(study).Budget.MaxModelRequests != 20 || len(v.Attempts) != 1 {
+		t.Fatal("scheduler failed to persist one bounded decision", v.Branches)
+	}
+	revision := v.Revision
+	for i := 0; i < 3; i++ {
+		s.advanceBranchPolicies()
+	}
+	if next := stateOf(t, s); next.Revision != revision || len(next.Branches) != 2 || len(next.Attempts) != 1 {
+		t.Fatal("scheduler repeated a consumed authorization")
 	}
 }
 

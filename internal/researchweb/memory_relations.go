@@ -142,6 +142,25 @@ func (s *Service) CreateMemoryRelation(r MemoryRelationRequest) error {
 			id := identifier("O")
 			o := newEntity(id, "Проверка условий применимости памяти", "obligation", target.Study, r.Note, "Формальную связь задал оператор. Ее доказательство не устанавливает логическую эквивалентность текстовых условий и не переносит технический исход попытки.")
 			o.FormalGoal = &r.Goal
+			// Copy only accepted modules, not the unproved source or target.
+			// This lets the relation import the same pinned declarations.
+			_, sourcePins := s.libraryEnvironment(d, source)
+			_, targetPins := s.libraryEnvironment(d, target)
+			inherited := 0
+			for _, library := range d.Library {
+				if _, inSource := sourcePins[library.ID]; !inSource {
+					if _, inTarget := targetPins[library.ID]; !inTarget {
+						continue
+					}
+				}
+				inherited++
+				if !slices.Contains(o.Dependencies, library.Lemma) {
+					o.Dependencies = append(o.Dependencies, library.Lemma)
+				}
+			}
+			if inherited > 16 || len(o.Dependencies) > 16 {
+				return RuleError("Для связи требуется более шестнадцати модулей; задайте отдельную цель с меньшим набором оснований.")
+			}
 			relation := MemoryRelation{ID: identifier("relation"), Target: target.ID, TargetRevision: target.Revision, SourceRevision: source.Revision, SourceScopeSHA256: memoryScope(*source), TargetScopeSHA256: memoryScope(*target), Obligation: id, GoalSHA256: leancheck.Digest(r.Goal), Note: r.Note, Status: "open", CreatedAt: time.Now().UTC()}
 			m.Relations = append(m.Relations, relation)
 			d.Entities = append(d.Entities, o)

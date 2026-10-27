@@ -133,7 +133,11 @@ func (s *Service) InspectProof(target string) (ProofInspection, error) {
 		item := InspectionAttempt{ID: a.ID, Role: a.Role, Status: a.Status, Outcome: a.RemoteOutcome}
 		result, resultErr := s.readResult(a)
 		if resultErr == nil {
-			item.FailureClass = inspectionFailureClass(result)
+			kind := ""
+			if task := v.task(a.TaskID); task != nil {
+				kind = task.Kind
+			}
+			item.FailureClass = inspectionCandidateClass(kind, a, result)
 			item.Diagnostics = result.Diagnostics
 		}
 		out.Attempts = append(out.Attempts, item)
@@ -153,6 +157,24 @@ func (s *Service) InspectProof(target string) (ProofInspection, error) {
 		out.Attempts = out.Attempts[len(out.Attempts)-12:]
 	}
 	return out, nil
+}
+
+func inspectionCandidateClass(kind string, a Attempt, r execution.Result) string {
+	if a.Status == "candidate" {
+		switch kind {
+		case "counterexample":
+			var report CounterReport
+			if decodeAgentReport(r.Candidate, &report) != nil || validateCounterReport(report) != nil {
+				return "report_format"
+			}
+		case "review":
+			var report ReviewReport
+			if decodeAgentReport(r.Candidate, &report) != nil || !validAttemptReview(a, report) {
+				return "report_format"
+			}
+		}
+	}
+	return inspectionFailureClass(r)
 }
 
 func inspectionFailureClass(r execution.Result) string {

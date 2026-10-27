@@ -19,6 +19,18 @@ func TestProofInspectionBDD_ToolLimitIsNotProviderUnavailability(t *testing.T) {
 	}
 }
 
+func TestProofInspectionBDD_ReceivedCounterCandidateCanStillHaveInvalidReportFormat(t *testing.T) {
+	a := Attempt{Status: "candidate"}
+	r := execution.Result{Status: "candidate", Candidate: `{"outcome":"none_found","evidence":{"cases":[]}}`, Diagnostics: []execution.Diagnostic{{HTTPStatus: 200, Stage: "response_body", FinishReason: "stop"}}}
+	if inspectionCandidateClass("counterexample", a, r) != "report_format" || providerFailureClass(r) != "response_received" {
+		t.Fatal("received malformed evidence hidden or counted as provider failure")
+	}
+	r.Candidate = `{"outcome":"none_found","evidence":"Only finite cases checked"}`
+	if inspectionCandidateClass("counterexample", a, r) != "response_received" {
+		t.Fatal("valid legacy counter report rejected")
+	}
+}
+
 func TestProofInspectionBDD_VerificationDoesNotMeanAcceptanceAndReadsDoNotChangeHistory(t *testing.T) {
 	s, target := submittedService(t, "sqlite", "verified")
 	id := submitFor(t, s, target, "Codex")

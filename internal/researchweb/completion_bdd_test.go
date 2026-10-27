@@ -38,3 +38,33 @@ func TestCompletionBDD_RefutedRootKeepsAnswersAndOtherStudiesAvailable(t *testin
 		t.Fatal("repeated stop changed the terminal record")
 	}
 }
+
+func TestCompletionBDD_InterruptedClosedTeamFinishesOnceWithoutReplayingUnknownAttempt(t *testing.T) {
+	s := serviceFor(t, optionsFor(t, "http://127.0.0.1:1/v1"))
+	s.mu.Lock()
+	err := s.Store.Change(0, "", "", "Closed interrupted fixture", "", "test", func(d *Data) error {
+		root := newEntity("root", "Root", "goal", "closed", "True", "Prop")
+		root.Status = "accepted"
+		d.Entities = append(d.Entities, root, newEntity("other-root", "Other", "goal", "other", "True", "Prop"))
+		d.Studies = append(d.Studies, Study{ID: "closed", Goal: "root"}, Study{ID: "other", Goal: "other-root"})
+		d.Teams = append(d.Teams, ResearchTeam{ID: "closed-team", Study: "closed", Goal: "root", Status: "interrupted"}, ResearchTeam{ID: "other-team", Study: "other", Goal: "other-root", Status: "interrupted"})
+		d.Attempts = append(d.Attempts, Attempt{ID: "unknown", Target: "root", Status: "interrupted", RemoteOutcome: "unknown", InputSHA256: "original-input"})
+		return nil
+	})
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.advanceTeams()
+	before := stateOf(t, s)
+	if before.Teams[0].Status != "completed" || before.Teams[1].Status != "interrupted" {
+		t.Fatal("closed or unrelated team misclassified", before.Teams)
+	}
+	for range 3 {
+		s.advanceTeams()
+	}
+	after := stateOf(t, s)
+	if after.Revision != before.Revision || len(after.Attempts) != 1 || after.Attempts[0].RemoteOutcome != "unknown" || after.Attempts[0].InputSHA256 != "original-input" {
+		t.Fatal("terminal reconciliation repeated a step or lost the unknown outcome")
+	}
+}

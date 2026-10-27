@@ -36,7 +36,7 @@ func stopClosedStudies(d *Data) {
 	}
 	for i := range d.Teams {
 		t := &d.Teams[i]
-		if teamActive(t.Status) && studyClosed(d, t.Study) {
+		if (teamActive(t.Status) || t.Status == "interrupted") && studyClosed(d, t.Study) {
 			t.Status = "completed"
 			t.Reason = "Основная цель исследования закрыта оператором."
 		}

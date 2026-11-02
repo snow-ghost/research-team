@@ -320,6 +320,24 @@ func TestCoddyAgentBDD_ACPCompatibilityAllowsToolsWithoutVersionPin(t *testing.T
 	if err := p.Validate(); err != nil {
 		t.Fatal("ACP compatibility incorrectly requires a Coddy version pin for tools", err)
 	}
+	var config struct {
+		Models []struct {
+			Toolset string `json:"toolset"`
+		} `json:"models"`
+		Toolsets []struct {
+			Name  string   `json:"name"`
+			Tools []string `json:"tools"`
+		} `json:"toolsets"`
+	}
+	if json.Unmarshal(coddyAgentConfig(p, t.TempDir()), &config) != nil || len(config.Models) != 1 || config.Models[0].Toolset != "research" || len(config.Toolsets) != 1 || len(config.Toolsets[0].Tools) != 1 || config.Toolsets[0].Tools[0] != "research__*" {
+		t.Fatalf("research tools are not isolated from built-in reads: %+v", config)
+	}
+	p.External.Compatibility = ""
+	p.External.ExpectedVersion = "1.3.55"
+	config.Models, config.Toolsets = nil, nil
+	if json.Unmarshal(coddyAgentConfig(p, t.TempDir()), &config) != nil || config.Models[0].Toolset != "" || len(config.Toolsets) != 0 {
+		t.Fatal("pinned legacy profile received an unreviewed toolset")
+	}
 }
 
 func TestCoddyAgentBDD_ACPCompatibilityRejectsMalformedVersion(t *testing.T) {

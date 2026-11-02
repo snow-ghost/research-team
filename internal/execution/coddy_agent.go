@@ -267,11 +267,14 @@ func coddyAgentConfig(p Profile, home string) []byte {
 	}
 	model := "research/" + p.External.Model
 	// Use structured JSON; Coddy's YAML loader accepts this representation.
+	modelConfig := map[string]any{"model": model, "max_tokens": p.Limits.MaxOutputTokens, "reasoning_levels": []string{}}
+	if len(p.External.Tools) > 0 && p.External.Compatibility == ACPCompatibility {
+		modelConfig["toolset"] = "research"
+	}
 	config := map[string]any{
 		"providers": []any{map[string]any{"name": "research", "type": "openai",
 			"api_base": p.External.BaseURL, "api_key": key, "proxy": "none", "usage_limits_panel": false}},
-		"models": []any{map[string]any{"model": model, "max_tokens": p.Limits.MaxOutputTokens,
-			"reasoning_levels": []string{}}},
+		"models": []any{modelConfig},
 		"agent": map[string]any{"model": model, "max_turns": p.Limits.MaxSteps,
 			"llm_retry_max": 0, "wait_for_limit_reset": false},
 		"compaction":  map[string]any{"enable": false},
@@ -284,6 +287,9 @@ func coddyAgentConfig(p Profile, home string) []byte {
 		"scheduler": map[string]any{"enable": false},
 		"tools":     map[string]any{"permission_mode": "ask"},
 		"logger":    map[string]any{"level": "warn", "outputs": []string{"stderr"}, "format": "json"},
+	}
+	if len(p.External.Tools) > 0 && p.External.Compatibility == ACPCompatibility {
+		config["toolsets"] = []any{map[string]any{"name": "research", "tools": []string{"research__*"}}}
 	}
 	data, _ := json.Marshal(config)
 	return data

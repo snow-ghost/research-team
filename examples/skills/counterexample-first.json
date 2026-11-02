@@ -27,10 +27,11 @@
       "Relevant definitions and previously verified counterexample evidence.",
       "Available bounded computation results, if any."
     ],
-    "output": "Only counterexample-report@2 JSON with outcome, reproducible evidence, assumptions, limitations and explicit unresolved_obligations. Include refutation_source only when a complete formal refutation candidate is actually available.",
+    "output": "Return exactly one JSON object with no prose and no additional fields: schema='counterexample-report@2'; outcome='none_found'|'counterexample_candidate'|'inconclusive'; evidence, assumptions and limitations are strings; unresolved_obligations is an array of objects {kind:'mathematical'|'operational',text:string}, empty when none remain. Add refutation_source only when a complete formal refutation candidate is actually available.",
     "stop_criteria": [
       "Stop after a concrete counterexample candidate is found and its witness is checked.",
-      "Stop at the declared search bound and report none_found or inconclusive without claiming a proof."
+      "Stop at the declared search bound and report none_found or inconclusive without claiming a proof.",
+      "Once sufficient evidence is available, stop calling tools and immediately return the exact JSON response; do not re-read materials already supplied in the prompt."
     ],
     "examples": [
       "Success: a small explicit permutation violates a proposed diameter formula and is returned with a reproducible word and distance computation.",

@@ -29,6 +29,9 @@ import Wrapped4
 #print axioms Wrapped4.twoCopies10FarOps_correct
 #print axioms Wrapped4.twoCopies11FlipOps_correct
 #print axioms Wrapped4.twoCopies11FarOps_correct
+#print axioms Wrapped4.leftWrapped4_map
+#print axioms Wrapped4.rightWrapped4_map
+#print axioms Wrapped4.applyWrappedOps_map
 EOF
 
 OUTPUT="$("$LEAN_BIN" "$AUDIT")"

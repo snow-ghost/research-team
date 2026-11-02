@@ -41,6 +41,29 @@ def applyWrappedOp (op : Op) (xs : List α) : List α :=
 def applyWrappedOps (ops : List Op) (xs : List α) : List α :=
   ops.foldl (fun xs op => applyWrappedOp op xs) xs
 
+theorem leftWrapped4_map (i : Nat) (f : α → β) (xs : List α) :
+    leftWrapped4 i (xs.map f) = (leftWrapped4 i xs).map f := by
+  simp [leftWrapped4, List.map_take, List.map_drop, List.map_append]
+
+theorem rightWrapped4_map (i : Nat) (f : α → β) (xs : List α) :
+    rightWrapped4 i (xs.map f) = (rightWrapped4 i xs).map f := by
+  simp [rightWrapped4, List.map_take, List.map_drop, List.map_append]
+
+theorem applyWrappedOps_map (ops : List Op) (f : α → β) (xs : List α) :
+    applyWrappedOps ops (xs.map f) = (applyWrappedOps ops xs).map f := by
+  induction ops generalizing xs with
+  | nil => rfl
+  | cons op ops ih =>
+    cases op with
+    | left i =>
+      change applyWrappedOps ops (leftWrapped4 i (xs.map f)) = (applyWrappedOps (Op.left i :: ops) xs).map f
+      rw [leftWrapped4_map]
+      exact ih _
+    | right i =>
+      change applyWrappedOps ops (rightWrapped4 i (xs.map f)) = (applyWrappedOps (Op.right i :: ops) xs).map f
+      rw [rightWrapped4_map]
+      exact ih _
+
 def shiftOp (k : Nat) : Op → Op
   | .left i => .left (i + k)
   | .right i => .right (i + k)

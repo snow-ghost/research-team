@@ -256,4 +256,22 @@ theorem twoCopies10FarOps_correct :
 
 theorem twoCopies10FarOps_length : twoCopies10FarOps.length = 9 := by decide
 
+def twoCopies11Start : List Nat := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9]
+
+def twoCopies11FlipOps : List Op :=
+  [.left 0, .left 1, .right 3, .left 4, .right 3, .right 8, .left 9, .right 8, .left 5, .right 10]
+
+def twoCopies11FarOps : List Op :=
+  [.left 0, .left 0, .right 1, .left 0, .left 2, .left 4, .right 6, .right 7, .left 5, .right 7]
+
+theorem twoCopies11FlipOps_correct :
+    applyWrappedOps twoCopies11FlipOps twoCopies11Start = twoCopies11Start.reverse := by decide
+
+theorem twoCopies11FlipOps_length : twoCopies11FlipOps.length = 10 := by decide
+
+theorem twoCopies11FarOps_correct :
+    applyWrappedOps twoCopies11FarOps twoCopies11Start = [4, 3, 2, 1, 0, 9, 9, 8, 7, 6, 5] := by decide
+
+theorem twoCopies11FarOps_length : twoCopies11FarOps.length = 10 := by decide
+
 end Wrapped4

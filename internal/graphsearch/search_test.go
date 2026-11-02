@@ -306,6 +306,32 @@ func TestRepeatedSymbolsBDD_TenPositionIndependentCertificates(t *testing.T) {
 	}
 }
 
+func TestRepeatedSymbolsBDD_ElevenPositionIndependentCertificates(t *testing.T) {
+	in := repeatedFourInput(11, 2)
+	flip := make([]int, 11)
+	for i := range flip {
+		flip[i] = in.Start[10-i]
+	}
+	flipWord := []string{"left0", "left1", "left3^-1", "left4", "left3^-1", "left8^-1", "left9", "left8^-1", "left5", "left10^-1"}
+	verification, err := VerifyWord(context.Background(), in, flipWord, flip, false)
+	if err != nil || !verification.Matches || verification.Distance != 10 {
+		t.Fatalf("eleven-position flip certificate failed: %+v %v", verification, err)
+	}
+	far := []int{4, 3, 2, 1, 0, 9, 9, 8, 7, 6, 5}
+	farWord := []string{"left0", "left0", "left1^-1", "left0", "left2", "left4", "left6^-1", "left7^-1", "left5", "left7^-1"}
+	verification, err = VerifyWord(context.Background(), in, farWord, far, false)
+	if err != nil || !verification.Matches || verification.Distance != 10 {
+		t.Fatalf("eleven-position diameter certificate failed: %+v %v", verification, err)
+	}
+	state := append([]int(nil), in.Start...)
+	for _, name := range farWord {
+		state = referenceWrappedStep(state, name)
+	}
+	if !reflect.DeepEqual(state, far) {
+		t.Fatalf("reference mismatch for eleven-position witness: %v", state)
+	}
+}
+
 func TestRepeatedSymbolsBDD_PartialSearchIsNotExhaustive(t *testing.T) {
 	in := repeatedFourInput(8, 2)
 	report, err := LongestStates(context.Background(), in)
@@ -314,5 +340,34 @@ func TestRepeatedSymbolsBDD_PartialSearchIsNotExhaustive(t *testing.T) {
 	}
 	if report.Status != "limit_reached" || report.Exhausted || report.LimitReason != "max_states" {
 		t.Fatalf("partial multiset component was presented as exhaustive: %+v", report)
+	}
+}
+
+func TestOfflineRepeatedWrapped4MatchesIndependentReference(t *testing.T) {
+	for _, copies := range []int{2, 3} {
+		in := repeatedFourInput(7, copies)
+		report, err := OfflineRepeatedWrapped4(context.Background(), 7, copies, MaxStates)
+		if err != nil {
+			t.Fatal(err)
+		}
+		explored, eccentricity, flipDistance := referenceWrappedAnalysisFor(in.Start)
+		if report.Status != "completed" || report.Explored != explored || report.Eccentricity != eccentricity || report.Flip.Distance != flipDistance || report.ReportSHA256 == "" {
+			t.Fatalf("offline reference mismatch: %+v", report)
+		}
+		for _, witness := range report.Farthest {
+			if witness.Distance != eccentricity {
+				t.Fatalf("non-diameter witness returned: %+v", witness)
+			}
+			state := append([]int(nil), in.Start...)
+			for _, name := range witness.Word {
+				state = referenceWrappedStep(state, name)
+			}
+			if !reflect.DeepEqual(state, witness.State) {
+				t.Fatalf("offline word mismatch: %+v", witness)
+			}
+		}
+	}
+	if _, err := OfflineRepeatedWrapped4(context.Background(), 12, 2, OfflineMaxStates); err == nil {
+		t.Fatal("component above the offline limit was accepted")
 	}
 }

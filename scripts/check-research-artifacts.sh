@@ -27,6 +27,8 @@ import Wrapped4
 #print axioms Wrapped4.repeated_cost_base
 #print axioms Wrapped4.twoCopies10FlipOps_correct
 #print axioms Wrapped4.twoCopies10FarOps_correct
+#print axioms Wrapped4.twoCopies11FlipOps_correct
+#print axioms Wrapped4.twoCopies11FarOps_correct
 EOF
 
 OUTPUT="$("$LEAN_BIN" "$AUDIT")"

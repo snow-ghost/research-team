@@ -85,8 +85,8 @@ func inspect(o researchweb.Options, binary string, probe func(string) (string, e
 			external := *e
 			external.ExpectedVersion = version
 			candidate.External = &external
-			add(id+":reviewed_version", candidate.Validate() == nil, "Installed Coddy: "+version+"; the adapter allowlist is unchanged.")
-			add(id+":pinned_version", version == e.ExpectedVersion, "Installed and configured versions must match exactly.")
+			add(id+":reviewed_version", candidate.Validate() == nil, "Installed Coddy: "+version+"; ACP compatibility is validated per attempt.")
+			add(id+":pinned_version", e.ExpectedVersion == "" || version == e.ExpectedVersion, "Pinned versions must match exactly when expected_version is set.")
 		}
 		configured, configuredErr := filepath.EvalSymlinks(e.Executable)
 		installed, installedErr := filepath.EvalSymlinks(binary)

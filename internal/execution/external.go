@@ -23,6 +23,7 @@ var supportedVersions = map[string]string{
 	"claude":      "2.1.274 (Claude Code)",
 	"opencode":    "1.2.27",
 	"coddy-agent": "1.1.64",
+	"kimi-agent":  "2.4.0",
 }
 
 func (e *externalExecutor) Run(ctx context.Context, task Task) (result Result, err error) {

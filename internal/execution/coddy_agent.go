@@ -76,7 +76,11 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 	if err != nil {
 		return result, err
 	}
-	if strings.TrimSpace(string(version)) != spec.ExpectedVersion {
+	actualVersion := strings.TrimSpace(string(version))
+	if !acpVersionPattern.MatchString(actualVersion) {
+		return result, errors.New("unexpected coddy-agent version response")
+	}
+	if spec.ExpectedVersion != "" && actualVersion != spec.ExpectedVersion {
 		return result, errors.New("coddy-agent version mismatch")
 	}
 	token, err := secret(e.lookup, spec.SecretEnv["OPENAI_API_KEY"])
@@ -121,7 +125,7 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 		func(turnCtx context.Context, writer io.Writer, reader io.Reader) error {
 			sessionCtx, stop := context.WithCancel(turnCtx)
 			defer stop()
-			client := &coddyACPClient{model: "research/" + spec.Model, mode: mode, allowedTools: spec.Tools, cancel: stop,
+			client := &coddyACPClient{model: "research/" + spec.Model, mode: mode, permissionMode: "ask", allowedTools: spec.Tools, cancel: stop,
 				limit: e.profile.Limits.MaxOutputBytes}
 			client.emit = func(event Event) {
 				event = maskedEvent(event, token)
@@ -137,11 +141,14 @@ func (e *coddyAgentExecutor) Run(ctx context.Context, task Task) (result Result,
 			stageStarted := time.Now()
 			init, rpcErr := conn.Initialize(sessionCtx, acp.InitializeRequest{ProtocolVersion: 1})
 			recordACPFailure(ctx, &result, "initialize", stageStarted, rpcErr, token)
-			if rpcErr != nil || init.ProtocolVersion != 1 || init.AgentInfo == nil ||
-				init.AgentInfo.Name != "coddy-agent" || init.AgentInfo.Version != spec.ExpectedVersion {
+			if rpcErr != nil || init.ProtocolVersion != 1 || init.AgentInfo == nil || init.AgentInfo.Name != "coddy-agent" ||
+				!acpVersionPattern.MatchString(init.AgentInfo.Version) || init.AgentInfo.Version != actualVersion ||
+				(spec.ExpectedVersion != "" && init.AgentInfo.Version != spec.ExpectedVersion) {
 				result.Events = append(result.Events, Event{Type: "acp_initialize_failed"})
 				return ErrProtocol
 			}
+			result.AgentName = init.AgentInfo.Name
+			result.AgentVersion = init.AgentInfo.Version
 			client.mu.Lock()
 			client.creating = true
 			client.mu.Unlock()
@@ -296,26 +303,27 @@ func coddyOptionEquals(options []acp.SessionConfigOption, id, value string) bool
 }
 
 type coddyACPClient struct {
-	mode         string
-	allowedTools []string
-	usage        Usage
-	usageSeen    bool
-	usageUnknown bool
-	usageTotal   int64
-	mu           sync.Mutex
-	session      acp.SessionId
-	earlySession acp.SessionId
-	creating     bool
-	model        string
-	running      bool
-	text         strings.Builder
-	denied       bool
-	err          error
-	limit        int
-	cancel       context.CancelFunc
-	emit         func(Event)
-	events       []Event
-	pendingText  strings.Builder
+	mode           string
+	allowedTools   []string
+	usage          Usage
+	usageSeen      bool
+	usageUnknown   bool
+	usageTotal     int64
+	mu             sync.Mutex
+	session        acp.SessionId
+	earlySession   acp.SessionId
+	creating       bool
+	model          string
+	permissionMode string
+	running        bool
+	text           strings.Builder
+	denied         bool
+	err            error
+	limit          int
+	cancel         context.CancelFunc
+	emit           func(Event)
+	events         []Event
+	pendingText    strings.Builder
 }
 
 func tokenOrImpossible(token string) string {
@@ -405,7 +413,7 @@ func (c *coddyACPClient) SessionUpdate(_ context.Context, n acp.SessionNotificat
 		if u.ConfigOptionUpdate != nil {
 			opts := u.ConfigOptionUpdate.ConfigOptions
 			if !coddyOptionEquals(opts, "mode", mode) || !coddyOptionEquals(opts, "model", c.model) ||
-				!coddyOptionEquals(opts, "permission_mode", "ask") {
+				(c.permissionMode != "" && !coddyOptionEquals(opts, "permission_mode", c.permissionMode)) {
 				return c.reject(ErrProtocol)
 			}
 		}

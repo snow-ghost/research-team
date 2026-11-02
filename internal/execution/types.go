@@ -17,6 +17,10 @@ import (
 
 const maxPayload = 1 << 20
 
+const ACPCompatibility = "acp"
+
+var acpVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
 var (
 	ErrLimit            = errors.New("execution limit reached")
 	ErrProtocol         = errors.New("invalid executor response")
@@ -88,11 +92,13 @@ type ExternalConfig struct {
 	ToolProxy         string            `json:"tool_proxy,omitempty"`
 	Provider          string            `json:"provider"`
 	Executable        string            `json:"executable"`
-	ExpectedVersion   string            `json:"expected_version"`
+	ExpectedVersion   string            `json:"expected_version,omitempty"`
+	Compatibility     string            `json:"compatibility,omitempty"`
 	Model             string            `json:"model"`
 	SearchPath        string            `json:"search_path"`
 	SecretEnv         map[string]string `json:"secret_env,omitempty"`
 	ExecutionBoundary string            `json:"execution_boundary"`
+	ConfigHome        string            `json:"config_home,omitempty"`
 	BaseURL           string            `json:"base_url,omitempty"`
 	AllowLoopbackHTTP bool              `json:"allow_loopback_http,omitempty"`
 	Container         *ContainerConfig  `json:"container,omitempty"`
@@ -146,6 +152,8 @@ type Result struct {
 	ProfileID              string             `json:"profile_id"`
 	ProfileSHA256          string             `json:"profile_sha256"`
 	PacketSHA256           string             `json:"packet_sha256"`
+	AgentName              string             `json:"agent_name,omitempty"`
+	AgentVersion           string             `json:"agent_version,omitempty"`
 	Status                 string             `json:"status"`
 	Candidate              string             `json:"candidate,omitempty"`
 	Partial                string             `json:"partial,omitempty"`
@@ -203,7 +211,7 @@ func (p Profile) Validate() error {
 		}
 		allowed := map[string]bool{}
 		for _, name := range m.Tools {
-			if (name != "read_file" && name != "check_lean" && name != "check_refutation") || allowed[name] {
+			if (name != "read_file" && name != "check_lean" && name != "check_refutation" && name != "run_bfs" && name != "verify_word" && name != "search_longest_states") || allowed[name] {
 				return ErrUnsupported
 			}
 			allowed[name] = true
@@ -220,20 +228,29 @@ func (p Profile) Validate() error {
 			return fmt.Errorf("%w: %w: coddy-bot manages repository tasks; direct process execution is unavailable",
 				ErrUnsupported, ErrWorkflowRequired)
 		}
-		if e.Provider != "codex" && e.Provider != "claude" && e.Provider != "opencode" && e.Provider != "coddy-agent" {
+		if e.Provider != "codex" && e.Provider != "claude" && e.Provider != "opencode" && e.Provider != "coddy-agent" && e.Provider != "kimi-agent" {
 			return ErrUnsupported
 		}
-		if e.ExpectedVersion != supportedVersions[e.Provider] &&
+		if e.Compatibility != "" && e.Compatibility != ACPCompatibility {
+			return ErrUnsupported
+		}
+		if e.Compatibility == ACPCompatibility && e.Provider != "coddy-agent" && e.Provider != "kimi-agent" {
+			return ErrUnsupported
+		}
+		if e.Compatibility != ACPCompatibility && e.ExpectedVersion != supportedVersions[e.Provider] &&
 			!(e.Provider == "coddy-agent" && (e.ExpectedVersion == "1.2.1" || e.ExpectedVersion == "1.2.54" || e.ExpectedVersion == "1.3.42" || e.ExpectedVersion == "1.3.55")) {
 			return errors.New("external version requires a reviewed adapter revision")
 		}
-		if !filepath.IsAbs(e.Executable) || e.ExpectedVersion == "" || e.Model == "" || e.SearchPath == "" {
-			return errors.New("absolute executable, pinned version, model and search path required")
+		if !filepath.IsAbs(e.Executable) || (e.Compatibility == "" && e.ExpectedVersion == "") || e.Model == "" || e.SearchPath == "" {
+			return errors.New("absolute executable, model and search path required; expected_version is optional in ACP compatibility mode")
 		}
 		for _, path := range filepath.SplitList(e.SearchPath) {
 			if !filepath.IsAbs(path) {
 				return errors.New("search path entries must be absolute")
 			}
+		}
+		if e.Provider != "kimi-agent" && e.ConfigHome != "" {
+			return ErrUnsupported
 		}
 		if e.ExecutionBoundary == "docker" {
 			if e.Provider != "coddy-agent" || e.Container == nil || !filepath.IsAbs(e.Container.Runtime) ||
@@ -245,14 +262,25 @@ func (p Profile) Validate() error {
 		} else if e.ExecutionBoundary != "operator_managed" || e.Container != nil {
 			return errors.New("external execution requires an explicit isolation boundary")
 		}
-		if e.Provider == "coddy-agent" {
+		if e.Provider == "kimi-agent" {
+			if !filepath.IsAbs(e.ConfigHome) || len(e.SecretEnv) != 0 {
+				return errors.New("kimi-agent requires an absolute config_home and managed login without secret mappings")
+			}
+			if e.BaseURL != "" || e.AllowLoopbackHTTP || p.Limits.MaxSteps != 0 ||
+				p.Limits.MaxToolCalls != 0 || p.Limits.MaxOutputTokens != 0 {
+				return ErrUnsupported
+			}
+			if strings.TrimSpace(e.Model) != e.Model || strings.ContainsAny(e.Model, "\r\n\x00$") {
+				return errors.New("invalid kimi-agent model id")
+			}
+		} else if e.Provider == "coddy-agent" {
 			if len(e.Tools) > 0 {
-				if (e.ExpectedVersion != "1.2.54" && e.ExpectedVersion != "1.3.42" && e.ExpectedVersion != "1.3.55") || !filepath.IsAbs(e.ToolProxy) || p.Limits.MaxToolCalls < 1 || p.Limits.MaxToolCalls > 4 {
-					return errors.New("coddy Lean tools require a reviewed tool-capable version, an absolute proxy and 1..4 calls")
+				if (e.Compatibility != ACPCompatibility && e.ExpectedVersion != "1.2.54" && e.ExpectedVersion != "1.3.42" && e.ExpectedVersion != "1.3.55") || !filepath.IsAbs(e.ToolProxy) || p.Limits.MaxToolCalls < 1 || p.Limits.MaxToolCalls > 4 {
+					return errors.New("coddy runtime tools require a reviewed tool-capable version, an absolute proxy and 1..4 calls")
 				}
 				seenTools := map[string]bool{}
 				for _, name := range e.Tools {
-					if (name != "check_lean" && name != "check_refutation") || seenTools[name] {
+					if (name != "check_lean" && name != "check_refutation" && name != "run_bfs" && name != "verify_word" && name != "search_longest_states") || seenTools[name] {
 						return ErrUnsupported
 					}
 					seenTools[name] = true
@@ -325,6 +353,9 @@ func Build(p Profile, lookup func(string) (string, bool)) (Executor, error) {
 	p = frozen
 	if p.Kind == "external" && p.External.Provider == "coddy-agent" {
 		return &coddyAgentExecutor{profile: p, lookup: lookup}, nil
+	}
+	if p.Kind == "external" && p.External.Provider == "kimi-agent" {
+		return &kimiAgentExecutor{profile: p}, nil
 	}
 	if p.Kind == "external" {
 		return &externalExecutor{profile: p, lookup: lookup}, nil

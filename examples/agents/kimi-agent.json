@@ -1,0 +1,24 @@
+{
+  "id": "kimi-agent-proof-reader",
+  "kind": "external",
+  "skills": [
+    {
+      "id": "proof-audit",
+      "version": "1",
+      "instructions": "Check assumptions and inference steps. Separate established results, counterexamples and unresolved obligations. Return a candidate report for independent review."
+    }
+  ],
+  "limits": {
+    "timeout_seconds": 300,
+    "max_output_bytes": 4194304
+  },
+  "external": {
+    "provider": "kimi-agent",
+    "executable": "/usr/local/bin/kimi",
+    "compatibility": "acp",
+    "model": "kimi-code/k3.1-pro",
+    "config_home": "/path/to/private-kimi-home",
+    "search_path": "/usr/local/bin:/usr/bin:/bin",
+    "execution_boundary": "operator_managed"
+  }
+}

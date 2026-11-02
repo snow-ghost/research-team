@@ -20,8 +20,18 @@ func preflightOptions(t *testing.T) researchweb.Options {
 	return o
 }
 
-func TestPreflightBDD_UnsupportedVersionDoesNotStartResearchOrRevealSecrets(t *testing.T) {
+func TestPreflightBDD_UnsupportedPinnedVersionDoesNotStartResearchOrRevealSecrets(t *testing.T) {
 	o := preflightOptions(t)
+	for id, profile := range o.Profiles {
+		if profile.External == nil || profile.External.Provider != "coddy-agent" {
+			continue
+		}
+		external := *profile.External
+		external.Compatibility = ""
+		external.ExpectedVersion = "1.3.55"
+		profile.External = &external
+		o.Profiles[id] = profile
+	}
 	o.Lookup = func(string) (string, bool) { return "private-test-secret", true }
 	calls := 0
 	r := inspect(o, "/missing/coddy", func(string) (string, error) {
@@ -42,6 +52,23 @@ func TestPreflightBDD_UnsupportedVersionDoesNotStartResearchOrRevealSecrets(t *t
 	}
 	if !found {
 		t.Fatal("missing version gate")
+	}
+}
+
+func TestPreflightBDD_ACPCompatibilityAcceptsUnpinnedVersion(t *testing.T) {
+	o := preflightOptions(t)
+	r := inspect(o, "/missing/coddy", func(string) (string, error) { return "999.0.0", nil })
+	found := false
+	for _, c := range r.Checks {
+		if strings.HasSuffix(c.ID, ":reviewed_version") {
+			found = true
+			if !c.Ready {
+				t.Fatal("ACP-compatible version rejected", c.ID)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing ACP compatibility check")
 	}
 }
 

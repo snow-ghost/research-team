@@ -21,6 +21,13 @@ Feature: Execute a bounded research attempt through a selected agent
       | claude   |
       | opencode |
 
+  Scenario: Kimi Code returns a candidate through ACP
+    Given a version-pinned Kimi Code Agent and a managed login home
+    When the agent completes a turn in plan mode
+    Then its response text becomes an unverified candidate
+    And filesystem and terminal capabilities are not provided
+    And reasoning content is excluded from the candidate
+
   Scenario: The installed agent has an unexpected version
     When the version probe differs from the profile
     Then no research command is started

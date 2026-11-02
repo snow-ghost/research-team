@@ -63,6 +63,8 @@ func TestCoddyACPHelper(t *testing.T) {
 		}
 		if scenario == "wrong_version" {
 			fmt.Println("wrong-version")
+		} else if scenario == "new_version" {
+			fmt.Println("9.9.99")
 		} else {
 			fmt.Println("1.1.64")
 		}
@@ -144,8 +146,12 @@ func TestCoddyACPHelper(t *testing.T) {
 			if scenario == "wrong_protocol" {
 				version = 9
 			}
+			agentVersion := "1.1.64"
+			if scenario == "new_version" {
+				agentVersion = "9.9.99"
+			}
 			reply(frame.ID, map[string]any{"protocolVersion": version,
-				"agentInfo": map[string]string{"name": "coddy-agent", "version": "1.1.64"}})
+				"agentInfo": map[string]string{"name": "coddy-agent", "version": agentVersion}})
 		case "session/new":
 			var p struct {
 				Cwd        string
@@ -291,6 +297,38 @@ func TestCoddyAgentBDD_CompletedTurnIsAnUnverifiedCandidate(t *testing.T) {
 				t.Fatal("permission decision not recorded")
 			}
 		})
+	}
+}
+
+func TestCoddyAgentBDD_ACPCompatibilityAcceptsNewVersionAndRecordsMetadata(t *testing.T) {
+	p := coddyProfile(coddyFixture(t, "new_version"))
+	p.External.ExpectedVersion = ""
+	p.External.Compatibility = ACPCompatibility
+	r, err := buildTest(t, p).Run(context.Background(), taskFor(t))
+	if err != nil || r.Status != "candidate" || r.AgentName != "coddy-agent" || r.AgentVersion != "9.9.99" {
+		t.Fatalf("%+v %v", r, err)
+	}
+}
+
+func TestCoddyAgentBDD_ACPCompatibilityAllowsToolsWithoutVersionPin(t *testing.T) {
+	p := coddyProfile("/bin/false")
+	p.External.ExpectedVersion = ""
+	p.External.Compatibility = ACPCompatibility
+	p.External.ToolProxy = "/tmp/research-tool-proxy"
+	p.External.Tools = []string{"run_bfs", "verify_word"}
+	p.Limits.MaxToolCalls = 4
+	if err := p.Validate(); err != nil {
+		t.Fatal("ACP compatibility incorrectly requires a Coddy version pin for tools", err)
+	}
+}
+
+func TestCoddyAgentBDD_ACPCompatibilityRejectsMalformedVersion(t *testing.T) {
+	p := coddyProfile(coddyFixture(t, "wrong_version"))
+	p.External.ExpectedVersion = ""
+	p.External.Compatibility = ACPCompatibility
+	r, err := buildTest(t, p).Run(context.Background(), taskFor(t))
+	if err == nil || r.Status == "candidate" || r.AgentVersion != "" {
+		t.Fatalf("%+v %v", r, err)
 	}
 }
 

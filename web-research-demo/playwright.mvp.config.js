@@ -7,7 +7,7 @@ export default defineConfig({
   webServer: {
     command: "node tests/fixtures/mvp-server.mjs",
     url: "http://127.0.0.1:4190",
-    reuseExistingServer: false,
+    reuseExistingServer: process.env.MVP_REUSE_SERVER === "1",
     timeout: 180000,
   },
   use: {

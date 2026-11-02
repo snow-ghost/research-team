@@ -612,6 +612,18 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 		s.stopExecution("attempt_completion", changeErr)
 	} // Fail closed if completion cannot be persisted.
 }
+
+func (s *Service) contextFileNames(a Attempt) []string {
+	names := []string{"TASK.md", "Goal.lean", "Candidate.template.lean"}
+	for _, workspace := range s.Options.Config.Workspaces {
+		if workspace.ID == a.Workspace {
+			names = append(names, workspace.ContextFiles...)
+			break
+		}
+	}
+	return names
+}
+
 func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Result) error {
 	d, err := s.Store.Snapshot(a.InputSnapshot)
 	if err != nil {
@@ -683,7 +695,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	}
 	visit(entity.ID)
 	materials := []map[string]string{}
-	for _, name := range []string{"TASK.md", "Goal.lean", "Candidate.template.lean"} {
+	for _, name := range s.contextFileNames(a) {
 		if content, readErr := readBoundedFile(filepath.Join(dir, "workspace", name), 65536); readErr == nil {
 			materials = append(materials, map[string]string{"path": name, "content": string(content)})
 		}
@@ -727,7 +739,7 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 		}
 		workerMaterials := []map[string]string{}
 		for _, material := range materials {
-			if material["path"] == "TASK.md" || material["path"] == "Goal.lean" {
+			if material["path"] != "Candidate.template.lean" {
 				workerMaterials = append(workerMaterials, material)
 			}
 		}
@@ -782,8 +794,12 @@ func (s *Service) perform(ctx context.Context, a Attempt, result *execution.Resu
 	if a.RemoteWorker != "" {
 		t.Workspace = ""
 		packet := WorkerPacket{Task: t, Skills: profile.Skills, Limits: profile.Limits, Profile: profile.ID, ProfileSHA256: hash(profile)}
+		allowed := map[string]bool{}
+		for _, name := range s.contextFileNames(a) {
+			allowed[name] = true
+		}
 		for _, f := range files {
-			if f.Path == "TASK.md" || f.Path == "Goal.lean" {
+			if allowed[f.Path] && f.Path != "Candidate.template.lean" {
 				packet.Files = append(packet.Files, f)
 			}
 		}

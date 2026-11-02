@@ -53,6 +53,14 @@ func TestServerBDD_ConfigurationUsesExplicitLocalBoundaries(t *testing.T) {
 			t.Fatal("state under web root accepted")
 		}
 	}
+	for _, files := range [][]string{{"../secret"}, {"dir/file"}, {"dir\\file"}, {".env"}, {"TASK.md"}, {"S3.md", "S3.md"}} {
+		bad := base
+		bad.Workspaces = []Workspace{{ID: "source", Label: "Source", Path: "source", ContextFiles: files}}
+		writeJSON(t, path, bad)
+		if _, err := LoadOptions(path); err == nil {
+			t.Fatal("unsafe or duplicate workspace context accepted", files)
+		}
+	}
 	writeJSON(t, path, map[string]any{"listen": base.Listen, "arbitrary_command": "denied"})
 	if _, err := LoadOptions(path); err == nil {
 		t.Fatal("unknown configuration accepted")

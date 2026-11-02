@@ -1,6 +1,9 @@
 package researchweb
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +48,35 @@ func TestTaskScopeBDD_ChildGoalReplacesParentInstructionAndPreservesOriginal(t *
 	body, err = os.ReadFile(filepath.Join(dir, archive))
 	if err != nil || string(body) != original {
 		t.Fatal("continuation changed original background", err)
+	}
+}
+
+func TestTaskScopeBDD_ApprovedContextFilesReachPromptWithoutUnrelatedMaterials(t *testing.T) {
+	requests := make(chan string, 1)
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests <- string(body)
+		completeModel(w, "candidate")
+	}))
+	defer model.Close()
+	s := serviceFor(t, optionsFor(t, model.URL+"/v1"))
+	workspace := &s.Options.Config.Workspaces[0]
+	workspace.ContextFiles = []string{"S3.md"}
+	if err := os.WriteFile(filepath.Join(workspace.Path, "S3.md"), []byte("APPROVED-BFS-CERTIFICATE"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace.Path, "unrelated.md"), []byte("UNRELATED-PRIVATE-MATERIAL"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	v := studyFor(t, s)
+	v = act(t, s, Action{Type: "TASK", Target: v.Studies[0].Goal, Kind: "proof", Title: "Artifact analysis", Text: "Analyze only the supplied evidence"})
+	if err := s.Start(RunRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), TaskID: v.Tasks[0].ID, Profile: "reader", Workspace: "source", Confirm: true}); err != nil {
+		t.Fatal(err)
+	}
+	waitAttempt(t, s, stateOf(t, s).Attempts[0].ID, func(a Attempt) bool { return a.Status == "candidate" })
+	body := <-requests
+	if !strings.Contains(body, "APPROVED-BFS-CERTIFICATE") || strings.Contains(body, "UNRELATED-PRIVATE-MATERIAL") {
+		t.Fatal("workspace context allowlist was not enforced", body)
 	}
 }
 

@@ -10,6 +10,6 @@
     {"file": "../agents/kimi-agent.json", "label": "Kimi Code Agent"}
   ],
   "workspaces": [
-    {"id": "example", "label": "Учебные материалы", "path": "../agents/workspace"}
+    {"id": "example", "label": "Учебные материалы", "path": "../agents/workspace", "context_files": ["S3.md"]}
   ]
 }

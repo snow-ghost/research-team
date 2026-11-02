@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/snow-ghost/research-team/internal/coddy"
 	"github.com/snow-ghost/research-team/internal/execution"
@@ -22,10 +23,11 @@ type ProfileFile struct {
 	Label string `json:"label"`
 }
 type Workspace struct {
-	Graph *ComputationGraphConfig `json:"graph,omitempty"`
-	ID    string                  `json:"id"`
-	Label string                  `json:"label"`
-	Path  string                  `json:"path"`
+	Graph        *ComputationGraphConfig `json:"graph,omitempty"`
+	ContextFiles []string                `json:"context_files,omitempty"`
+	ID           string                  `json:"id"`
+	Label        string                  `json:"label"`
+	Path         string                  `json:"path"`
 }
 type Config struct {
 	Evaluations            []EvaluationWatch `json:"evaluations,omitempty"`
@@ -166,6 +168,16 @@ func LoadOptions(path string) (Options, error) {
 		}
 		w.Path = resolve(w.Path)
 		seen[w.ID] = true
+		if len(w.ContextFiles) > 16 {
+			return o, errors.New("too many workspace context files")
+		}
+		contextSeen := map[string]bool{}
+		for _, name := range w.ContextFiles {
+			if len(name) == 0 || len(name) > 64 || name[0] == '.' || filepath.Base(name) != name || strings.ContainsRune(name, '\\') || contextSeen[name] || name == "TASK.md" || name == "Goal.lean" || name == "Candidate.template.lean" {
+				return o, errors.New("invalid workspace context file")
+			}
+			contextSeen[name] = true
+		}
 	}
 	if c.CoddyConfig != "" {
 		c.CoddyConfig = resolve(c.CoddyConfig)

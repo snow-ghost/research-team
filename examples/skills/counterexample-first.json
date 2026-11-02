@@ -1,0 +1,41 @@
+{
+  "name": "counterexample-first",
+  "label": "Сначала дешёвое опровержение",
+  "instructions": "Before an expensive proof, test the exact claim at boundaries and in small cases. Search for the simplest counterexample and record the actual search scope. A verified counterexample stops the positive branch; failure to find one never proves the claim.",
+  "contract": {
+    "procedure": [
+      "Check boundary parameters, degenerate cases and each explicit assumption of the exact target.",
+      "Enumerate small cases within a stated finite bound and distinguish exhaustive coverage from samples.",
+      "Prefer the simplest witness and verify its arithmetic or construction independently where possible.",
+      "Return counterexample_candidate only with a concrete witness and enough evidence to reproduce it.",
+      "Otherwise return none_found or inconclusive with exact limitations and unresolved obligations.",
+      "Never convert absence of a counterexample into a positive proof or an acceptance decision."
+    ],
+    "result_checks": ["counterexample_report"],
+    "applicability": {
+      "priority": 100,
+      "roles": ["counterexample"],
+      "require_formal_goal": true,
+      "min_remaining_attempts": 1
+    },
+    "preconditions": [
+      "The exact current statement and formal goal are pinned.",
+      "The attempted finite or analytical search scope can be described explicitly."
+    ],
+    "inputs": [
+      "Exact statement, assumptions and formal goal.",
+      "Relevant definitions and previously verified counterexample evidence.",
+      "Available bounded computation results, if any."
+    ],
+    "output": "Only counterexample-report@2 JSON with outcome, reproducible evidence, assumptions, limitations and explicit unresolved_obligations. Include refutation_source only when a complete formal refutation candidate is actually available.",
+    "stop_criteria": [
+      "Stop after a concrete counterexample candidate is found and its witness is checked.",
+      "Stop at the declared search bound and report none_found or inconclusive without claiming a proof."
+    ],
+    "examples": [
+      "Success: a small explicit permutation violates a proposed diameter formula and is returned with a reproducible word and distance computation.",
+      "Failure: checking only n up to four is reported as a finite boundary search, not as evidence that no counterexample exists for all n."
+    ]
+  },
+  "confirm": true
+}

@@ -1,0 +1,41 @@
+{
+  "name": "triz",
+  "label": "TRIZ: разрешение противоречий",
+  "instructions": "Use TRIZ only for a verified causal contradiction, not for routine debugging, simple optimization or a problem settled by measurement or a known pattern. Prefer concrete mechanisms, existing resources, separation and a small falsifiable experiment. Keep terminology subordinate to the research object and never force a compromise or a framework worksheet.",
+  "contract": {
+    "procedure": [
+      "Inspect the exact goal, available evidence, constraints and previous failures before ideation.",
+      "Apply the gate: identify one intervention whose mechanism both improves one metric and worsens another; otherwise use the direct method without a TRIZ narrative.",
+      "State the useful function, system boundary and an ideal final result as a direction rather than a promise.",
+      "Formulate the technical contradiction and, only when useful, the physical contradiction with opposite states for the same element.",
+      "Try separation in time, structure, condition or scale, then reuse existing resources before adding machinery.",
+      "Keep two to four concrete concepts with causal mechanism, preserved benefits, reused resource, residual risk and a falsification test.",
+      "Select the smallest reversible experiment that can reach every hard constraint, not merely the cheapest or most novel concept.",
+      "Run one feedback loop: check both benefits and any secondary contradiction, then revise once or stop."
+    ],
+    "applicability": {
+      "priority": 60,
+      "roles": ["decompose", "proof"],
+      "min_remaining_attempts": 1
+    },
+    "preconditions": [
+      "A candidate causal contradiction can be checked against evidence rather than invented for method use.",
+      "Direct debugging, measurement, a known theorem or a standard pattern has been considered first."
+    ],
+    "inputs": [
+      "Exact target and hard constraints.",
+      "Evidence, measurements, previous attempts and available resources.",
+      "Candidate intervention and both affected metrics."
+    ],
+    "output": "A role-required result with a concrete contradiction model when applicable, comparison of a few mechanisms, the selected reversible experiment and residual trade-off. Implicit use returns the engineering or mathematical decision without visible TRIZ terminology.",
+    "stop_criteria": [
+      "Stop when a testable concept or a direct non-TRIZ route is selected.",
+      "Stop rather than manufacture a contradiction, tour all principles or present a midpoint compromise as resolution."
+    ],
+    "examples": [
+      "Success: separate exhaustive computation from final proof checking in different stages so both short feedback and kernel verification are preserved.",
+      "Failure: a routine nil-field panic is sent to ordinary debugging without a TRIZ worksheet or an invented architectural contradiction."
+    ]
+  },
+  "confirm": true
+}

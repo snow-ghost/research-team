@@ -143,8 +143,18 @@ func coddyLeanMCP(ctx context.Context, p Profile, home string) ([]acp.McpServer,
 				break
 			}
 			h, ok := handlers[call.Name]
-			if !ok || h.Validate(string(call.Arguments)) != nil {
+			if !ok {
 				rpcError = map[string]any{"code": -32602, "message": "tool or arguments denied"}
+				break
+			}
+			if validationErr := h.Validate(string(call.Arguments)); validationErr != nil {
+				var graphErr interface{ ExpectedGraph() any }
+				if errors.As(validationErr, &graphErr) {
+					body, _ := json.Marshal(map[string]any{"status": "denied", "reason": "graph_mismatch", "expected_graph": graphErr.ExpectedGraph()})
+					result = map[string]any{"isError": true, "content": []any{map[string]string{"type": "text", "text": string(body)}}}
+				} else {
+					rpcError = map[string]any{"code": -32602, "message": "tool or arguments denied"}
+				}
 				break
 			}
 			mu.Lock()

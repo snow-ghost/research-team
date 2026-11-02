@@ -44,6 +44,11 @@ func validateRoleTools(p execution.Profile, role string, negative bool) error {
 		if name == "check_refutation" && role != "counterexample" && !negative {
 			return RuleError("Проверка отрицания доступна только заданию контрпримеров или формализации отрицания.")
 		}
+		if computationToolName(name) {
+			if role == "review" || role == "answer" || role == "formalize" && name != "verify_word" {
+				return RuleError("Вычислительный инструмент не разрешен этой роли.")
+			}
+		}
 	}
 	return nil
 }
@@ -52,9 +57,22 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 	p := attemptProfile(s, a)
 	tools := []execution.RuntimeTool{}
 	checks := 0
+	computations := 0
+	pinnedGraph, err := computationGraphFor(s.Options.Config, a.Workspace)
+	if err != nil {
+		return ctx, err
+	}
 	var checkMu sync.Mutex
 	for _, name := range leanToolNames(p) {
 		if name == "read_file" {
+			continue
+		}
+		if computationToolName(name) {
+			tool, err := s.computationTool(a, name, &computations, &checkMu, pinnedGraph)
+			if err != nil {
+				return ctx, err
+			}
+			tools = append(tools, tool)
 			continue
 		}
 		e := d.entity(a.Target)

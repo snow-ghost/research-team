@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,15 +22,18 @@ type ProfileFile struct {
 	Label string `json:"label"`
 }
 type Workspace struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	Path  string `json:"path"`
+	Graph *ComputationGraphConfig `json:"graph,omitempty"`
+	ID    string                  `json:"id"`
+	Label string                  `json:"label"`
+	Path  string                  `json:"path"`
 }
 type Config struct {
 	Evaluations            []EvaluationWatch `json:"evaluations,omitempty"`
 	Workers                []WorkerConfig    `json:"workers,omitempty"`
 	Telegram               []TelegramChannel `json:"telegram,omitempty"`
 	LeanConfig             string            `json:"lean_config,omitempty"`
+	LeanServiceURL         string            `json:"lean_service_url,omitempty"`
+	LeanServiceTokenEnv    string            `json:"lean_service_token_env,omitempty"`
 	Database               DatabaseConfig    `json:"database,omitempty"`
 	Listen                 string            `json:"listen"`
 	DataDir                string            `json:"data_dir"`
@@ -183,6 +187,25 @@ func LoadOptions(path string) (Options, error) {
 			return o, err
 		}
 		o.Checker = leancheck.DockerChecker{Config: *o.Lean}
+	}
+	if c.LeanServiceURL != "" {
+		if o.Lean == nil || c.LeanServiceTokenEnv == "" {
+			return o, errors.New("lean service requires lean_config and lean_service_token_env")
+		}
+		endpoint, err := url.Parse(c.LeanServiceURL)
+		if err != nil || endpoint.Scheme != "http" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.Path != "" && endpoint.Path != "/" {
+			return o, errors.New("lean service requires a loopback HTTP endpoint")
+		}
+		host := endpoint.Hostname()
+		if host != "127.0.0.1" && host != "localhost" && host != "::1" && host != "host.docker.internal" {
+			return o, errors.New("lean service requires a loopback HTTP endpoint")
+		}
+		token, ok := o.Lookup(c.LeanServiceTokenEnv)
+		if !ok || token == "" {
+			return o, errors.New("lean service token is unavailable")
+		}
+		checker := leancheck.NewHTTPChecker(c.LeanServiceURL, token)
+		o.Checker, o.Matcher = checker, checker
 	}
 	return o, nil
 }

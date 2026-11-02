@@ -1,0 +1,40 @@
+{
+  "name": "logic-map",
+  "label": "Логическая карта цели",
+  "instructions": "Build an explicit logic map before searching for a proof. Preserve the exact goal and assumptions. Distinguish facts, obligations, candidate methods and verified evidence. The map guides the search but is not a proof. Preserve the output schema required by the assigned role.",
+  "contract": {
+    "procedure": [
+      "Restate the exact target, assumptions and quantifier ranges without strengthening or weakening them.",
+      "Classify the required result: construction, upper bound, lower bound, equivalence, refutation or another explicit form.",
+      "Write the obligations that would imply the target and mark which accepted dependencies support each obligation.",
+      "Identify applicable direct lemmas, contraposition, induction, symmetry or specialization; reject a method when its conditions are absent.",
+      "Order candidate methods by the cheapest check that can confirm or eliminate them, leaving systematic search as a fallback.",
+      "For a decompose role, keep the required planning JSON and put the map in summary and strategy rationales."
+    ],
+    "applicability": {
+      "priority": 80,
+      "roles": ["decompose", "proof"],
+      "require_formal_goal": true,
+      "min_remaining_attempts": 1
+    },
+    "preconditions": [
+      "The current statement, assumptions and pinned formal goal are available.",
+      "Any accepted dependencies and library signatures supplied to the attempt are identifiable by version."
+    ],
+    "inputs": [
+      "Exact informal and formal goal.",
+      "Accepted dependencies and their versions.",
+      "Available lemma signatures or native match results, if any."
+    ],
+    "output": "For proof, a concise goal-assumptions-obligations-methods map followed by the role-required candidate. For decompose, the required planning JSON with the map represented in summary and rationales. All proposed obligations remain unverified.",
+    "stop_criteria": [
+      "Stop when every proposed obligation has an explicit verification status and the next cheapest check is identified.",
+      "Do not silently change the target; report an unresolved map when the goal cannot be decomposed faithfully."
+    ],
+    "examples": [
+      "Success: a diameter goal is separated into an upper-bound construction and an independent lower-bound certificate.",
+      "Failure: a finite example is rejected as proof of a universally quantified goal and remains only a boundary observation."
+    ]
+  },
+  "confirm": true
+}

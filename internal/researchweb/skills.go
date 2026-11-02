@@ -62,7 +62,7 @@ func validateSkillContract(c execution.SkillContract) error {
 	}
 	seen := map[string]bool{}
 	for _, tool := range c.RequiredTools {
-		if (tool != "read_file" && tool != "check_lean" && tool != "check_refutation") || seen[tool] {
+		if (tool != "read_file" && tool != "check_lean" && tool != "check_refutation" && tool != "run_bfs" && tool != "verify_word" && tool != "search_longest_states") || seen[tool] {
 			return RuleError("Неизвестный или повторный инструмент навыка.")
 		}
 		seen[tool] = true

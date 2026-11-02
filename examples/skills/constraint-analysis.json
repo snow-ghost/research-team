@@ -1,0 +1,40 @@
+{
+  "name": "constraint-analysis",
+  "label": "Анализ главного ограничения",
+  "instructions": "Find the single main constraint that currently blocks a verified result. Spend the next bounded attempt on evidence that can remove or confirm that constraint instead of continuing a stale plan by inertia. Reassess after each verified result. Preserve the output schema required by the assigned role.",
+  "contract": {
+    "procedure": [
+      "Choose one current bottleneck: lemma, representation, construction, lower_bound, formalization, computation or unknown.",
+      "Record concrete evidence for that choice; use unknown when the available evidence does not distinguish bottlenecks.",
+      "Define the cheapest next check that can remove the bottleneck or falsify the chosen approach.",
+      "Allocate only the next bounded attempt to that check and preserve the common research budget.",
+      "After the result, repeat the analysis instead of assuming that the old bottleneck still dominates.",
+      "For counterexample and decompose roles, keep their required JSON schemas and place the analysis in evidence, summary or rationale."
+    ],
+    "applicability": {
+      "priority": 70,
+      "roles": ["decompose", "proof", "counterexample"],
+      "require_formal_goal": true,
+      "min_remaining_attempts": 1
+    },
+    "preconditions": [
+      "The exact current goal and the outcomes of previous bounded attempts are available.",
+      "Technical failures are distinguished from mathematical evidence."
+    ],
+    "inputs": [
+      "Pinned goal and current obligations.",
+      "Previous candidates, Lean diagnostics and counterexample boundaries.",
+      "Remaining attempt and compute budgets."
+    ],
+    "output": "One bottleneck, its evidence, the cheapest next check and the condition for changing strategy, embedded in the role-required result without inventing mathematical verification.",
+    "stop_criteria": [
+      "Stop when one next check and its decision rule are explicit.",
+      "Stop and mark the bottleneck unknown when selecting any specific bottleneck would be speculative."
+    ],
+    "examples": [
+      "Success: a constructive upper bound is already verified, so the next attempt targets only the missing lower bound.",
+      "Failure: a transport timeout is not classified as an unsuitable mathematical method and does not trigger automatic paid retries."
+    ]
+  },
+  "confirm": true
+}

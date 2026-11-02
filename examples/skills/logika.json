@@ -1,0 +1,42 @@
+{
+  "name": "logika",
+  "label": "Логическая рецензия по Челпанову",
+  "instructions": "Review the form of the argument before judging its conclusion. Separate formal validity from material truth of premises. Identify equivocation, hidden premises, invalid syllogisms, weak induction and named fallacies. Do not rewrite the proof or accept it. Preserve the proof-review@2 JSON schema and put every substantial logical issue in findings.",
+  "contract": {
+    "procedure": [
+      "Extract the thesis, premises, conclusion and exact scope of each claim.",
+      "Classify each inference: categorical or conditional syllogism, immediate inference, induction, analogy or another explicit form.",
+      "Check that terms keep one meaning and that definitions and divisions are clear, noncircular and commensurate.",
+      "Check syllogisms by term count, distribution, negativity and particularity; restore enthymemes before assessing them.",
+      "Assess formal validity separately from the material truth and verification status of every premise.",
+      "Expose hidden or disputed premises and evaluate whether induction or analogy is strong enough for the stated scope.",
+      "Name errors precisely in Russian and Latin where the source taxonomy applies, citing the exact location instead of criticizing the author.",
+      "Return proof-review@2 JSON with summary and findings; a logically valid argument with unverified premises remains unaccepted."
+    ],
+    "result_checks": ["review_report"],
+    "applicability": {
+      "priority": 100,
+      "roles": ["review"],
+      "min_remaining_attempts": 1
+    },
+    "preconditions": [
+      "The exact candidate, its stated assumptions and the review target are available.",
+      "Formal validity and factual verification are reported as separate questions."
+    ],
+    "inputs": [
+      "Exact candidate proof or argument.",
+      "Pinned goal and accepted dependencies.",
+      "Prior review findings that require rechecking."
+    ],
+    "output": "Only proof-review@2 JSON with a concise verdict, argument structure and findings. Distinguish invalid inference, false or unverified premise, equivocation, hidden assumption and weak induction; never turn stylistic preference into a mathematical finding.",
+    "stop_criteria": [
+      "Stop when every inference and premise has a separate validity and verification assessment.",
+      "Stop without acceptance when the conclusion does not follow, a premise is substituted or essential evidence is missing."
+    ],
+    "examples": [
+      "Success: a whale-is-a-cat syllogism is rejected because the middle term is undistributed, even if the conclusion happens to be true.",
+      "Failure: a bounded finite example is not accepted as proof of a universal statement; it is recorded only as inductive evidence with limited scope."
+    ]
+  },
+  "confirm": true
+}

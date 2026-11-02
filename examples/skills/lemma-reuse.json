@@ -1,0 +1,41 @@
+{
+  "name": "lemma-reuse",
+  "label": "Сначала точное переиспользование леммы",
+  "instructions": "Before constructing a new proof, look for an accepted lemma that closes the exact goal or reduces it to explicit obligations. Use native Lean matching when available. Similar statements are not interchangeable. A reuse proposal requires the usual Lean verification and independent review.",
+  "contract": {
+    "procedure": [
+      "Search accepted current lemmas by domain, parameters and conclusion before writing a new proof.",
+      "Inspect the exact type, module, revision and verification status of each plausible lemma.",
+      "Use native Lean matching to establish the substitution when available; otherwise mark applicability as unverified.",
+      "Turn every unmatched logical premise into a separate obligation and never hide or assume it.",
+      "If the match is exact, construct the smallest import-and-apply candidate using the pinned module and declaration.",
+      "If no exact match exists, report that result and choose another method without forcing a similar lemma.",
+      "Submit the resulting application to the normal Lean verification and independent review path."
+    ],
+    "applicability": {
+      "priority": 100,
+      "roles": ["proof", "formalize"],
+      "require_formal_goal": true,
+      "min_remaining_attempts": 2
+    },
+    "preconditions": [
+      "The exact consumer goal is pinned and its dependencies are explicit.",
+      "Only accepted current library revisions are eligible for automatic reuse."
+    ],
+    "inputs": [
+      "Pinned formal consumer goal.",
+      "Accepted lemma signatures, native inspection and match reports.",
+      "Pinned module imports and unresolved application obligations."
+    ],
+    "output": "Either a minimal role-required proof candidate that applies an exact accepted lemma, or an explicit no-exact-match report listing rejected candidates and unresolved premises. No reuse claim is itself mathematical verification.",
+    "stop_criteria": [
+      "Stop after producing one exact application candidate for verification or establishing that the bounded search found no exact match.",
+      "Stop rather than reuse a lemma with unresolved types, stale revisions or hidden premises."
+    ],
+    "examples": [
+      "Success: a native match proves the consumer type by an accepted theorem and leaves one explicit arithmetic premise as a separate goal.",
+      "Failure: a lemma with a visually similar conclusion but a different finite index type is rejected instead of being applied by textual similarity."
+    ]
+  },
+  "confirm": true
+}

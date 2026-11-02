@@ -1,0 +1,40 @@
+{
+  "name": "goldratt-toc",
+  "label": "TOC: пять фокусирующих шагов",
+  "instructions": "Diagnose the current system constraint and its effect on the complete verified result. Use the five focusing steps: identify, exploit, subordinate, elevate and repeat. Do not equate local utilization or a large queue with proof of the bottleneck. Preserve evidence, budget and the distinction between measurements, calculations, hypotheses and missing data.",
+  "contract": {
+    "procedure": [
+      "Define the system boundary, useful verified result, demand, flow and protective metrics in common units and period.",
+      "Map stages, queues, rework, waiting, shared resources and external dependencies before choosing a constraint.",
+      "Identify a candidate constraint by observation, mechanism and expected system-level effect; test a plausible alternative when data permits.",
+      "Exploit the constraint by removing avoidable losses, defects, waiting, unnecessary switching and work without demand.",
+      "Subordinate release, priorities, input preparation and local KPIs to the constraint while protecting sustainable flow rather than maximum utilization.",
+      "Elevate only after exploit and subordinate are insufficient, comparing total effect, cost, delay, reversibility and the next likely constraint.",
+      "Define a measurable experiment with baseline, success and stop conditions, then repeat identify after the constraint moves."
+    ],
+    "applicability": {
+      "priority": 75,
+      "roles": ["decompose", "proof", "counterexample"],
+      "min_remaining_attempts": 1
+    },
+    "preconditions": [
+      "The useful system result and its protective constraints can be stated explicitly.",
+      "Observations, calculations, hypotheses and missing data can be distinguished."
+    ],
+    "inputs": [
+      "Goal, demand, flow stages and existing obligations.",
+      "Queue, latency, attempt, compute and verification data when available.",
+      "Current budgets, failure records and previous interventions."
+    ],
+    "output": "A role-required result with the system goal, evidence-backed constraint candidate, exploit-subordinate-elevate plan, first measurable experiment and the condition for repeating diagnosis. Do not invent thresholds, capacity or effect sizes.",
+    "stop_criteria": [
+      "Stop when one next measurable intervention and its system-level decision rule are explicit.",
+      "Stop with a preliminary diagnosis and measurement plan when evidence cannot distinguish plausible constraints."
+    ],
+    "examples": [
+      "Success: after the upper bound is certified, work concentrates on the missing lower bound instead of increasing the speed of already completed constructions.",
+      "Failure: one busy reviewer is not declared the bottleneck from utilization alone; queue age, input starvation and alternative explanations are checked first."
+    ]
+  },
+  "confirm": true
+}

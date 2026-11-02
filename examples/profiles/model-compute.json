@@ -1,0 +1,25 @@
+{
+  "id": "model-cayley-compute",
+  "kind": "model",
+  "skills": [
+    {
+      "id": "construct-and-certify",
+      "version": "1",
+      "instructions": "Для конечной перестановочной задачи сначала используй ограниченный BFS для получения кандидатов и слов. Проверь важные слова через verify_word. search_longest_states возвращает только эксцентриситет старта: не называй его диаметром без отдельного доказательства симметрии. Сохрани границы перебора, неполноту при limit_reached и незакрытые обязательства. Вычислительный сертификат не заменяет формальное доказательство, рецензию и приемку."
+    }
+  ],
+  "limits": {
+    "timeout_seconds": 300,
+    "max_steps": 6,
+    "max_tool_calls": 4,
+    "max_output_tokens": 4096,
+    "max_output_bytes": 1048576
+  },
+  "model": {
+    "protocol": "chat_completions",
+    "base_url": "https://api.example.com/v1",
+    "token_env": "MODEL_TOKEN",
+    "model": "operator-selected-model",
+    "tools": ["run_bfs", "search_longest_states", "verify_word"]
+  }
+}

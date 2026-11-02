@@ -3,6 +3,18 @@ package researchweb
 import "net/http"
 
 func (h *HTTP) reliabilityRoutes() {
+	h.mux.HandleFunc("GET /api/attempts/{id}/computations", func(w http.ResponseWriter, r *http.Request) {
+		v, err := h.service.Store.Read()
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		if v.attempt(r.PathValue("id")) == nil {
+			h.fail(w, RuleError("Попытка не найдена."))
+			return
+		}
+		h.json(w, map[string]any{"computations": h.service.computationSummaries(r.PathValue("id")), "accepted": false})
+	})
 	h.mux.HandleFunc("GET /api/attempts/{id}/counter-report", func(w http.ResponseWriter, r *http.Request) {
 		v, err := h.service.Store.Read()
 		if err != nil {

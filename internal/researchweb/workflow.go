@@ -318,7 +318,7 @@ func (s *Service) advanceWorkflows() {
 				s.workflowState(study.ID, "needs_operator", "Профиль планировщика изменился.", nil)
 				return
 			}
-			err := s.RequestPlanning(PlanningRequest{ExpectedRevision: v.Revision, RequestID: w.ID + "-plan-" + hash(w.PlanningRound)[:12], Target: w.Target, Profile: w.Planner, Workspace: w.Team.Workspace, Confirm: true})
+			err := s.RequestPlanningWithContext(s.ctx, PlanningRequest{ExpectedRevision: v.Revision, RequestID: w.ID + "-plan-" + hash(w.PlanningRound)[:12], Target: w.Target, Profile: w.Planner, Workspace: w.Team.Workspace, Confirm: true})
 			if err != nil && err != ErrConflict {
 				s.workflowState(study.ID, "needs_operator", err.Error(), nil)
 			}

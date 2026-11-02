@@ -555,7 +555,7 @@ func (h *HTTP) routes() {
 			h.fail(w, err)
 			return
 		}
-		if err := h.service.RequestPlanning(b); err != nil {
+		if err := h.service.RequestPlanningWithContext(r.Context(), b); err != nil {
 			h.fail(w, err)
 			return
 		}

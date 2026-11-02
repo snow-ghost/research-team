@@ -856,6 +856,9 @@ func (s *Service) teamContext(d Data, a Attempt) any {
 			if result, err := s.readResult(*attempt); err == nil {
 				if s.safeResultContent(*attempt, result) {
 					out[role] = execution.Preview(result.Candidate, 32000)
+					if computations := s.computationSummaries(attempt.ID); len(computations) > 0 {
+						out[role+"_computations"] = computations
+					}
 				}
 			}
 		}

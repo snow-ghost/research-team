@@ -174,6 +174,22 @@ func TestSubmittedProofBDD_FailedStaleAndSelfAuthoredMaterialsAreBlocked(t *test
 	}
 }
 
+func TestSubmittedProofBDD_ServiceCheckerHandlesPinnedEnvironment(t *testing.T) {
+	s, goal := submittedService(t, "sqlite", "verified")
+	s.Options.Lean = &leancheck.Config{ExpectedVersion: "pinned"}
+	s.Options.Config.LeanServiceURL = "http://127.0.0.1:4189"
+	calls := 0
+	s.Options.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
+		calls++
+		return leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source), EnvironmentSHA256: leancheck.Digest(*s.Options.Lean)}, nil
+	})
+	id := submitFor(t, s, goal, "Codex")
+	v := waitVerification(t, s, id)
+	if v.verification(id).Environment == nil || v.verification(id).Status != "verified" || calls != 1 {
+		t.Fatalf("pinned environment bypassed the service checker: %+v, calls=%d", v.verification(id), calls)
+	}
+}
+
 func TestSubmittedProofBDD_ValidationAndRevisionConflicts(t *testing.T) {
 	s, goal := submittedService(t, "sqlite", "verified")
 	r := ProofSourceRequest{ExpectedRevision: stateOf(t, s).Revision, RequestID: identifier("cmd"), Source: submittedProof, Author: "Codex", Basis: "External preparation"}

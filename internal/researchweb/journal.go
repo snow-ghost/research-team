@@ -176,8 +176,12 @@ func (s *Service) continuationContext(d Data, a Attempt) any {
 	if len(events) > 30 {
 		events = events[len(events)-30:]
 	}
-	return map[string]any{"attempt": parent.ID, "status": result.Status, "partial": execution.Preview(result.Partial, 24000),
+	out := map[string]any{"attempt": parent.ID, "status": result.Status, "partial": execution.Preview(result.Partial, 24000),
 		"candidate": execution.Preview(result.Candidate, 24000), "actions": events, "accepted": false}
+	if computations := s.computationSummaries(parent.ID); len(computations) > 0 {
+		out["computations"] = computations
+	}
+	return out
 }
 
 type ResumeRequest struct {

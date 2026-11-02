@@ -317,7 +317,7 @@ func (s *Service) checkProof(ctx context.Context, v Verification) {
 	}
 	if err == nil {
 		checker := s.Options.Checker
-		if v.Environment != nil {
+		if v.Environment != nil && s.Options.Config.LeanServiceURL == "" {
 			checker = leancheck.DockerChecker{Config: *v.Environment}
 		}
 		report, err = checker.Check(ctx, v.Goal, v.Source, dir)

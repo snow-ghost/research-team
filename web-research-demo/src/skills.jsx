@@ -140,7 +140,14 @@ export function SkillRegistry({ live }) {
           </fieldset>
           <fieldset className="wide">
             <legend>Требуемые инструменты</legend>
-            {["read_file", "check_lean", "check_refutation"].map((t) => (
+            {[
+              "read_file",
+              "check_lean",
+              "check_refutation",
+              "run_bfs",
+              "verify_word",
+              "search_longest_states",
+            ].map((t) => (
               <label className="checkbox-label" key={t}>
                 <input type="checkbox" name={t} />
                 {t}

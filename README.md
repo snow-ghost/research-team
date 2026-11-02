@@ -10,7 +10,7 @@
 
 | Компонент | Назначение |
 |---|---|
-| [Исполнители](internal/execution/README.md) | Codex, Claude Code, OpenCode, Coddy Agent и собственный цикл через API модели |
+| [Исполнители](internal/execution/README.md) | Codex, Claude Code, OpenCode, Coddy Agent, Kimi Code Agent и собственный цикл через API модели |
 | [Coddy Agent](integrations/coddy/AGENT.md) | Прямое подключение через ACP и настройки запуска внутри Coddy Bot |
 | [Соединитель Coddy Bot](internal/coddy/README.md) | Задачи GitHub, подтверждение плана, запросы на слияние и рецензии |
 | [Сервер](internal/researchweb/README.md) | HTTP API, очередь попыток, снимки, вход и управление исполнителями |

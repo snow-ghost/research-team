@@ -58,6 +58,7 @@ const labels = {
   formalize: "Формализация",
 };
 const text = (value) => labels[value] || value || "Нет данных";
+const booleanText = (value) => value === true ? "да" : value === false ? "нет" : "нет данных";
 const number = (value) => (value || 0).toLocaleString("ru-RU");
 const modes = [
   ["files", "Файлы", FileCode2],
@@ -75,6 +76,81 @@ function saveFile(name, source) {
   link.download = name;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function AttemptEvidence({ live, attempt }) {
+  const [computations, setComputations] = useState([]),
+    [error, setError] = useState("");
+  useEffect(() => {
+    let current = true;
+    setError("");
+    live
+      .get(`/attempts/${encodeURIComponent(attempt.id)}/computations`)
+      .then((value) => {
+        if (current) setComputations(value.computations || []);
+      })
+      .catch((e) => {
+        if (current) setError(e.message);
+      });
+    return () => {
+      current = false;
+    };
+  }, [attempt.id, live.data.state.revision]);
+  const search = attempt.library_search;
+  if (!search && computations.length === 0 && !error) return null;
+  const matches = (live.data.state.lemma_matches || []).filter((m) =>
+    search?.matches?.includes(m.id),
+  );
+  return (
+    <details className="inspection-review">
+      <summary>
+        <code>{attempt.id}</code>
+        <span>Библиотека и вычислительные свидетельства</span>
+      </summary>
+      {error && <p className="api-error">{error}</p>}
+      {search && (
+        <>
+          <h4>Поиск библиотеки перед планированием</h4>
+          <p>
+            Кандидатов: {number(search.candidates)}; нативных проверок: {number(search.native_checks)}; статус: {text(search.status)}.
+          </p>
+          {search.new_proof_estimated_checks > 0 && (
+            <p>
+              Оценка нового доказательства: {search.new_proof_estimated_checks}; исторических примеров: {number(search.history_samples)}.
+            </p>
+          )}
+          {matches.map((m) => (
+            <div key={m.id}>
+              <code>{m.library}</code>: {text(m.report?.status)}; предпосылок: {number(m.report?.missing?.length)}
+              {(m.report?.missing || []).map((p, index) => (
+                <p key={index}>
+                  {p.name}: {p.closed_type || p.type}
+                </p>
+              ))}
+            </div>
+          ))}
+        </>
+      )}
+      {computations.map((c) => (
+        <div key={c.id}>
+          <h4>{c.tool}: {text(c.status)}</h4>
+          {c.eccentricity !== undefined && <p>Эксцентриситет: {c.eccentricity}</p>}
+          {(c.targets || []).map((target, index) => (
+            <p key={index}>
+              Расстояние {target.distance}; слово: {(target.word || []).join(" → ") || "пустое"}
+            </p>
+          ))}
+          {c.verification && (
+            <p>
+              Совпадение: {booleanText(c.verification.matches)}; кратчайшее: {booleanText(c.verification.shortest)}
+            </p>
+          )}
+          <code className="inspection-digest">SHA256: {c.certificate_sha256}</code>
+          <p>accepted: false; mathematical_verification: false</p>
+        </div>
+      ))}
+    </details>
+  );
 }
 
 export function ProofInspectionPanel({ live, study, target, onSelect }) {
@@ -324,6 +400,9 @@ export function ProofInspectionPanel({ live, study, target, onSelect }) {
                     {JSON.stringify(data.result?.counter || {}, null, 2)}
                   </pre>
                 </details>
+                {data.attempts.map((attempt) => (
+                  <AttemptEvidence key={attempt.id} live={live} attempt={attempt} />
+                ))}
               </>
             )}
             {mode === "dependencies" && (

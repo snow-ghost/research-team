@@ -6,7 +6,8 @@
   "max_parallel": 2,
   "profiles": [
     {"file": "../agents/model.json", "label": "Модель через API"},
-    {"file": "../agents/coddy-agent.json", "label": "Coddy Agent"}
+    {"file": "../agents/coddy-agent.json", "label": "Coddy Agent"},
+    {"file": "../agents/kimi-agent.json", "label": "Kimi Code Agent"}
   ],
   "workspaces": [
     {"id": "example", "label": "Учебные материалы", "path": "../agents/workspace"}

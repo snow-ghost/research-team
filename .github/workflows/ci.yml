@@ -75,3 +75,16 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm run test:mvp
+  research-artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zstd
+      - run: curl -fL https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-linux.tar.zst -o /tmp/lean.tar.zst
+      - run: echo 'caaa98356098c85dc0fcbbd28e1ec66f39eb6551829972b752ff20e1286b646b  /tmp/lean.tar.zst' | sha256sum -c -
+      - run: tar --zstd -xf /tmp/lean.tar.zst -C /tmp
+      - run: LEAN_BIN=/tmp/lean4/bin/lean BUILD_DIR=/tmp/research-lean-build bash scripts/check-research-artifacts.sh
+      - run: python3 scripts/check_markdown_links.py

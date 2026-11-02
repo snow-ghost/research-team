@@ -18,6 +18,11 @@ var sharedModuleAudit string
 
 func SharedModuleAuditDigest() string { return Digest(sharedModuleAudit) }
 
+type ModuleBuilder interface {
+	BuildModule(context.Context, Goal, string, string, string) (ModuleReport, error)
+	BuildSharedModule(context.Context, Goal, string, string, string, PreparedDefinition) (ModuleReport, error)
+}
+
 type ModuleReport struct {
 	Artifacts         map[string]string `json:"artifacts,omitempty"`
 	Status            string            `json:"status"`

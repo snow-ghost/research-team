@@ -54,6 +54,7 @@ type DatabaseConfig struct {
 }
 type Options struct {
 	Preparer       leancheck.GoalPreparer
+	Builder        leancheck.ModuleBuilder
 	StopEvaluation func(context.Context, string) error
 	Matcher        leancheck.ModuleMatcher
 	ChainChecker   leancheck.Checker
@@ -199,6 +200,7 @@ func LoadOptions(path string) (Options, error) {
 			return o, err
 		}
 		o.Checker = leancheck.DockerChecker{Config: *o.Lean}
+		o.Builder = leancheck.DockerChecker{Config: *o.Lean}
 	}
 	if c.LeanServiceURL != "" {
 		if o.Lean == nil || c.LeanServiceTokenEnv == "" {
@@ -217,7 +219,7 @@ func LoadOptions(path string) (Options, error) {
 			return o, errors.New("lean service token is unavailable")
 		}
 		checker := leancheck.NewHTTPChecker(c.LeanServiceURL, token)
-		o.Checker, o.Matcher = checker, checker
+		o.Checker, o.Matcher, o.Preparer, o.Builder = checker, checker, checker, checker
 	}
 	return o, nil
 }

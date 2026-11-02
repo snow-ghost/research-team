@@ -148,7 +148,10 @@ func (s *Service) buildLibrary(ctx context.Context, l LibraryEntry) {
 	err := os.MkdirAll(dir, 0700)
 	var report leancheck.ModuleReport
 	if err == nil {
-		checker := leancheck.DockerChecker{Config: l.Environment}
+		var checker leancheck.ModuleBuilder = s.Options.Builder
+		if checker == nil {
+			checker = leancheck.DockerChecker{Config: l.Environment}
+		}
 		if l.Definition != nil {
 			report, err = checker.BuildSharedModule(ctx, l.Goal, l.Candidate, l.Module, dir, *l.Definition)
 		} else {

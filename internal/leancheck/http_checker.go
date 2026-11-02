@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -23,9 +24,9 @@ func NewHTTPChecker(baseURL, token string) *HTTPChecker {
 	return &HTTPChecker{baseURL: strings.TrimRight(baseURL, "/"), token: token, client: &http.Client{Transport: transport, Timeout: 75 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
-func (c *HTTPChecker) Check(ctx context.Context, goal Goal, source, _ string) (Report, error) {
+func (c *HTTPChecker) Check(ctx context.Context, goal Goal, source, dir string) (Report, error) {
 	var report Report
-	if err := c.post(ctx, "/v1/check", map[string]any{"goal": goal, "source": source}, &report); err != nil {
+	if err := c.post(ctx, "/v1/check", map[string]any{"goal": goal, "source": source, "dir": dir}, &report); err != nil {
 		return report, err
 	}
 	if report.Status == "" || report.GoalSHA256 != Digest(goal) || report.SourceSHA256 != Digest(source) || report.AuditSHA256 != AuditDigest() {
@@ -41,6 +42,40 @@ func (c *HTTPChecker) MatchModule(ctx context.Context, goal Goal, moduleDir stri
 	}
 	if report.Status == "" || report.GoalSHA256 != Digest(goal) || report.ArtifactSHA256 != module.ArtifactSHA256 || report.MatcherSHA256 != MatcherDigest() {
 		return report, errors.New("lean service match binding mismatch")
+	}
+	return report, nil
+}
+
+func (c *HTTPChecker) PrepareGoals(ctx context.Context, goals []Goal, dir string) (GoalPreparation, error) {
+	var report GoalPreparation
+	if err := c.post(ctx, "/v1/prepare", map[string]any{"goals": goals, "dir": dir}, &report); err != nil {
+		return report, err
+	}
+	if err := VerifyPreparedDefinitions(dir, report, goals); err != nil {
+		return report, err
+	}
+	return report, nil
+}
+
+func (c *HTTPChecker) BuildModule(ctx context.Context, goal Goal, source, module, dir string) (ModuleReport, error) {
+	return c.build(ctx, goal, source, module, dir, nil)
+}
+
+func (c *HTTPChecker) BuildSharedModule(ctx context.Context, goal Goal, source, module, dir string, definition PreparedDefinition) (ModuleReport, error) {
+	return c.build(ctx, goal, source, module, dir, &definition)
+}
+
+func (c *HTTPChecker) build(ctx context.Context, goal Goal, source, module, dir string, definition *PreparedDefinition) (ModuleReport, error) {
+	var report ModuleReport
+	input := map[string]any{"goal": goal, "source": source, "module": module, "dir": dir}
+	if definition != nil {
+		input["definition"] = *definition
+	}
+	if err := c.post(ctx, "/v1/build", input, &report); err != nil {
+		return report, err
+	}
+	if err := VerifyModuleArtifacts(filepath.Join(dir, "checked"), report); err != nil {
+		return report, err
 	}
 	return report, nil
 }

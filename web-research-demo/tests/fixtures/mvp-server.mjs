@@ -16,7 +16,7 @@ if (databaseURL && !new URL(databaseURL).pathname.endsWith("_test")) {
     "MVP_DATABASE_URL must name a separate database ending in _test",
   );
 }
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "research-web-test-"));
+const temporary = fs.mkdtempSync(path.join(process.env.MVP_STATE_ROOT || os.tmpdir(), "research-web-test-"));
 const repository = "test-owner/lab";
 const bot = "test-bot",
   owner = "test-owner";

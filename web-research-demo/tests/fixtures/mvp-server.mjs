@@ -286,6 +286,12 @@ const config = write("server.json", {
   ...(process.env.MVP_LEAN_CONFIG
     ? { lean_config: process.env.MVP_LEAN_CONFIG }
     : {}),
+  ...(process.env.MVP_LEAN_SERVICE_URL
+    ? {
+        lean_service_url: process.env.MVP_LEAN_SERVICE_URL,
+        lean_service_token_env: "RESEARCH_LEAN_SERVICE_TOKEN",
+      }
+    : {}),
 });
 const binary = path.join(temporary, "research-server");
 execFileSync("go", ["build", "-o", binary, "./cmd/research-server"], {
@@ -302,6 +308,9 @@ const child = spawn(binary, ["-config", config], {
     MODEL_TOKEN: "test-model-key",
     GITHUB_TOKEN: "test-github-key",
     ...(databaseURL ? { RESEARCH_TEST_DATABASE_URL: databaseURL } : {}),
+    ...(process.env.RESEARCH_LEAN_SERVICE_TOKEN
+      ? { RESEARCH_LEAN_SERVICE_TOKEN: process.env.RESEARCH_LEAN_SERVICE_TOKEN }
+      : {}),
   },
 });
 let stopping = false;

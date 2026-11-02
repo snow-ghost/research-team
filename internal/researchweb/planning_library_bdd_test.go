@@ -269,6 +269,48 @@ func TestPlanningLibraryBDD_HistoryCalibratesNewProofEstimate(t *testing.T) {
 	}
 }
 
+func TestPlanningLibraryBDD_ACPProvidersSupplyValidatedCallCounts(t *testing.T) {
+	s := serviceFor(t, optionsFor(t, "http://127.0.0.1:1/v1"))
+	goal := leancheck.Goal{Source: "def Statement : Prop := True", Declaration: "Statement", Candidate: "Candidate"}
+	for _, fixture := range []struct {
+		target, provider string
+		want             int
+	}{{"kimi-target", "kimi-agent", 1}, {"coddy-target", "coddy-agent", 4}} {
+		id := identifier("run")
+		result := execution.Result{AttemptID: id, Status: "candidate", Candidate: submittedProof}
+		if fixture.provider == "kimi-agent" {
+			result.Events = append(result.Events, execution.Event{Type: "acp_prompt_started"})
+		} else {
+			result.ContentPolicy = execution.CoddyContentPolicy
+			for step := 0; step < fixture.want; step++ {
+				usage := &execution.Usage{InputTokens: int64(step + 1), OutputTokens: 1, Source: "test"}
+				result.Events = append(result.Events, execution.Event{Type: "usage", Step: step + 1, Usage: usage})
+				result.Usage = usage
+			}
+		}
+		if err := s.Store.Change(0, "", "", "ACP cost fixture", fixture.target, "test", func(d *Data) error {
+			d.Attempts = append(d.Attempts, Attempt{ID: id, Target: fixture.target, Role: "formalize", Status: "candidate", ProfileConfiguration: &execution.Profile{External: &execution.ExternalConfig{Provider: fixture.provider}}, ResultSHA256: hash(result)})
+			d.Verifications = append(d.Verifications, Verification{ID: identifier("verify"), Target: fixture.target, Attempt: id, Status: "verified", Goal: goal, Source: submittedProof, Report: &leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(goal), SourceSHA256: leancheck.Digest(submittedProof)}})
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		body, _ := json.Marshal(result)
+		dir := filepath.Join(s.Options.Config.DataDir, "attempts", id)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := atomicFile(filepath.Join(dir, "result.json"), body); err != nil {
+			t.Fatal(err)
+		}
+		v := stateOf(t, s)
+		cost, samples := s.newProofEstimatedChecks(&v.Data, fixture.target)
+		if cost != fixture.want || samples != 1 {
+			t.Fatalf("ACP calls were not measured: provider=%s cost=%d samples=%d", fixture.provider, cost, samples)
+		}
+	}
+}
+
 func TestPlanningLibraryBDD_PauseBlocksNativeSearchAndApplication(t *testing.T) {
 	s, p := packageFixture(t)
 	s.Options.Lean = &leancheck.Config{}

@@ -177,7 +177,7 @@ func (s *Service) planningLibraryMaterial(d Data, a Attempt) *PlanningLibraryMat
 		costs.NewProof.EstimatedChecks = a.LibrarySearch.NewProofEstimatedChecks
 		costs.NewProof.HistorySamples = a.LibrarySearch.HistorySamples
 	}
-	out := &PlanningLibraryMaterial{Search: a.LibrarySearch, Matches: []PlanningLibraryMatch{}, CostModel: "New proof and format repair use only Lean-verified attempts and actual model_requested events. New proof excludes repairs, uses lower median with fallback two and cap 1..4; repairs use fallback one and cap 1..2. Lemma application is one native check plus one check per unproved premise. BFS is one bounded computation. Matches are applied automatically only when their estimated cost does not exceed the snapshotted new-proof estimate; more expensive obligations remain an operator/planner decision. Failed, limited, stale, unverified and unreadable attempts are excluded. These are heuristic costs, not probabilities or guaranteed savings.", Costs: costs, NewProofEstimatedChecks: costs.NewProof.EstimatedChecks, HistorySamples: costs.NewProof.HistorySamples, Accepted: false}
+	out := &PlanningLibraryMaterial{Search: a.LibrarySearch, Matches: []PlanningLibraryMatch{}, CostModel: "New proof and format repair use only Lean-verified attempts and actual model_requested events, with provider-specific ACP fallback to one Kimi prompt or Coddy usage events. New proof excludes repairs, uses lower median with fallback two and cap 1..4; repairs use fallback one and cap 1..2. Lemma application is one native check plus one check per unproved premise. BFS is one bounded computation. Matches are applied automatically only when their estimated cost does not exceed the snapshotted new-proof estimate; more expensive obligations remain an operator/planner decision. Failed, limited, stale, unverified and unreadable attempts are excluded. These are heuristic costs, not probabilities or guaranteed savings.", Costs: costs, NewProofEstimatedChecks: costs.NewProof.EstimatedChecks, HistorySamples: costs.NewProof.HistorySamples, Accepted: false}
 	for _, id := range a.LibrarySearch.Matches {
 		for _, match := range d.LemmaMatches {
 			if match.ID != id || !matchCurrent(&d, match) {
@@ -251,12 +251,7 @@ func (s *Service) modelRequestEstimate(d *Data, target string, repair bool, fall
 			out.ExcludedAttempts++
 			continue
 		}
-		calls := 0
-		for _, event := range result.Events {
-			if event.Type == "model_requested" {
-				calls++
-			}
-		}
+		calls := actualModelCalls(attempt, result)
 		if calls == 0 {
 			out.ExcludedAttempts++
 			continue
@@ -276,6 +271,30 @@ func (s *Service) modelRequestEstimate(d *Data, target string, repair bool, fall
 		out.EstimatedChecks = cap
 	}
 	return out
+}
+
+func actualModelCalls(a Attempt, result execution.Result) int {
+	requested, usage, prompts := 0, 0, 0
+	for _, event := range result.Events {
+		switch event.Type {
+		case "model_requested":
+			requested++
+		case "usage":
+			usage++
+		case "acp_prompt_started":
+			prompts++
+		}
+	}
+	if requested > 0 {
+		return requested
+	}
+	if a.ProfileConfiguration != nil && a.ProfileConfiguration.External != nil && a.ProfileConfiguration.External.Provider == "kimi-agent" {
+		if prompts == 1 {
+			return 1
+		}
+		return 0
+	}
+	return usage
 }
 
 func (s *Service) completedComputationSamples(d *Data, target string) int {

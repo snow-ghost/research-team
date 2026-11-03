@@ -57,6 +57,7 @@ type Options struct {
 	Builder        leancheck.ModuleBuilder
 	StopEvaluation func(context.Context, string) error
 	Matcher        leancheck.ModuleMatcher
+	Inspector      leancheck.Inspector
 	ChainChecker   leancheck.Checker
 	TelegramClient TelegramClient
 	Lean           *leancheck.Config
@@ -220,6 +221,7 @@ func LoadOptions(path string) (Options, error) {
 		}
 		checker := leancheck.NewHTTPChecker(c.LeanServiceURL, token)
 		o.Checker, o.Matcher, o.Preparer, o.Builder = checker, checker, checker, checker
+		o.ChainChecker, o.Inspector = checker, checker
 	}
 	return o, nil
 }

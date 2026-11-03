@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -42,6 +43,20 @@ func (c *HTTPChecker) MatchModule(ctx context.Context, goal Goal, moduleDir stri
 	}
 	if report.Status == "" || report.GoalSHA256 != Digest(goal) || report.ArtifactSHA256 != module.ArtifactSHA256 || report.MatcherSHA256 != MatcherDigest() {
 		return report, errors.New("lean service match binding mismatch")
+	}
+	return report, nil
+}
+
+func (c *HTTPChecker) InspectModule(ctx context.Context, goal Goal, moduleDir string, module ModuleReport, dir string) (SignatureReport, error) {
+	var report SignatureReport
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return report, err
+	}
+	if err := c.post(ctx, "/v1/inspect", map[string]any{"goal": goal, "module_dir": moduleDir, "module": module, "dir": dir}, &report); err != nil {
+		return report, err
+	}
+	if report.GoalSHA256 != Digest(goal) || report.ArtifactSHA256 != module.ArtifactSHA256 || report.InspectorSHA256 != InspectorDigest() {
+		return report, errors.New("lean service inspection binding mismatch")
 	}
 	return report, nil
 }

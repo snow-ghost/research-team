@@ -73,6 +73,7 @@ func main() {
 	mux.HandleFunc("POST /v1/match", h.match)
 	mux.HandleFunc("POST /v1/prepare", h.prepare)
 	mux.HandleFunc("POST /v1/build", h.build)
+	mux.HandleFunc("POST /v1/inspect", h.inspect)
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 150 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	fmt.Printf("Lean service: http://%s\n", listener.Addr())
 	fatal(server.Serve(listener))
@@ -107,6 +108,7 @@ func (h *leanHandler) serve(w http.ResponseWriter, r *http.Request, input, outpu
 		return
 	}
 	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Lean service request failed: %v\n", err)
 		http.Error(w, "check failed", http.StatusUnprocessableEntity)
 		return
 	}
@@ -229,5 +231,28 @@ func (h *leanHandler) build(w http.ResponseWriter, r *http.Request) {
 			report, buildErr = h.checker.BuildModule(r.Context(), input.Goal, input.Source, input.Module, dir)
 		}
 		return buildErr
+	})
+}
+
+func (h *leanHandler) inspect(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Goal      leancheck.Goal         `json:"goal"`
+		ModuleDir string                 `json:"module_dir"`
+		Module    leancheck.ModuleReport `json:"module"`
+		Dir       string                 `json:"dir"`
+	}
+	var report leancheck.SignatureReport
+	h.serve(w, r, &input, &report, func() error {
+		moduleDir, err := h.artifactDir(input.ModuleDir)
+		if err != nil {
+			return err
+		}
+		dir, err := h.artifactDir(input.Dir)
+		if err != nil {
+			return err
+		}
+		var inspectErr error
+		report, inspectErr = h.checker.InspectModule(r.Context(), input.Goal, moduleDir, input.Module, dir)
+		return inspectErr
 	})
 }

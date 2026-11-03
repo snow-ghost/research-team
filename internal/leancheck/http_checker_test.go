@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -23,6 +25,8 @@ func TestHTTPCheckerCheckAndMatchValidateBindings(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(Report{Status: "verified", GoalSHA256: Digest(goal), SourceSHA256: Digest(source), AuditSHA256: AuditDigest()})
 		case "/v1/match":
 			_ = json.NewEncoder(w).Encode(MatchReport{Status: "obligations", GoalSHA256: Digest(goal), ArtifactSHA256: module.ArtifactSHA256, MatcherSHA256: MatcherDigest()})
+		case "/v1/inspect":
+			_ = json.NewEncoder(w).Encode(SignatureReport{Status: "verified", GoalSHA256: Digest(goal), ArtifactSHA256: module.ArtifactSHA256, InspectorSHA256: InspectorDigest()})
 		default:
 			http.NotFound(w, r)
 		}
@@ -36,6 +40,14 @@ func TestHTTPCheckerCheckAndMatchValidateBindings(t *testing.T) {
 	match, err := checker.MatchModule(context.Background(), goal, "module", module, "candidate", "")
 	if err != nil || match.Status != "obligations" {
 		t.Fatal(match, err)
+	}
+	dir := filepath.Join(t.TempDir(), "nested")
+	inspection, err := checker.InspectModule(context.Background(), goal, "module", module, dir)
+	if err != nil || inspection.Status != "verified" {
+		t.Fatal(inspection, err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("inspection directory was not created", err)
 	}
 }
 

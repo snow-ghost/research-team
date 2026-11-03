@@ -22,6 +22,10 @@ type Binder struct {
 	Implicit bool   `json:"implicit"`
 }
 
+type Inspector interface {
+	InspectModule(context.Context, Goal, string, ModuleReport, string) (SignatureReport, error)
+}
+
 type SignatureReport struct {
 	Status            string   `json:"status"`
 	Binders           []Binder `json:"binders"`

@@ -53,7 +53,11 @@ func (s *Service) InspectLemma(ctx context.Context, r InspectLemmaRequest) error
 		}
 		env, _ := s.libraryEnvironment(&v.Data, v.entity(l.Lemma))
 		dir := filepath.Join(s.Options.Config.DataDir, "inspections", identifier("inspect"))
-		report, inspectErr := (leancheck.DockerChecker{Config: *env}).InspectModule(ctx, l.Goal, filepath.Join(s.Options.Config.DataDir, "library", l.ID, "checked"), *l.Report, dir)
+		var inspector leancheck.Inspector = s.Options.Inspector
+		if inspector == nil {
+			inspector = leancheck.DockerChecker{Config: *env}
+		}
+		report, inspectErr := inspector.InspectModule(ctx, l.Goal, filepath.Join(s.Options.Config.DataDir, "library", l.ID, "checked"), *l.Report, dir)
 		body, _ := json.Marshal(report)
 		if err := atomicFile(filepath.Join(dir, "report.json"), body); err != nil {
 			return err

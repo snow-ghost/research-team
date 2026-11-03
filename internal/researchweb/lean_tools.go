@@ -94,7 +94,7 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 		}
 		environment, pins := s.libraryEnvironment(&d, e)
 		checker := s.Options.Checker
-		if environment != nil {
+		if environment != nil && s.Options.Config.LeanServiceURL == "" {
 			pinned := *environment
 			if pinned.TimeoutSeconds > 60 {
 				pinned.TimeoutSeconds = 60

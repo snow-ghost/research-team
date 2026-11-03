@@ -90,6 +90,38 @@ func decodeJSON(data []byte, value any) error {
 	}
 	return nil
 }
+func LoadMaintenanceOptions(path string, lookup func(string) (string, bool)) (Options, error) {
+	if lookup == nil {
+		lookup = os.LookupEnv
+	}
+	o := Options{Lookup: lookup}
+	if err := ReadJSON(path, &o.Config); err != nil {
+		return o, err
+	}
+	host, port, err := net.SplitHostPort(o.Config.Listen)
+	p, portErr := strconv.Atoi(port)
+	ip := net.ParseIP(host)
+	if err != nil || portErr != nil || p < 1 || p > 65535 || ip == nil || !ip.IsLoopback() {
+		return o, errors.New("maintenance requires a numeric loopback address and port")
+	}
+	if o.Config.DataDir == "" || o.Config.Database.Driver != "" && o.Config.Database.Driver != "sqlite" && o.Config.Database.Driver != "postgres" || o.Config.Database.Driver == "postgres" && o.Config.Database.DSNEnv == "" {
+		return o, errors.New("invalid maintenance storage configuration")
+	}
+	base, err := filepath.Abs(filepath.Dir(path))
+	if err != nil {
+		return o, err
+	}
+	if !filepath.IsAbs(o.Config.DataDir) {
+		o.Config.DataDir = filepath.Join(base, o.Config.DataDir)
+	}
+	if o.Config.TokenEnv != "" {
+		if _, ok := lookup(o.Config.TokenEnv); !ok {
+			o.Config.TokenEnv = ""
+		}
+	}
+	return o, nil
+}
+
 func LoadOptions(path string) (Options, error) {
 	o := Options{Profiles: map[string]execution.Profile{}, Labels: map[string]string{}, Lookup: os.LookupEnv, Factory: execution.Build}
 	if err := ReadJSON(path, &o.Config); err != nil {

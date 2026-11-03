@@ -35,7 +35,23 @@ def main():
     parser.add_argument("--r-values", default="1,2,3,4,5")
     args = parser.parse_args()
     r_values = [int(value) for value in args.r_values.split(",")]
-    rows = [search(args.generator, n, r) for r in r_values for n in range(max(8, r + 3), args.max_n + 1)]
+    rows = []
+    if args.output:
+        try:
+            with open(args.output) as source:
+                rows = json.load(source)
+        except FileNotFoundError:
+            pass
+    completed = {(row["n"], row["r"]) for row in rows}
+    for r in r_values:
+        for n in range(max(8, r + 3), args.max_n + 1):
+            if (n, r) in completed:
+                continue
+            rows.append(search(args.generator, n, r))
+            if args.output:
+                with open(args.output, "w") as output:
+                    json.dump(rows, output, ensure_ascii=False, indent=2)
+                    output.write("\n")
     if args.check:
         for row in rows:
             n, r = row["n"], row["r"]

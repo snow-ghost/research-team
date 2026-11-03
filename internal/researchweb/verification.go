@@ -320,7 +320,11 @@ func (s *Service) checkProof(ctx context.Context, v Verification) {
 		if v.Environment != nil && s.Options.Config.LeanServiceURL == "" {
 			checker = leancheck.DockerChecker{Config: *v.Environment}
 		}
-		report, err = checker.Check(ctx, v.Goal, v.Source, dir)
+		if pinned, ok := checker.(leancheck.EnvironmentChecker); ok && v.Environment != nil {
+			report, err = pinned.CheckEnvironment(ctx, v.Goal, v.Source, dir, *v.Environment)
+		} else {
+			report, err = checker.Check(ctx, v.Goal, v.Source, dir)
+		}
 	}
 	if err != nil {
 		report.Status = "failed"

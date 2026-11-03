@@ -15,6 +15,7 @@ func TestHTTPCheckerCheckAndMatchValidateBindings(t *testing.T) {
 	goal := Goal{Source: "def Statement : Prop := True", Declaration: "Statement", Candidate: "Candidate"}
 	source := "import Goal\ntheorem Candidate : Statement := by trivial\n"
 	module := ModuleReport{ArtifactSHA256: "module-artifact"}
+	environment := Config{Libraries: []string{"/src/library"}}
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
@@ -22,7 +23,20 @@ func TestHTTPCheckerCheckAndMatchValidateBindings(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/v1/check":
-			_ = json.NewEncoder(w).Encode(Report{Status: "verified", GoalSHA256: Digest(goal), SourceSHA256: Digest(source), AuditSHA256: AuditDigest()})
+			var input struct {
+				Libraries []string `json:"libraries"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				t.Error(err)
+			}
+			report := Report{Status: "verified", GoalSHA256: Digest(goal), SourceSHA256: Digest(source), AuditSHA256: AuditDigest()}
+			if input.Libraries != nil {
+				if len(input.Libraries) != 1 || input.Libraries[0] != "/src/library" {
+					t.Errorf("unexpected pinned libraries: %v", input.Libraries)
+				}
+				report.EnvironmentSHA256 = Digest(environment)
+			}
+			_ = json.NewEncoder(w).Encode(report)
 		case "/v1/match":
 			_ = json.NewEncoder(w).Encode(MatchReport{Status: "obligations", GoalSHA256: Digest(goal), ArtifactSHA256: module.ArtifactSHA256, MatcherSHA256: MatcherDigest()})
 		case "/v1/inspect":
@@ -34,6 +48,10 @@ func TestHTTPCheckerCheckAndMatchValidateBindings(t *testing.T) {
 	defer server.Close()
 	checker := NewHTTPChecker(server.URL, "test-token")
 	report, err := checker.Check(context.Background(), goal, source, "")
+	if err != nil || report.Status != "verified" {
+		t.Fatal(report, err)
+	}
+	report, err = checker.CheckEnvironment(context.Background(), goal, source, "", environment)
 	if err != nil || report.Status != "verified" {
 		t.Fatal(report, err)
 	}

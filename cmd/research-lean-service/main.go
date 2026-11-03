@@ -118,9 +118,10 @@ func (h *leanHandler) serve(w http.ResponseWriter, r *http.Request, input, outpu
 
 func (h *leanHandler) check(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Goal   leancheck.Goal `json:"goal"`
-		Source string         `json:"source"`
-		Dir    string         `json:"dir,omitempty"`
+		Goal      leancheck.Goal `json:"goal"`
+		Source    string         `json:"source"`
+		Dir       string         `json:"dir,omitempty"`
+		Libraries []string       `json:"libraries,omitempty"`
 	}
 	var report leancheck.Report
 	h.serve(w, r, &input, &report, func() error {
@@ -141,10 +142,40 @@ func (h *leanHandler) check(w http.ResponseWriter, r *http.Request) {
 		if input.Dir == "" {
 			defer os.RemoveAll(dir)
 		}
+		environment, err := h.environment(input.Libraries)
+		if err != nil {
+			return err
+		}
+		checker := leancheck.DockerChecker{Config: environment}
 		var checkErr error
-		report, checkErr = h.checker.Check(r.Context(), input.Goal, input.Source, dir)
+		report, checkErr = checker.Check(r.Context(), input.Goal, input.Source, dir)
 		return checkErr
 	})
+}
+
+func (h *leanHandler) environment(libraries []string) (leancheck.Config, error) {
+	environment := h.checker.Config
+	if libraries == nil {
+		return environment, nil
+	}
+	base := environment.Libraries
+	if len(libraries) < len(base) || len(libraries) > 20 {
+		return environment, errors.New("pinned Lean library prefix mismatch")
+	}
+	for i, path := range base {
+		if libraries[i] != path {
+			return environment, errors.New("pinned Lean library prefix mismatch")
+		}
+	}
+	environment.Libraries = append([]string{}, base...)
+	for _, path := range libraries[len(base):] {
+		dir, err := h.artifactDir(path)
+		if err != nil {
+			return environment, err
+		}
+		environment.Libraries = append(environment.Libraries, dir)
+	}
+	return environment, nil
 }
 
 func (h *leanHandler) match(w http.ResponseWriter, r *http.Request) {

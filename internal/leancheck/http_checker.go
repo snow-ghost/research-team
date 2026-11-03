@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+type EnvironmentChecker interface {
+	CheckEnvironment(context.Context, Goal, string, string, Config) (Report, error)
+}
+
 type HTTPChecker struct {
 	baseURL string
 	token   string
@@ -26,11 +30,19 @@ func NewHTTPChecker(baseURL, token string) *HTTPChecker {
 }
 
 func (c *HTTPChecker) Check(ctx context.Context, goal Goal, source, dir string) (Report, error) {
+	return c.CheckEnvironment(ctx, goal, source, dir, Config{})
+}
+
+func (c *HTTPChecker) CheckEnvironment(ctx context.Context, goal Goal, source, dir string, environment Config) (Report, error) {
 	var report Report
-	if err := c.post(ctx, "/v1/check", map[string]any{"goal": goal, "source": source, "dir": dir}, &report); err != nil {
+	input := map[string]any{"goal": goal, "source": source, "dir": dir}
+	if environment.Libraries != nil {
+		input["libraries"] = environment.Libraries
+	}
+	if err := c.post(ctx, "/v1/check", input, &report); err != nil {
 		return report, err
 	}
-	if report.Status == "" || report.GoalSHA256 != Digest(goal) || report.SourceSHA256 != Digest(source) || report.AuditSHA256 != AuditDigest() {
+	if report.Status == "" || report.GoalSHA256 != Digest(goal) || report.SourceSHA256 != Digest(source) || report.AuditSHA256 != AuditDigest() || environment.Libraries != nil && report.EnvironmentSHA256 != Digest(environment) {
 		return report, errors.New("lean service report binding mismatch")
 	}
 	return report, nil

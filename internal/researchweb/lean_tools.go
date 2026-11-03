@@ -125,8 +125,12 @@ func (s *Service) leanToolContext(ctx context.Context, d Data, a Attempt) (conte
 			}
 			limited, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
-			check.Report, err = checker.Check(limited, goal, source, dir)
-			if check.Report.Status == "verified" && (check.Report.GoalSHA256 != leancheck.Digest(goal) || check.Report.SourceSHA256 != leancheck.Digest(source)) {
+			if pinned, ok := checker.(leancheck.EnvironmentChecker); ok && environment != nil {
+				check.Report, err = pinned.CheckEnvironment(limited, goal, source, dir, *environment)
+			} else {
+				check.Report, err = checker.Check(limited, goal, source, dir)
+			}
+			if check.Report.Status == "verified" && (check.Report.GoalSHA256 != leancheck.Digest(goal) || check.Report.SourceSHA256 != leancheck.Digest(source) || environment != nil && check.Report.EnvironmentSHA256 != leancheck.Digest(*environment)) {
 				check.Report.Status = "failed"
 				check.Report.Phase = "report_integrity"
 			}

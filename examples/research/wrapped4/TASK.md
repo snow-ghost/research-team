@@ -43,3 +43,17 @@ At `n = 11`, independent C++ and Go implementations agree on the following exact
 | 4 | 1,663,200 | 9 | 9 |
 
 For `d = 2`, the full flip and the distinct state `[4,3,2,1,0,9,9,8,7,6,5]` are both diameter witnesses. Their ten-operation words are pinned as `twoCopies11FlipOps` and `twoCopies11FarOps` and checked independently in Go and Lean. The Lean theorems prove only the constructions; exhaustive search supplies minimality and coverage. These finite results do not establish a general diameter formula for repeated symbols.
+
+## Exact twelve-position computations
+
+The reproducible C++ implementation in `scripts/repeated_bfs_fast.cpp` exhausted all components at `n = 12`:
+
+| Copies `d` | Explored states | Graph diameter | Full-flip distance |
+| --- | ---: | ---: | ---: |
+| 2 | 239,500,800 | 12 | 10 |
+| 3 | 79,833,600 | 12 | 10 |
+| 4 | 19,958,400 | 12 | 10 |
+
+For `d = 2`, `twoCopies12FlipOps` proves the flip word of length 10, while `twoCopies12FarOps` reaches `[4,3,2,1,0,10,10,9,8,7,6,5]` in 12 moves. This state has the same rotated-flip pattern as the diameter witness at `n = 11`. The Lean theorems use kernel `decide`; exhaustive BFS establishes the exact diameter and flip minimality. The shared pattern is not yet a general diameter formula.
+
+At `n = 13, d = 4`, exhaustive search covered 259,459,200 states and found graph diameter 13, while the full flip has distance 12. This further confirms that flip distance and graph diameter do not follow one simple residue formula.

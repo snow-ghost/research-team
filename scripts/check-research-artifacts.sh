@@ -9,6 +9,7 @@ export LEAN_PATH="$BUILD_DIR"
 
 "$LEAN_BIN" --version
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/Arithmetic.olean" "$ROOT/examples/research/wrapped4/Arithmetic.lean"
+"$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/Core.olean" "$ROOT/examples/research/wrapped4/Core.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/Certificates.olean" "$ROOT/examples/research/wrapped4/Certificates.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/Repeated.olean" "$ROOT/examples/research/wrapped4/Repeated.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/NearBinary.olean" "$ROOT/examples/research/wrapped4/NearBinary.lean"

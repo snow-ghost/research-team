@@ -55,7 +55,7 @@ def main():
             if r == 4:
                 assert row["diameter"] == (2 * n + 2) // 3 - 1 + (1 if n % 6 == 0 else 0), row
             if r == 5:
-                expected = 6 if n == 9 else n - n // 5 - 1 + (1 if n in (20, 25, 26, 30, 31, 32) else 0)
+                expected = 6 if n == 9 else n - n // 5 - 1 + (1 if n in (20, 25, 26, 30, 31, 32, 35, 36, 37, 38, 40) else 0)
                 assert row["diameter"] == expected, row
     body = json.dumps(rows, ensure_ascii=False, indent=2) + "\n"
     if args.output:

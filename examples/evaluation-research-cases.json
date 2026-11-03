@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "repetitions": 2,
+  "cases": [
+    {
+      "id": "task-101",
+      "class": "wrapped_flip",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research001 : Prop := ∀ (n : Nat), 10 ≤ n → ∀ (a b x : Nat),\n  applyWrappedOps (twoUniqueFlipOps n) ([a, b] ++ List.replicate (n - 2) x) =\n    List.replicate (n - 2) x ++ [b, a]\n",
+        "declaration": "Research001",
+        "candidate": "Candidate001"
+      }
+    },
+    {
+      "id": "task-102",
+      "class": "wrapped_steps",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research002 : Prop := ∀ (n : Nat), 10 ≤ n → ∀ (a b x : Nat),\n  leftWrapped4 (n - 3) ([a, b] ++ List.replicate (n - 2) x) =\n    [x, b] ++ List.replicate (n - 3) x ++ [a]\n",
+        "declaration": "Research002",
+        "candidate": "Candidate002"
+      }
+    },
+    {
+      "id": "task-103",
+      "class": "list_reuse",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\ndef Research003 : Prop := ∀ (m k : Nat) (x : Nat),\n  List.replicate (m + k) x = List.replicate m x ++ List.replicate k x\n",
+        "declaration": "Research003",
+        "candidate": "Candidate003"
+      }
+    },
+    {
+      "id": "task-104",
+      "class": "bounded_certificates",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research004 : Prop :=\n  applyWrappedOps (twoUniqueFlipOps 8) ([0, 1] ++ List.replicate 6 2) =\n    List.replicate 6 2 ++ [1, 0]\n",
+        "declaration": "Research004",
+        "candidate": "Candidate004"
+      }
+    },
+    {
+      "id": "task-105",
+      "class": "quantified_goals",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research005 : Prop := ∀ (n : Nat) (a b x : Nat),\n  applyWrappedOps (twoUniqueFlipOps n) ([a, b] ++ List.replicate (n - 2) x) =\n    List.replicate (n - 2) x ++ [b, a]\n",
+        "declaration": "Research005",
+        "candidate": "Candidate005"
+      }
+    },
+    {
+      "id": "task-106",
+      "class": "bounded_certificates",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research006 : Prop :=\n  applyWrappedOps [Op.left 9, Op.left 8] ([0, 1] ++ List.replicate 10 2) =\n    List.replicate 10 2 ++ [1, 0]\n",
+        "declaration": "Research006",
+        "candidate": "Candidate006"
+      }
+    },
+    {
+      "id": "task-107",
+      "class": "wrapped_steps",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research007 : Prop := ∀ (n : Nat), 10 ≤ n → ∀ (a b x : Nat),\n  leftWrapped4 (n - 4) ([x, b] ++ List.replicate (n - 3) x ++ [a]) =\n    [x, b] ++ List.replicate (n - 4) x ++ [a, x]\n",
+        "declaration": "Research007",
+        "candidate": "Candidate007"
+      }
+    },
+    {
+      "id": "task-108",
+      "class": "invariants",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research008 : Prop := ∀ (n : Nat), 10 ≤ n → ∀ (a b x : Nat),\n  rightWrapped4 (n - 2) ([x, b] ++ List.replicate (n - 4) x ++ [a, x]) =\n    List.replicate (n - 2) x ++ [b, a]\n",
+        "declaration": "Research008",
+        "candidate": "Candidate008"
+      }
+    },
+    {
+      "id": "task-109",
+      "class": "wrapped_flip",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research009 : Prop := ∀ n : Nat, (twoUniqueFlipOps n).length = 3\n",
+        "declaration": "Research009",
+        "candidate": "Candidate009"
+      }
+    },
+    {
+      "id": "task-110",
+      "class": "quantified_goals",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research010 : Prop := ∀ (n : Nat) (a b x : Nat),\n  leftWrapped4 (n - 3) ([a, b] ++ List.replicate (n - 2) x) =\n    [x, b] ++ List.replicate (n - 3) x ++ [a]\n",
+        "declaration": "Research010",
+        "candidate": "Candidate010"
+      }
+    },
+    {
+      "id": "task-111",
+      "class": "invariants",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research011 : Prop := ∀ (n : Nat), 10 ≤ n → ∀ (a b x : Nat),\n  applyWrappedOps (twoUniqueFlipOps n) ([a, b] ++ List.replicate (n - 2) x) =\n    [a, b] ++ List.replicate (n - 2) x\n",
+        "declaration": "Research011",
+        "candidate": "Candidate011"
+      }
+    },
+    {
+      "id": "task-112",
+      "class": "list_reuse",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\ndef Research012 : Prop :=\n  List.drop (2 + 1) (List.replicate 2 0 ++ [3, 4]) = [3, 4]\n",
+        "declaration": "Research012",
+        "candidate": "Candidate012"
+      }
+    }
+  ]
+}

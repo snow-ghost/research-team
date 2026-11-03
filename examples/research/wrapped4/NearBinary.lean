@@ -72,4 +72,25 @@ theorem twoUniqueFlipOps_correct {n : Nat} (hn : 10 ≤ n) (a b x : α) :
   simp only [twoUniqueFlipOps, applyWrappedOps, applyWrappedOp, List.foldl_cons, List.foldl_nil]
   rw [twoUniqueFlipStep1 hn, twoUniqueFlipStep2 hn, twoUniqueFlipStep3 hn]
 
+theorem twoUniqueFlipOps_correct_small {n : Nat} (h6 : 6 ≤ n) (h10 : n < 10) (a b x : α) :
+    applyWrappedOps (twoUniqueFlipOps n) ([a, b] ++ List.replicate (n - 2) x) =
+      List.replicate (n - 2) x ++ [b, a] := by
+  have h : n = 6 ∨ n = 7 ∨ n = 8 ∨ n = 9 := by omega
+  rcases h with rfl | rfl | rfl | rfl <;>
+    simp [twoUniqueFlipOps, applyWrappedOps, applyWrappedOp, leftWrapped4, rightWrapped4,
+      replicate_append, drop_replicate_prefix, take_replicate_prefix, List.replicate_succ,
+      List.append_assoc]
+
+theorem twoUniqueFlipOps_correct_six {n : Nat} (hn : 6 ≤ n) (a b x : α) :
+    applyWrappedOps (twoUniqueFlipOps n) ([a, b] ++ List.replicate (n - 2) x) =
+      List.replicate (n - 2) x ++ [b, a] := by
+  if h : n < 10 then
+    exact twoUniqueFlipOps_correct_small hn h a b x
+  else
+    exact twoUniqueFlipOps_correct (by omega) a b x
+
+theorem twoUniqueFlipOps_counterexample_five :
+    ¬ applyWrappedOps (twoUniqueFlipOps 5) ([0, 1] ++ List.replicate 3 2) =
+      List.replicate 3 2 ++ [1, 0] := by decide
+
 end Wrapped4

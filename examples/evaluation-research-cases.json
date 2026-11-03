@@ -33,7 +33,7 @@
       "id": "task-104",
       "class": "bounded_certificates",
       "goal": {
-        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research004 : Prop :=\n  applyWrappedOps (twoUniqueFlipOps 8) ([0, 1] ++ List.replicate 6 2) =\n    List.replicate 6 2 ++ [1, 0]\n",
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research004 : Prop :=\n  applyWrappedOps (twoUniqueFlipOps 5) ([0, 1] ++ List.replicate 3 2) =\n    List.replicate 3 2 ++ [1, 0]\n",
         "declaration": "Research004",
         "candidate": "Candidate004"
       }

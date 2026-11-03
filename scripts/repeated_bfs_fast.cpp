@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
     for (int i = 2; i <= n; ++i) expected *= i;
     for (int i = 2; i <= copies; ++i) expected /= i;
     while (capacity < expected * 2) capacity <<= 1;
+    std::cerr << "expected=" << expected << " capacity=" << capacity << "\n";
     Index index(capacity);
     std::vector<int> initial(n);
     for (int i = 0; i < n - copies; ++i) initial[i] = i;
@@ -79,6 +80,12 @@ int main(int argc, char** argv) {
         for (int i = 0; i < n; ++i) for (int inv = 0; inv < 2; ++inv) {
             uint64_t next = step(states[q], n, i, inv);
             if (index.contains(next)) continue;
+            if (states.size() >= expected) {
+                std::cerr << "unexpected state from queue=" << q << " move=" << i << " inverse=" << inv << " state=";
+                for (int v : decode(next, n)) std::cerr << v;
+                std::cerr << "\n";
+                return 3;
+            }
             uint32_t id = states.size();
             index.insert(next, id);
             states.push_back(next);

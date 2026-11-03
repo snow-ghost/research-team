@@ -15,12 +15,15 @@ export LEAN_PATH="$BUILD_DIR"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4.olean" "$ROOT/examples/research/wrapped4/Wrapped4.lean"
 
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/repeated_bfs_fast.cpp" -o "$BUILD_DIR/repeated-bfs-fast"
+"${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/near_binary_bfs128.cpp" -o "$BUILD_DIR/near-binary-bfs128"
 BFS_OUTPUT="$("$BUILD_DIR/repeated-bfs-fast" 11 2)"
 printf '%s\n' "$BFS_OUTPUT"
 printf '%s\n' "$BFS_OUTPUT" | grep -F 'states=19958400 eccentricity=10' >/dev/null
 printf '%s\n' "$BFS_OUTPUT" | grep -F 'flip_distance=10' >/dev/null
 python3 "$ROOT/scripts/near_binary_bfs.py" --generator "$BUILD_DIR/repeated-bfs-fast" --output "$BUILD_DIR/near-binary-bfs.json" --check
 printf '%s\n' 'near-binary checks: r=1..5, n=8..16, states and r=1/r=2 formulas verified'
+python3 "$ROOT/scripts/near_binary_bfs.py" --generator "$BUILD_DIR/near-binary-bfs128" --r-values 2 --max-n 32 --output "$BUILD_DIR/near-binary-bfs128.json" --check
+printf '%s\n' '128-bit checks: r=2, n=8..32, diameter and flip formulas verified'
 
 AUDIT="$BUILD_DIR/ResearchArtifactAudit.lean"
 trap 'rm -f "$AUDIT"' EXIT

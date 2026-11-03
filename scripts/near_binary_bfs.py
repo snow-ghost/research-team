@@ -31,8 +31,11 @@ def main():
     parser.add_argument("--generator", default=".research-server/bin/repeated-bfs-fast")
     parser.add_argument("--output")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--max-n", type=int, default=16)
+    parser.add_argument("--r-values", default="1,2,3,4,5")
     args = parser.parse_args()
-    rows = [search(args.generator, n, r) for r in range(1, 6) for n in range(max(8, r + 3), 17)]
+    r_values = [int(value) for value in args.r_values.split(",")]
+    rows = [search(args.generator, n, r) for r in r_values for n in range(max(8, r + 3), args.max_n + 1)]
     if args.check:
         for row in rows:
             n, r = row["n"], row["r"]

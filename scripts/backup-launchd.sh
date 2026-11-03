@@ -21,7 +21,7 @@ run_maintenance() {
   shift
   docker run --rm --user "$(id -u):$(id -g)" --add-host host.docker.internal:host-gateway \
     -v "$ROOT:/src" -v "$ROOT:$ROOT" -w /src "$IMAGE" sh -c \
-    'socat TCP-LISTEN:4187,fork,reuseaddr,bind=127.0.0.1 TCP:host.docker.internal:4187 & exec "$@"' \
+    'socat TCP-LISTEN:4187,fork,reuseaddr,bind=127.0.0.1 TCP:host.docker.internal:4187 & i=0; while [ "$i" -lt 50 ]; do if curl -fsSI http://127.0.0.1:4187/ >/dev/null 2>&1; then break; fi; i=$((i+1)); sleep 0.1; done; exec "$@"' \
     maintenance "/src/.research-server/bin/$program" -config "$RESEARCH_TEAM_CONFIG" "$@"
 }
 

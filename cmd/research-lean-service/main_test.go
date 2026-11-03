@@ -17,6 +17,10 @@ func TestArtifactDirStaysInsideSharedRoot(t *testing.T) {
 	if got, err := h.artifactDir(inside); err != nil || got != inside {
 		t.Fatalf("valid artifact directory rejected: %q %v", got, err)
 	}
+	h.artifactAlias = "/src"
+	if got, err := h.artifactDir("/src/preparation"); err != nil || got != inside {
+		t.Fatalf("container alias was not mapped to the shared root: %q %v", got, err)
+	}
 	if _, err := h.artifactDir(root); err == nil {
 		t.Fatal("shared root itself accepted as an operation directory")
 	}

@@ -20,9 +20,10 @@ import (
 )
 
 type leanHandler struct {
-	checker      leancheck.DockerChecker
-	artifactRoot string
-	token        string
+	checker       leancheck.DockerChecker
+	artifactRoot  string
+	artifactAlias string
+	token         string
 }
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:4189", "Loopback listen address")
 	tokenEnv := flag.String("token-env", "RESEARCH_LEAN_SERVICE_TOKEN", "Service token environment variable")
 	artifactRoot := flag.String("artifact-root", "", "Shared root for preparation and module artifacts")
+	artifactAlias := flag.String("artifact-alias", "/src", "Container path prefix mapped to artifact-root")
 	flag.Parse()
 	var cfg leancheck.Config
 	if err := researchweb.ReadJSON(*config, &cfg); err != nil {
@@ -61,7 +63,7 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	h := &leanHandler{checker: leancheck.DockerChecker{Config: cfg}, artifactRoot: root, token: token}
+	h := &leanHandler{checker: leancheck.DockerChecker{Config: cfg}, artifactRoot: root, artifactAlias: *artifactAlias, token: token}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -157,8 +159,12 @@ func (h *leanHandler) match(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		defer os.RemoveAll(dir)
+		moduleDir, err := h.artifactDir(input.ModuleDir)
+		if err != nil {
+			return err
+		}
 		var checkErr error
-		report, checkErr = h.checker.MatchModule(r.Context(), input.Goal, filepath.Clean(input.ModuleDir), input.Module, input.Candidate, dir)
+		report, checkErr = h.checker.MatchModule(r.Context(), input.Goal, moduleDir, input.Module, input.Candidate, dir)
 		return checkErr
 	})
 }
@@ -166,6 +172,13 @@ func (h *leanHandler) match(w http.ResponseWriter, r *http.Request) {
 func (h *leanHandler) artifactDir(input string) (string, error) {
 	if input == "" || !filepath.IsAbs(input) {
 		return "", errors.New("absolute artifact directory required")
+	}
+	if h.artifactAlias != "" && (input == h.artifactAlias || strings.HasPrefix(input, h.artifactAlias+string(filepath.Separator))) {
+		rel, err := filepath.Rel(h.artifactAlias, input)
+		if err != nil {
+			return "", err
+		}
+		input = filepath.Join(h.artifactRoot, rel)
 	}
 	dir, err := filepath.EvalSymlinks(input)
 	if err != nil {

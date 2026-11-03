@@ -20,9 +20,15 @@ type Case struct {
 	ID    string         `json:"id"`
 	Goal  leancheck.Goal `json:"goal"`
 }
+type Material struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
 type Config struct {
 	Version   int               `json:"version,omitempty"`
 	Cases     []Case            `json:"cases"`
+	Materials []Material        `json:"materials,omitempty"`
 	Universal execution.Profile `json:"universal"`
 	Proof     execution.Profile `json:"proof"`
 	Counter   execution.Profile `json:"counter"`
@@ -105,6 +111,18 @@ func (c Config) Validate() error {
 			return errors.New("invalid comparison case")
 		}
 		seen[item.ID] = true
+	}
+	materialSeen := map[string]bool{}
+	totalMaterial := 0
+	for _, material := range c.Materials {
+		if len(c.Materials) > 16 || material.Name == "" || filepath.Base(material.Name) != material.Name || strings.HasPrefix(material.Name, ".") || materialSeen[material.Name] || len(material.Content) == 0 || len(material.Content) > 65536 {
+			return errors.New("invalid comparison material")
+		}
+		materialSeen[material.Name] = true
+		totalMaterial += len(material.Content)
+	}
+	if totalMaterial > 262144 {
+		return errors.New("comparison materials exceed the size limit")
 	}
 	profiles := []execution.Profile{c.Universal, c.Proof, c.Counter, c.Formalize, c.Reviewer}
 	model := ""
@@ -293,7 +311,7 @@ func (r Runner) run(ctx context.Context, c Config, item Case, mode, dir string, 
 		}
 		positiveTemplate, _ := leancheck.CandidateTemplate(item.Goal)
 		negativeTemplate, _ := leancheck.CandidateTemplate(negative(item.Goal))
-		contextData, _ := json.Marshal(map[string]any{"goal": item.Goal, "candidate_templates": map[string]string{"proof": positiveTemplate, "refutation": negativeTemplate}, "tool_goals": map[string]leancheck.Goal{"check_lean": item.Goal, "check_refutation": negative(item.Goal)}, "previous_unverified": previous})
+		contextData, _ := json.Marshal(map[string]any{"goal": item.Goal, "candidate_templates": map[string]string{"proof": positiveTemplate, "refutation": negativeTemplate}, "tool_goals": map[string]leancheck.Goal{"check_lean": item.Goal, "check_refutation": negative(item.Goal)}, "materials": c.Materials, "previous_unverified": previous})
 		task := execution.Task{ID: item.ID + "-" + mode + "-" + role, AttemptID: item.ID + "-" + mode + "-" + role, Snapshot: leancheck.Digest(string(contextData)), LeaseEpoch: 1, Workspace: work, Objective: objective, Context: string(contextData)}
 		checks := 0
 		handlers := []execution.RuntimeTool{}

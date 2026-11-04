@@ -130,8 +130,35 @@ int main(int argc, char** argv) {
         if (backward.extend(depth, forward, meeting)) {
             std::vector<int> left = pathToRoot(forward, backward.states[meeting]);
             std::vector<int> right;
-            for (uint32_t p = meeting; p != 0; p = backward.parent[p]) right.push_back(backward.via[p]);
+            for (uint32_t p = meeting; p != 0; p = backward.parent[p]) {
+                right.push_back(backward.via[p]);
+                State actual = step(backward.states[backward.parent[p]], 16, backward.via[p] / 2, backward.via[p] & 1);
+                if (actual != backward.states[p]) std::cerr << "parent_mismatch\n";
+            }
             std::reverse(left.begin(), left.end());
+            State chain = encode(target);
+            for (uint32_t p = meeting; p != 0; p = backward.parent[p]) {
+                chain = step(chain, 16, backward.via[p] / 2, backward.via[p] & 1);
+                if (chain != backward.states[p]) {
+                    std::cerr << "chain_mismatch at=" << p << " via=" << backward.via[p] << " computed=";
+                    for (int value : decode(chain, 16)) std::cerr << value;
+                    std::cerr << " expected=";
+                    for (int value : decode(backward.states[p], 16)) std::cerr << value;
+                    std::cerr << "\n";
+                }
+            }
+            State check = encode(target);
+            for (int move : right) check = step(check, 16, move / 2, move & 1);
+            if (check != backward.states[meeting]) {
+                std::cerr << "backward_parent_invalid computed=";
+                for (int value : decode(check, 16)) std::cerr << value;
+                std::cerr << " root=";
+                for (int value : decode(backward.states[0], 16)) std::cerr << value;
+                std::cerr << "\n";
+            }
+            std::cout << "right_word=";
+            for (int move : right) std::cout << (move & 1 ? "R" : "L") << move / 2 << " ";
+            std::cout << "\n";
             std::cout << "left=" << left.size() << " right=" << right.size() << "\n";
             std::cout << "distance=" << (left.size() + right.size()) << "\n";
             std::cout << "state=";

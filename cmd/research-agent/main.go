@@ -28,6 +28,10 @@ func run() error {
 	configPath := flag.String("config", "", "Trusted executor profile JSON")
 	serverConfig := flag.String("server-config", "", "Server configuration for credential references")
 	composeEnv := flag.String("compose-env", "", "Private environment file for credential references")
+	preflightDeclaration := flag.String("preflight-declaration", "", "Optional declaration to validate after execution")
+	preflightCandidate := flag.String("preflight-candidate", "", "Candidate declaration name; defaults to Candidate+declaration")
+	preflightTheorem := flag.String("preflight-theorem", "", "Required library theorem for preflight")
+	preflightOutcome := flag.String("preflight-outcome", "proof", "Required typed outcome: proof or refutation")
 	taskPath := flag.String("task", "", "Task JSON")
 	execute := flag.Bool("execute", false, "Execute the task; may incur provider charges")
 	flag.Parse()
@@ -72,6 +76,20 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	result, runErr := executor.Run(ctx, task)
+	if *preflightDeclaration != "" {
+		if *preflightTheorem == "" {
+			return errors.New("-preflight-theorem is required with -preflight-declaration")
+		}
+		candidate := *preflightCandidate
+		if candidate == "" {
+			candidate = "Candidate" + *preflightDeclaration
+		}
+		rule := execution.CandidateRule{Candidate: candidate, Declaration: *preflightDeclaration, Theorem: *preflightTheorem, Outcome: *preflightOutcome}
+		if err := execution.ValidateCandidate(result.Candidate, rule); err != nil {
+			result.Status = "failed"
+			result.Diagnostics = append(result.Diagnostics, execution.Diagnostic{Source: "agent", Stage: "preflight", Kind: "preflight_rejected", Message: err.Error()})
+		}
+	}
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		return err
 	}

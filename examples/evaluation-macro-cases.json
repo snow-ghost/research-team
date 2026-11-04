@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "repetitions": 2,
+  "cases": [
+    {
+      "id": "task-201",
+      "class": "macro_application",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research201 : Prop := ∀ (a b c d e f x : Nat),\n  applyWrappedOps (sixUniqueFarOps 10) ([a, b, c, d, e, f] ++ List.replicate 4 x) =\n    List.replicate 3 x ++ [f, e, d, c, b, a] ++ [x]\n",
+        "declaration": "Research201",
+        "candidate": "Candidate201"
+      }
+    },
+    {
+      "id": "task-202",
+      "class": "macro_application",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research202 : Prop := ∀ (n : Nat), 10 ≤ n → ∀ (a b c d e f x : Nat),\n  applyWrappedOps (sixUniqueFarOps n) ([a, b, c, d, e, f] ++ List.replicate (n - 6) x) =\n    List.replicate (n - 7) x ++ [f, e, d, c, b, a] ++ [x]\n",
+        "declaration": "Research202",
+        "candidate": "Candidate202"
+      }
+    },
+    {
+      "id": "task-203",
+      "class": "macro_length",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research203 : Prop := ∀ (n : Nat), 10 ≤ n → (sixUniqueFarOps n).length = n - 2\n",
+        "declaration": "Research203",
+        "candidate": "Candidate203"
+      }
+    },
+    {
+      "id": "task-204",
+      "class": "macro_length",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research204 : Prop := (sixUniqueFarOps 14).length = 12\n",
+        "declaration": "Research204",
+        "candidate": "Candidate204"
+      }
+    },
+    {
+      "id": "task-205",
+      "class": "generalized_reuse",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research205 : Prop := ∀ (C : List Nat) (a b c d e f x : Nat),\n  applyWrappedOps (sixUniqueFarOps (C.length + 10)) ([a, b, c, d, e, f] ++ C ++ List.replicate 4 x) =\n    [x, x, x] ++ C ++ [f, e, d, c, b, a] ++ [x]\n",
+        "declaration": "Research205",
+        "candidate": "Candidate205"
+      }
+    },
+    {
+      "id": "task-206",
+      "class": "generalized_reuse",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research206 : Prop := ∀ (G : List Nat) (m : Nat) (a b c d e f x : Nat),\n  applyWrappedOps (sixUniqueFarOps (G.length + m + 10)) ([a, b, c, d, e, f] ++ G ++ List.replicate (m + 4) x) =\n    [x, x, x] ++ G ++ List.replicate m x ++ [f, e, d, c, b, a] ++ [x]\n",
+        "declaration": "Research206",
+        "candidate": "Candidate206"
+      }
+    },
+    {
+      "id": "task-207",
+      "class": "list_helpers",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research207 : Prop := ∀ (C D : List Nat) (k : Nat),\n  List.take (C.length + k) (C ++ D) = C ++ List.take k D\n",
+        "declaration": "Research207",
+        "candidate": "Candidate207"
+      }
+    },
+    {
+      "id": "task-208",
+      "class": "list_helpers",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research208 : Prop := ∀ (P B : List Nat) (a b c d : Nat),\n  rightWrapped4 P.length (P ++ [a, b, c, d] ++ B) = P ++ [d, a, b, c] ++ B\n",
+        "declaration": "Research208",
+        "candidate": "Candidate208"
+      }
+    },
+    {
+      "id": "task-209",
+      "class": "bounded_refutation",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research209 : Prop := (sixUniqueFarOps 9).length = 7\n",
+        "declaration": "Research209",
+        "candidate": "Candidate209"
+      }
+    },
+    {
+      "id": "task-210",
+      "class": "bounded_refutation",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research210 : Prop :=\n  applyWrappedOps (sixUniqueFarOps 10) ([0, 1, 2, 3, 4, 5] ++ List.replicate 4 6) =\n    [0, 1, 2, 3, 4, 5] ++ List.replicate 4 6\n",
+        "declaration": "Research210",
+        "candidate": "Candidate210"
+      }
+    },
+    {
+      "id": "task-211",
+      "class": "quantified_refutation",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research211 : Prop := ∀ (n : Nat), (sixUniqueFarOps n).length = n - 2\n",
+        "declaration": "Research211",
+        "candidate": "Candidate211"
+      }
+    },
+    {
+      "id": "task-212",
+      "class": "quantified_refutation",
+      "goal": {
+        "source": "import Wrapped4.NearBinary\nopen Wrapped4\ndef Research212 : Prop := ∀ (n : Nat) (a b c d e f x : Nat),\n  applyWrappedOps (sixUniqueFarOps n) ([a, b, c, d, e, f] ++ List.replicate (n - 6) x) =\n    List.replicate (n - 7) x ++ [f, e, d, c, b, a] ++ [x]\n",
+        "declaration": "Research212",
+        "candidate": "Candidate212"
+      }
+    }
+  ]
+}

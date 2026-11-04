@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/snow-ghost/research-team/internal/execution"
@@ -44,7 +45,11 @@ func RehearseEvaluation(ctx context.Context, set EvaluationSet, dir string, resu
 	profile := func(id string, steps int) execution.Profile {
 		return execution.Profile{ID: id, Kind: "model", Model: &execution.ModelConfig{Protocol: "chat_completions", BaseURL: "http://127.0.0.1:1/v1", Model: "simulation", AllowLoopbackHTTP: true}, Limits: execution.Limits{TimeoutSeconds: 900, MaxSteps: steps, MaxOutputTokens: 32768, MaxOutputBytes: 16 << 20}}
 	}
-	c := Config{Version: 4, Cases: set.Cases, Universal: profile("universal", 5), Proof: profile("proof", 1), Counter: profile("counter", 1), Formalize: profile("formalize", 3), Reviewer: profile("review", 1), Lean: leancheck.Config{Runtime: "/disabled", Toolchain: os.TempDir(), Image: "sha256:" + strings.Repeat("0", 64), ExpectedVersion: "simulation", TimeoutSeconds: 1, MemoryMB: 256}}
+	toolchain, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		return out, err
+	}
+	c := Config{Version: 4, Cases: set.Cases, Universal: profile("universal", 5), Proof: profile("proof", 1), Counter: profile("counter", 1), Formalize: profile("formalize", 3), Reviewer: profile("review", 1), Lean: leancheck.Config{Runtime: "/disabled", Toolchain: toolchain, Image: "sha256:" + strings.Repeat("0", 64), ExpectedVersion: "simulation", TimeoutSeconds: 1, MemoryMB: 256}}
 	calls := 0
 	runner := Runner{Simulation: true, Resume: resume, Lookup: func(string) (string, bool) { return "", false }, Checker: rehearsalChecker{}, Build: func(p execution.Profile, _ func(string) (string, bool)) (execution.Executor, error) {
 		return rehearsalCount{next: rehearsalExecutor{reviewer: p.ID == "review"}, count: &calls}, nil

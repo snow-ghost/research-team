@@ -86,15 +86,20 @@ end Wrapped4
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--generator", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--generator")
+    source.add_argument("--report")
     parser.add_argument("--output", required=True)
     parser.add_argument("--lean-output")
     parser.add_argument("--lean-bin")
     parser.add_argument("--lean-path")
     args = parser.parse_args()
-    report = subprocess.run(
-        [args.generator, "8"], check=True, capture_output=True, text=True
-    ).stdout
+    if args.report:
+        report = Path(args.report).read_text()
+    else:
+        report = subprocess.run(
+            [args.generator, "8"], check=True, capture_output=True, text=True
+        ).stdout
     data = validate(parse_report(report), 16, 8)
     if data["distance"] != 16 or data["no_path_through"] != 15:
         raise ValueError("expected distance 16 and exhaustive exclusion through 15")

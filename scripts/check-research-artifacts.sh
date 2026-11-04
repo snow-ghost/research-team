@@ -32,8 +32,9 @@ BIDIRECTIONAL_OUTPUT="$("$BUILD_DIR/near-binary-bidirectional" 8)"
 printf '%s\n' "$BIDIRECTIONAL_OUTPUT" | grep -F 'distance=16' >/dev/null
 printf '%s\n' "$BIDIRECTIONAL_OUTPUT" | grep -F 'no_path_through=15' >/dev/null
 printf '%s\n' "$BIDIRECTIONAL_OUTPUT" | grep -F 'verified=true' >/dev/null
+printf '%s\n' "$BIDIRECTIONAL_OUTPUT" > "$BUILD_DIR/near-binary-bidirectional-r8-n16.txt"
 python3 "$ROOT/scripts/near_binary_bidirectional_witness.py" \
-  --generator "$BUILD_DIR/near-binary-bidirectional" \
+  --report "$BUILD_DIR/near-binary-bidirectional-r8-n16.txt" \
   --output "$BUILD_DIR/near-binary-bidirectional-r8-n16.json" \
   --lean-output "$BUILD_DIR/NearBinaryR8N16.lean" \
   --lean-bin "$LEAN_BIN" \

@@ -123,7 +123,14 @@ func LoadMaintenanceOptions(path string, lookup func(string) (string, bool)) (Op
 }
 
 func LoadOptions(path string) (Options, error) {
-	o := Options{Profiles: map[string]execution.Profile{}, Labels: map[string]string{}, Lookup: os.LookupEnv, Factory: execution.Build}
+	return LoadOptionsWithLookup(path, os.LookupEnv)
+}
+
+func LoadOptionsWithLookup(path string, lookup func(string) (string, bool)) (Options, error) {
+	if lookup == nil {
+		lookup = os.LookupEnv
+	}
+	o := Options{Profiles: map[string]execution.Profile{}, Labels: map[string]string{}, Lookup: lookup, Factory: execution.Build}
 	if err := ReadJSON(path, &o.Config); err != nil {
 		return o, err
 	}
@@ -173,7 +180,7 @@ func LoadOptions(path string) (Options, error) {
 			if value, ok := values[key]; ok {
 				return value, true
 			}
-			return os.LookupEnv(key)
+			return lookup(key)
 		}
 	}
 	relative, err := filepath.Rel(c.WebDir, c.DataDir)

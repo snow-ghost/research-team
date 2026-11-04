@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/snow-ghost/research-team/internal/execution"
+	"github.com/snow-ghost/research-team/internal/researchweb"
 )
 
 func main() {
@@ -25,6 +26,8 @@ func main() {
 
 func run() error {
 	configPath := flag.String("config", "", "Trusted executor profile JSON")
+	serverConfig := flag.String("server-config", "", "Server configuration for credential references")
+	composeEnv := flag.String("compose-env", "", "Private environment file for credential references")
 	taskPath := flag.String("task", "", "Task JSON")
 	execute := flag.Bool("execute", false, "Execute the task; may incur provider charges")
 	flag.Parse()
@@ -48,7 +51,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	executor, err := execution.Build(profile, os.LookupEnv)
+	lookup := os.LookupEnv
+	if *composeEnv != "" {
+		lookup, err = researchweb.PrivateEnvLookup(*composeEnv)
+		if err != nil {
+			return err
+		}
+	}
+	if *serverConfig != "" {
+		options, err := researchweb.LoadOptionsWithLookup(*serverConfig, lookup)
+		if err != nil {
+			return err
+		}
+		lookup = options.Lookup
+	}
+	executor, err := execution.Build(profile, lookup)
 	if err != nil {
 		return err
 	}

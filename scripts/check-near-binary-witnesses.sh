@@ -25,5 +25,6 @@ run_witness() {
 run_witness 14 6 12
 run_witness 10 7 8
 run_witness 12 7 11
+run_witness 15 7 14
 run_witness 11 8 10
 printf '%s\n' 'near-binary witnesses: exhaustive BFS, independent words and Lean certificates verified'

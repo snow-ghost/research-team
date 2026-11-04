@@ -108,6 +108,37 @@ def six_unique_far_ops(n):
     return ops
 
 
+def seven_unique_flip_ops(n):
+    if n < 15:
+        return []
+    ops = [
+        {"direction": direction, "index": index}
+        for direction, index in (
+            ("left", 0),
+            ("left", 0),
+            ("left", 4),
+            ("left", 4),
+            ("left", 7),
+            ("right", 4),
+            ("left", 7),
+            ("left", 5),
+        )
+    ]
+    ops += [{"direction": "right", "index": i} for i in range(8, n - 7)]
+    ops += [
+        {"direction": direction, "index": index}
+        for direction, index in (
+            ("right", n - 3),
+            ("left", 0),
+            ("right", n - 3),
+            ("right", n - 1),
+            ("left", n - 4),
+            ("right", n - 1),
+        )
+    ]
+    return ops
+
+
 def attach_hypotheses(data):
     macro = six_unique_far_ops(data["n"])
     indices = [i for i, witness in enumerate(data["witnesses"]) if witness["ops"] == macro]
@@ -118,6 +149,15 @@ def attach_hypotheses(data):
             "witness_indices": indices,
             "word_length": len(macro),
             "lean_lemma": "Wrapped4.sixUniqueFarOps_correct_extra",
+            "status": "general_word_verified_not_a_general_diameter_proof",
+        })
+    flip_macro = seven_unique_flip_ops(data["n"])
+    if data["unique"] == 7 and data["flip"]["ops"] == flip_macro:
+        data["hypotheses"].append({
+            "id": "seven-unique-flip",
+            "target": "flip",
+            "word_length": len(flip_macro),
+            "lean_lemma": "Wrapped4.sevenUniqueFlipOps_correct",
             "status": "general_word_verified_not_a_general_diameter_proof",
         })
 
@@ -187,9 +227,10 @@ def main():
     if args.expected_diameter is not None and data["diameter"] != args.expected_diameter:
         raise ValueError(f"diameter mismatch: {data['diameter']} != {args.expected_diameter}")
     if args.use_hypothesis:
-        if not data["hypotheses"]:
-            parser.error("no supported macro hypothesis matches a witness")
-        args.witness_index = data["hypotheses"][0]["witness_indices"][0]
+        matches = [item for item in data["hypotheses"] if item.get("witness_indices")]
+        if not matches:
+            parser.error("no supported macro hypothesis matches a diameter witness")
+        args.witness_index = matches[0]["witness_indices"][0]
     if args.witness_index >= len(data["witnesses"]):
         parser.error("requested witness index is absent")
     output = Path(args.output)

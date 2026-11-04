@@ -13,11 +13,13 @@ export LEAN_PATH="$BUILD_DIR"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/Certificates.olean" "$ROOT/examples/research/wrapped4/Certificates.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/Repeated.olean" "$ROOT/examples/research/wrapped4/Repeated.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/NearBinary.olean" "$ROOT/examples/research/wrapped4/NearBinary.lean"
+"$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/NearBinaryFlip.olean" "$ROOT/examples/research/wrapped4/NearBinaryFlip.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4.olean" "$ROOT/examples/research/wrapped4/Wrapped4.lean"
 python3 "$ROOT/scripts/check_macro_evaluation.py" \
   --cases "$ROOT/examples/evaluation-macro-cases.json" \
   --lean-bin "$LEAN_BIN" \
   --build-dir "$BUILD_DIR"
+python3 "$ROOT/scripts/near_binary_potential.py"
 
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/repeated_bfs_fast.cpp" -o "$BUILD_DIR/repeated-bfs-fast"
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/near_binary_bfs128.cpp" -o "$BUILD_DIR/near-binary-bfs128"
@@ -60,6 +62,12 @@ import Wrapped4
 #print axioms Wrapped4.sixUniqueFarOps_correct_list
 #print axioms Wrapped4.sixUniqueFarOps_correct_extra
 #print axioms Wrapped4.sixUniqueFarOps_length
+#print axioms Wrapped4.sevenUniqueFlipOps_correct
+#print axioms Wrapped4.sevenUniqueFlipOps_length
+#print axioms Wrapped4.sevenUniqueFlip14Ops_correct
+#print axioms Wrapped4.sevenUniqueFlip14Ops_length
+#print axioms Wrapped4.eightUniqueFlip15Ops_correct
+#print axioms Wrapped4.eightUniqueFlip15Ops_length
 EOF
 
 OUTPUT="$("$LEAN_BIN" "$AUDIT")"

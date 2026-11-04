@@ -22,7 +22,15 @@ run_witness() {
     --lean-path "$BUILD_DIR"
 }
 
+run_witness 10 6 8
+run_witness 11 6 9
+run_witness 12 6 10
+run_witness 13 6 11
 run_witness 14 6 12
+run_witness 15 6 13
+run_witness 16 6 14
+run_witness 17 6 15
+run_witness 18 6 16
 run_witness 10 7 8
 run_witness 12 7 11
 run_witness 15 7 14

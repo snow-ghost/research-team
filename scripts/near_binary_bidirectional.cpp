@@ -91,22 +91,13 @@ struct Side {
         return false;
     }
 };
-static std::vector<int> pathToRoot(Side& side, State current) {
+static std::vector<int> pathFromRoot(const Side& side, uint32_t id) {
     std::vector<int> path;
-    while (side.index.get(current) != 0) {
-        uint32_t id = side.index.get(current);
-        bool found = false;
-        for (int i = 0; i < 16 && !found; ++i) for (int inv = 0; inv < 2 && !found; ++inv) {
-            State previous = step(current, 16, i, !inv);
-            if (!side.index.contains(previous)) continue;
-            uint32_t parent = side.index.get(previous);
-            if (side.dist[parent] + 1 != side.dist[id]) continue;
-            path.push_back(2 * i + inv);
-            current = previous;
-            found = true;
-        }
-        if (!found) return {};
+    while (id != 0) {
+        path.push_back(side.via[id]);
+        id = side.parent[id];
     }
+    std::reverse(path.begin(), path.end());
     return path;
 }
 int main(int argc, char** argv) {
@@ -128,15 +119,24 @@ int main(int argc, char** argv) {
     for (int depth = 1; depth <= 9; ++depth) {
         uint32_t meeting = 0;
         if (backward.extend(depth, forward, meeting)) {
-            std::vector<int> left = pathToRoot(forward, backward.states[meeting]);
+            State meetingState = backward.states[meeting];
+            std::vector<int> left = pathFromRoot(forward, forward.index.get(meetingState));
+            std::vector<int> backwardPath = pathFromRoot(backward, meeting);
             std::vector<int> right;
-            for (uint32_t p = meeting; p != 0; p = backward.parent[p]) right.push_back(backward.via[p]);
-            std::reverse(left.begin(), left.end());
+            for (auto it = backwardPath.rbegin(); it != backwardPath.rend(); ++it) right.push_back(*it ^ 1);
+            std::vector<int> word = left;
+            word.insert(word.end(), right.begin(), right.end());
+            State verified = encode(initial);
+            for (int op : word) verified = step(verified, 16, op / 2, op % 2);
+            if (verified != encode(target)) return 4;
             std::cout << "left=" << left.size() << " right=" << right.size() << "\n";
-            std::cout << "distance=" << (left.size() + right.size()) << "\n";
+            std::cout << "distance=" << word.size() << "\n";
+            std::cout << "no_path_through=" << (7 + depth - 1) << "\n";
             std::cout << "state=";
-            for (int value : decode(backward.states[meeting], 16)) std::cout << value;
-            std::cout << "\n";
+            for (int value : decode(meetingState, 16)) std::cout << value;
+            std::cout << "\nword=";
+            for (int op : word) std::cout << (op % 2 ? 'R' : 'L') << op / 2 << ' ';
+            std::cout << "\nverified=true\n";
             return 0;
         }
     }

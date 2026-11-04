@@ -18,7 +18,7 @@ def validate_answer(answer, candidate, declaration, mode, library_theorem):
     source = answer["source"]
     if not source.startswith("import Goal\n"):
         raise ValueError("source must start with import Goal")
-    if "import Mathlib" in source or not source.startswith("import Goal\n"):
+    if "\nimport " in source:
         raise ValueError("only import Goal is allowed")
     for token in FORBIDDEN:
         if token in source:
@@ -55,6 +55,7 @@ def self_test():
     validate_answer(valid, "Candidate202", "Research202", "proof", "Wrapped4.sixUniqueFarOps_correct")
     for source in (
         "import Mathlib\ntheorem Candidate202 : Research202 := by\n  intro n hn a b c d e f x\n  exact Wrapped4.sixUniqueFarOps_correct hn a b c d e f x",
+        "import Goal\nimport Library\ntheorem Candidate202 : Research202 := by\n  intro n hn a b c d e f x\n  exact Wrapped4.sixUniqueFarOps_correct hn a b c d e f x",
         "import Goal\ntheorem Candidate202 : Research202 := by\n  exact Wrapped4.sixUniqueFarOps_correct hn a b c d e f x",
         "import Goal\ntheorem Candidate202 : Research202 := by\n  intro n hn a b c d e f x\n  exact Wrapped4.sixUniqueFarOps_correct hn a b c d e f x\nQed.",
     ):

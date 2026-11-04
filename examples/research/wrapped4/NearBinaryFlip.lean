@@ -140,4 +140,17 @@ theorem eightUniqueFlip15Ops_correct :
 theorem eightUniqueFlip15Ops_length : eightUniqueFlip15Ops.length = 14 := by
   rfl
 
+def eightUniqueFlip16Ops : List Op :=
+  [Op.left 15, Op.left 14, Op.right 0, Op.left 14, Op.right 11, Op.left 14,
+    Op.left 13, Op.left 11, Op.right 5, Op.right 6, Op.left 8, Op.left 4,
+    Op.right 6, Op.left 8, Op.left 7, Op.right 5]
+
+theorem eightUniqueFlip16Ops_correct :
+    applyWrappedOps eightUniqueFlip16Ops ([0, 1, 2, 3, 4, 5, 6, 7] ++ List.replicate 8 8) =
+      List.replicate 8 8 ++ [7, 6, 5, 4, 3, 2, 1, 0] := by
+  decide
+
+theorem eightUniqueFlip16Ops_length : eightUniqueFlip16Ops.length = 16 := by
+  rfl
+
 end Wrapped4

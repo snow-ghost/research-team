@@ -30,6 +30,14 @@ python3 "$ROOT/scripts/near_binary_beam.py"
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/near_binary_bidirectional.cpp" -o "$BUILD_DIR/near-binary-bidirectional"
 BIDIRECTIONAL_OUTPUT="$("$BUILD_DIR/near-binary-bidirectional" 8)"
 printf '%s\n' "$BIDIRECTIONAL_OUTPUT" | grep -F 'distance=16' >/dev/null
+printf '%s\n' "$BIDIRECTIONAL_OUTPUT" | grep -F 'no_path_through=15' >/dev/null
+printf '%s\n' "$BIDIRECTIONAL_OUTPUT" | grep -F 'verified=true' >/dev/null
+python3 "$ROOT/scripts/near_binary_bidirectional_witness.py" \
+  --generator "$BUILD_DIR/near-binary-bidirectional" \
+  --output "$BUILD_DIR/near-binary-bidirectional-r8-n16.json" \
+  --lean-output "$BUILD_DIR/NearBinaryR8N16.lean" \
+  --lean-bin "$LEAN_BIN" \
+  --lean-path "$BUILD_DIR"
 BFS_OUTPUT="$("$BUILD_DIR/repeated-bfs-fast" 11 2)"
 printf '%s\n' "$BFS_OUTPUT"
 printf '%s\n' "$BFS_OUTPUT" | grep -F 'states=19958400 eccentricity=10' >/dev/null
@@ -75,6 +83,8 @@ import Wrapped4
 #print axioms Wrapped4.sevenUniqueFlip14Ops_length
 #print axioms Wrapped4.eightUniqueFlip15Ops_correct
 #print axioms Wrapped4.eightUniqueFlip15Ops_length
+#print axioms Wrapped4.eightUniqueFlip16Ops_correct
+#print axioms Wrapped4.eightUniqueFlip16Ops_length
 EOF
 
 OUTPUT="$("$LEAN_BIN" "$AUDIT")"

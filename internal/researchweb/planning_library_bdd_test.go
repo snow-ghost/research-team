@@ -123,6 +123,18 @@ func TestPlanningLibraryBDD_ObligationsArePricedAndPassedToPlanner(t *testing.T)
 	if !strings.Contains(modelInput, "library_search") {
 		t.Fatal("planner did not receive bounded library assessment", modelInput)
 	}
+	proofMaterial := s.planningLibraryMaterial(v.Data, Attempt{Target: target, TargetRevision: a.TargetRevision, Role: "proof"})
+	if proofMaterial == nil || len(proofMaterial.Matches) != 1 {
+		t.Fatal("proof executor did not inherit the current library search")
+	}
+	match := proofMaterial.Matches[0]
+	library := v.Data.Library[0]
+	if match.Theorem != library.Goal.Candidate || match.Declaration != library.Goal.Declaration || match.Module != library.Module || match.LibraryGoalSHA256 != leancheck.Digest(library.Goal) {
+		t.Fatalf("proof executor received incomplete lemma metadata: %+v", match)
+	}
+	if stale := s.planningLibraryMaterial(v.Data, Attempt{Target: target, TargetRevision: a.TargetRevision + 1, Role: "proof"}); stale != nil {
+		t.Fatal("stale library search propagated to a revised target")
+	}
 	if v.entity(target).Status != "open" {
 		t.Fatal("library estimate accepted the target")
 	}

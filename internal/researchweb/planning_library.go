@@ -41,6 +41,10 @@ type PlanningLibraryMatch struct {
 	Missing                  []leancheck.MissingArgument `json:"missing,omitempty"`
 	ID                       string                      `json:"id"`
 	Library                  string                      `json:"library"`
+	Theorem                  string                      `json:"theorem"`
+	Declaration              string                      `json:"declaration"`
+	Module                   string                      `json:"module"`
+	LibraryGoalSHA256        string                      `json:"library_goal_sha256"`
 	Status                   string                      `json:"status"`
 	Application              string                      `json:"application,omitempty"`
 	CostComparison           string                      `json:"cost_comparison,omitempty"`
@@ -166,24 +170,50 @@ func eWorkflow(d Data, e *Entity) *ResearchWorkflow {
 	return nil
 }
 
+func librarySearchForAttempt(d Data, a Attempt) *PlanningLibrarySearch {
+	if a.LibrarySearch != nil {
+		return a.LibrarySearch
+	}
+	if a.Role != "proof" && a.Role != "formalize" {
+		return nil
+	}
+	for i := len(d.Attempts) - 1; i >= 0; i-- {
+		candidate := d.Attempts[i]
+		if candidate.Target == a.Target && candidate.TargetRevision == a.TargetRevision && candidate.LibrarySearch != nil {
+			return candidate.LibrarySearch
+		}
+	}
+	return nil
+}
+
 func (s *Service) planningLibraryMaterial(d Data, a Attempt) *PlanningLibraryMaterial {
-	if a.LibrarySearch == nil {
+	search := librarySearchForAttempt(d, a)
+	if search == nil {
 		return nil
 	}
 	costs := s.planningCostEstimates(&d, a.Target)
-	if a.LibrarySearch.Costs != nil {
-		costs = *a.LibrarySearch.Costs
-	} else if a.LibrarySearch.NewProofEstimatedChecks > 0 {
-		costs.NewProof.EstimatedChecks = a.LibrarySearch.NewProofEstimatedChecks
-		costs.NewProof.HistorySamples = a.LibrarySearch.HistorySamples
+	if search.Costs != nil {
+		costs = *search.Costs
+	} else if search.NewProofEstimatedChecks > 0 {
+		costs.NewProof.EstimatedChecks = search.NewProofEstimatedChecks
+		costs.NewProof.HistorySamples = search.HistorySamples
 	}
-	out := &PlanningLibraryMaterial{Search: a.LibrarySearch, Matches: []PlanningLibraryMatch{}, CostModel: "New proof and format repair use only Lean-verified attempts and actual model_requested events, with provider-specific ACP fallback to one Kimi prompt or Coddy usage events. New proof excludes repairs, uses lower median with fallback two and cap 1..4; repairs use fallback one and cap 1..2. Lemma application is one native check plus one check per unproved premise. BFS is one bounded computation. Matches are applied automatically only when their estimated cost does not exceed the snapshotted new-proof estimate; more expensive obligations remain an operator/planner decision. Failed, limited, stale, unverified and unreadable attempts are excluded. These are heuristic costs, not probabilities or guaranteed savings.", Costs: costs, NewProofEstimatedChecks: costs.NewProof.EstimatedChecks, HistorySamples: costs.NewProof.HistorySamples, Accepted: false}
-	for _, id := range a.LibrarySearch.Matches {
+	out := &PlanningLibraryMaterial{Search: search, Matches: []PlanningLibraryMatch{}, CostModel: "New proof and format repair use only Lean-verified attempts and actual model_requested events, with provider-specific ACP fallback to one Kimi prompt or Coddy usage events. New proof excludes repairs, uses lower median with fallback two and cap 1..4; repairs use fallback one and cap 1..2. Lemma application is one native check plus one check per unproved premise. BFS is one bounded computation. Matches are applied automatically only when their estimated cost does not exceed the snapshotted new-proof estimate; more expensive obligations remain an operator/planner decision. Failed, limited, stale, unverified and unreadable attempts are excluded. These are heuristic costs, not probabilities or guaranteed savings.", Costs: costs, NewProofEstimatedChecks: costs.NewProof.EstimatedChecks, HistorySamples: costs.NewProof.HistorySamples, Accepted: false}
+	for _, id := range search.Matches {
 		for _, match := range d.LemmaMatches {
 			if match.ID != id || !matchCurrent(&d, match) {
 				continue
 			}
 			item := PlanningLibraryMatch{ID: match.ID, Library: match.Library, Status: match.Report.Status, Application: match.Application, Bindings: []leancheck.Argument{}, Missing: []leancheck.MissingArgument{}}
+			for _, library := range d.Library {
+				if library.ID == match.Library {
+					item.Theorem = library.Goal.Candidate
+					item.Declaration = library.Goal.Declaration
+					item.Module = library.Module
+					item.LibraryGoalSHA256 = leancheck.Digest(library.Goal)
+					break
+				}
+			}
 			for i, binding := range match.Report.Bindings {
 				if i >= 16 {
 					break

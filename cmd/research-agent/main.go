@@ -32,6 +32,7 @@ func run() error {
 	preflightCandidate := flag.String("preflight-candidate", "", "Candidate declaration name; defaults to Candidate+declaration")
 	preflightTheorem := flag.String("preflight-theorem", "", "Required library theorem for preflight")
 	preflightOutcome := flag.String("preflight-outcome", "proof", "Required typed outcome: proof or refutation")
+	preflightRepair := flag.Bool("preflight-repair", false, "Allow one additional executor call with preflight diagnostics")
 	taskPath := flag.String("task", "", "Task JSON")
 	execute := flag.Bool("execute", false, "Execute the task; may incur provider charges")
 	flag.Parse()
@@ -75,20 +76,28 @@ func run() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	result, runErr := executor.Run(ctx, task)
+	var rule execution.CandidateRule
 	if *preflightDeclaration != "" {
 		if *preflightTheorem == "" {
 			return errors.New("-preflight-theorem is required with -preflight-declaration")
+		}
+		if *preflightOutcome != "proof" && *preflightOutcome != "refutation" {
+			return errors.New("-preflight-outcome must be proof or refutation")
 		}
 		candidate := *preflightCandidate
 		if candidate == "" {
 			candidate = "Candidate" + *preflightDeclaration
 		}
-		rule := execution.CandidateRule{Candidate: candidate, Declaration: *preflightDeclaration, Theorem: *preflightTheorem, Outcome: *preflightOutcome}
-		if err := execution.ValidateCandidate(result.Candidate, rule); err != nil {
-			result.Status = "failed"
-			result.Diagnostics = append(result.Diagnostics, execution.Diagnostic{Source: "agent", Stage: "preflight", Kind: "preflight_rejected", Message: err.Error()})
-		}
+		rule = execution.CandidateRule{Candidate: candidate, Declaration: *preflightDeclaration, Theorem: *preflightTheorem, Outcome: *preflightOutcome}
+	} else if *preflightRepair {
+		return errors.New("-preflight-repair requires -preflight-declaration")
+	}
+	var result execution.Result
+	var runErr error
+	if *preflightDeclaration != "" {
+		result, runErr = execution.RunCandidatePreflight(ctx, executor, task, rule, *preflightRepair)
+	} else {
+		result, runErr = executor.Run(ctx, task)
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		return err

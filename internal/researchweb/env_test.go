@@ -8,6 +8,9 @@ import (
 
 func TestLoadOptionsWithLookupPreservesEnvironmentAfterSecrets(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(filepath.Join(dir, "web"), 0700); err != nil {
 		t.Fatal(err)
 	}

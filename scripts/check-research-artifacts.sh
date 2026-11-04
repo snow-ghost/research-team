@@ -20,11 +20,16 @@ python3 "$ROOT/scripts/check_macro_evaluation.py" \
   --lean-bin "$LEAN_BIN" \
   --build-dir "$BUILD_DIR"
 python3 "$ROOT/scripts/near_binary_potential.py"
+python3 "$ROOT/scripts/check_agent_answer.py" --self-test
+python3 "$ROOT/scripts/near_binary_beam.py"
 
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/repeated_bfs_fast.cpp" -o "$BUILD_DIR/repeated-bfs-fast"
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/near_binary_bfs128.cpp" -o "$BUILD_DIR/near-binary-bfs128"
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/near_binary_potential_search.cpp" -o "$BUILD_DIR/near-binary-potential-search"
 "$BUILD_DIR/near-binary-potential-search"
+"${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/near_binary_bidirectional.cpp" -o "$BUILD_DIR/near-binary-bidirectional"
+BIDIRECTIONAL_OUTPUT="$("$BUILD_DIR/near-binary-bidirectional" 8)"
+printf '%s\n' "$BIDIRECTIONAL_OUTPUT" | grep -F 'distance=16' >/dev/null
 BFS_OUTPUT="$("$BUILD_DIR/repeated-bfs-fast" 11 2)"
 printf '%s\n' "$BFS_OUTPUT"
 printf '%s\n' "$BFS_OUTPUT" | grep -F 'states=19958400 eccentricity=10' >/dev/null

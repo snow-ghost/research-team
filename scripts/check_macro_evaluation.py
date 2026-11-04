@@ -47,8 +47,8 @@ def main():
     audit.write_text("import MacroEvaluationGoals\n\nopen Wrapped4\n\n" + "\n".join(declarations))
     env = os.environ.copy()
     env["LEAN_PATH"] = str(build)
-    subprocess.run([args.lean_bin, "-o", str(build / "MacroEvaluationGoals.olean"), str(goals)], check=True, env=env)
-    checked = subprocess.run([args.lean_bin, str(audit)], check=True, capture_output=True, text=True, env=env)
+    subprocess.run([args.lean_bin, "-o", "MacroEvaluationGoals.olean", goals.name], check=True, env=env, cwd=build)
+    checked = subprocess.run([args.lean_bin, audit.name], check=True, capture_output=True, text=True, env=env, cwd=build)
     if re.search(r"sorryAx|native_decide|ofReduceBool|ofReduceNat", checked.stdout):
         raise ValueError("disallowed Lean axiom in macro evaluation baseline")
     print("macro evaluation: 12 goals compiled, 8 proofs and 4 refutations verified without model calls")

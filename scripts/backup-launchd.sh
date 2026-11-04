@@ -27,6 +27,7 @@ run_maintenance() {
 
 run_backup() {
   docker run --rm --user "$(id -u):$(id -g)" --add-host host.docker.internal:host-gateway \
+    --env RESEARCH_DATABASE_URL \
     -v "$ROOT:/src" -v "$ROOT:$ROOT" -v "$RESEARCH_BACKUP_ROOT:$RESEARCH_BACKUP_ROOT" \
     -w /src --entrypoint /src/.research-server/bin/research-backup-linux "$POSTGRES_IMAGE" \
     -config "$RESEARCH_TEAM_CONFIG" -local-postgres -out "$DESTINATION"

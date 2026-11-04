@@ -51,6 +51,7 @@ func waitTeam(t *testing.T, s *Service, id, status string) View {
 }
 func TestTeamBDD_FormalRepairReviewAndOperatorAcceptance(t *testing.T) {
 	var modelCalls, checks atomic.Int32
+	var leanRepairContext atomic.Bool
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		modelCalls.Add(1)
 		var body struct {
@@ -68,6 +69,9 @@ func TestTeamBDD_FormalRepairReviewAndOperatorAcceptance(t *testing.T) {
 			candidate = `{"outcome":"none_found","evidence":"Checked zero and boundary cases."}`
 		}
 		if strings.Contains(text, "ROLE_formalize") {
+			if strings.Contains(text, "lean_repair") && strings.Contains(text, "repair required") && strings.Contains(text, "previous_unverified") {
+				leanRepairContext.Store(true)
+			}
 			candidate = "```lean\nimport Goal\ntheorem Candidate : Statement := by simp [Statement]\n```"
 		}
 		if strings.Contains(text, "ROLE_review") {
@@ -115,7 +119,7 @@ func TestTeamBDD_FormalRepairReviewAndOperatorAcceptance(t *testing.T) {
 			id := stateOf(t, s).Teams[0].ID
 			v = waitTeam(t, s, id, "awaiting_review")
 			team := v.team(id)
-			if team.UsedAttempts != 5 || v.entity(goal).Status != "in_review" || len(v.Verifications) != 2 {
+			if team.UsedAttempts != 5 || team.LeanRepairsUsed != 1 || !leanRepairContext.Load() || v.entity(goal).Status != "in_review" || len(v.Verifications) != 2 {
 				t.Fatalf("bad pipeline: %+v", team)
 			}
 			proof := v.entity(goal)
@@ -130,6 +134,100 @@ func TestTeamBDD_FormalRepairReviewAndOperatorAcceptance(t *testing.T) {
 		})
 	}
 }
+
+func TestTeamBDD_LeanRepairStopsAfterOneFailure(t *testing.T) {
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		text := ""
+		for _, m := range body.Messages {
+			text += m.Content
+		}
+		candidate := "Proof argument."
+		if strings.Contains(text, "ROLE_counterexample") {
+			candidate = `{"outcome":"none_found","evidence":"Checked boundary cases."}`
+		}
+		if strings.Contains(text, "ROLE_formalize") {
+			candidate = "```lean\nimport Goal\ntheorem Candidate : Statement := by simp [Statement]\n```"
+		}
+		completeModel(w, candidate)
+	}))
+	defer model.Close()
+	o := teamOptions(t, model.URL+"/v1")
+	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
+		return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "failed", Phase: "compile", Diagnostics: "still invalid", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+	})
+	s := serviceFor(t, o)
+	v := studyFor(t, s)
+	goal := v.Studies[0].Goal
+	if err := s.SetFormalGoal(goal, FormalGoalRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Goal: leancheck.Goal{Source: "def Statement : Prop := True", Declaration: "Statement", Candidate: "Candidate"}}); err != nil {
+		t.Fatal(err)
+	}
+	v = stateOf(t, s)
+	if err := s.StartTeam(TeamRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Study: v.Studies[0].ID, Profiles: map[string]string{"proof": "proof", "counterexample": "counterexample", "formalize": "formalize", "review": "review"}, Workspace: "source", MaxAttempts: 6, RequireLean: true, Confirm: true}); err != nil {
+		t.Fatal(err)
+	}
+	id := stateOf(t, s).Teams[0].ID
+	v = waitTeam(t, s, id, "blocked")
+	team := v.team(id)
+	if team.LeanRepairsUsed != 1 || team.UsedAttempts != 4 || len(v.Verifications) != 2 || len(v.Attempts) != 4 || !strings.Contains(team.Reason, "Исчерпан бюджет исправлений Lean") {
+		t.Fatalf("Lean repair was not bounded to one attempt: %+v verifications=%d attempts=%d", team, len(v.Verifications), len(v.Attempts))
+	}
+}
+
+func TestTeamBDD_FormatAndLeanFailuresShareRepairBudget(t *testing.T) {
+	var formalizeCalls atomic.Int32
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		text := ""
+		for _, m := range body.Messages {
+			text += m.Content
+		}
+		candidate := "Proof argument."
+		if strings.Contains(text, "ROLE_counterexample") {
+			candidate = `{"outcome":"none_found","evidence":"Checked boundary cases."}`
+		}
+		if strings.Contains(text, "ROLE_formalize") {
+			if formalizeCalls.Add(1) == 1 {
+				candidate = "not a Lean block"
+			} else {
+				candidate = "```lean\nimport Goal\ntheorem Candidate : Statement := by simp [Statement]\n```"
+			}
+		}
+		completeModel(w, candidate)
+	}))
+	defer model.Close()
+	o := teamOptions(t, model.URL+"/v1")
+	o.Checker = checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
+		return leancheck.Report{AuditSHA256: leancheck.AuditDigest(), Status: "failed", Phase: "compile", Diagnostics: "still invalid", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+	})
+	s := serviceFor(t, o)
+	v := studyFor(t, s)
+	goal := v.Studies[0].Goal
+	if err := s.SetFormalGoal(goal, FormalGoalRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Goal: leancheck.Goal{Source: "def Statement : Prop := True", Declaration: "Statement", Candidate: "Candidate"}}); err != nil {
+		t.Fatal(err)
+	}
+	v = stateOf(t, s)
+	if err := s.StartTeam(TeamRequest{ExpectedRevision: v.Revision, RequestID: identifier("cmd"), Study: v.Studies[0].ID, Profiles: map[string]string{"proof": "proof", "counterexample": "counterexample", "formalize": "formalize", "review": "review"}, Workspace: "source", MaxAttempts: 6, RequireLean: true, Confirm: true}); err != nil {
+		t.Fatal(err)
+	}
+	id := stateOf(t, s).Teams[0].ID
+	v = waitTeam(t, s, id, "blocked")
+	team := v.team(id)
+	if team.LeanRepairsUsed != 1 || formalizeCalls.Load() != 2 || len(v.Verifications) != 1 || len(v.Attempts) != 4 || !strings.Contains(team.Reason, "Исчерпан бюджет исправлений Lean") {
+		t.Fatalf("format and Lean failures did not share one repair budget: %+v calls=%d verifications=%d", team, formalizeCalls.Load(), len(v.Verifications))
+	}
+}
+
 func TestTeamBDD_CounterexampleBlocksAndBudgetStopsRejection(t *testing.T) {
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		completeModel(w, `{"outcome":"counterexample_candidate","evidence":"Potential counterexample"}`)

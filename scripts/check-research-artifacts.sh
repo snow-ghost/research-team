@@ -22,6 +22,7 @@ python3 "$ROOT/scripts/check_macro_evaluation.py" \
 python3 "$ROOT/scripts/near_binary_potential.py"
 python3 "$ROOT/scripts/check_agent_answer.py" --self-test
 python3 "$ROOT/scripts/near_binary_beam.py"
+python3 "$ROOT/scripts/r8_induction_search.py" >/dev/null
 
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/repeated_bfs_fast.cpp" -o "$BUILD_DIR/repeated-bfs-fast"
 "${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra "$ROOT/scripts/near_binary_bfs128.cpp" -o "$BUILD_DIR/near-binary-bfs128"

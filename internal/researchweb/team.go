@@ -14,6 +14,7 @@ type ResearchTeam struct {
 	Notes             []OperatorNote              `json:"operator_notes,omitempty"`
 	FormatRepairLimit int                         `json:"format_repair_limit,omitempty"`
 	FormatRepairsUsed int                         `json:"format_repairs_used,omitempty"`
+	LeanRepairsUsed   int                         `json:"lean_repairs_used,omitempty"`
 	Decisions         []TeamDecision              `json:"decisions,omitempty"`
 	Diagnostic        string                      `json:"diagnostic,omitempty"`
 	Strategy          string                      `json:"strategy,omitempty"`
@@ -550,10 +551,14 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			return block("Исходный ответ формализатора поврежден или имеет неизвестное происхождение.")
 		}
 		if _, extractErr := leancheck.ExtractSource(result.Candidate); extractErr != nil {
+			if team.LeanRepairsUsed >= 1 || team.UsedAttempts >= team.MaxAttempts {
+				return block("Исчерпан бюджет исправлений Lean.")
+			}
 			team.Diagnostic = "Формат ответа: нужен один завершенный блок Lean с import Goal."
 			if err := s.queueTeamAttempt(d, team, "formalize", attempt.ID); err != nil {
 				return block(err.Error())
 			}
+			team.LeanRepairsUsed++
 			team.Reason = "Исправление формы ответа формализатора."
 			return nil
 		}
@@ -584,9 +589,16 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			return errNoCycleChange
 		}
 		if !verifiedReportMatches(*v) || !verificationMatches(d, *v) {
+			if team.LeanRepairsUsed >= 1 || team.UsedAttempts >= team.MaxAttempts {
+				return block("Исчерпан бюджет исправлений Lean.")
+			}
+			if v.Report != nil {
+				team.Diagnostic = execution.Preview(v.Report.Diagnostics, 4000)
+			}
 			if err := s.queueTeamAttempt(d, team, "formalize", v.Attempt); err != nil {
 				return block("Отрицание не прошло проверку: " + err.Error())
 			}
+			team.LeanRepairsUsed++
 			team.Stage, team.Reason = "formalize", "Исправление отрицания по диагностике Lean."
 			return nil
 		}
@@ -615,7 +627,7 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			return errNoCycleChange
 		}
 		if v.Status != "verified" {
-			if team.UsedAttempts >= team.MaxAttempts {
+			if team.LeanRepairsUsed >= 1 || team.UsedAttempts >= team.MaxAttempts {
 				return block("Исчерпан бюджет исправлений Lean.")
 			}
 			parent := team.Current["formalize"]
@@ -628,6 +640,7 @@ func (s *Service) advanceTeam(d *Data, team *ResearchTeam) error {
 			if err := s.queueTeamAttempt(d, team, "formalize", parent); err != nil {
 				return block(err.Error())
 			}
+			team.LeanRepairsUsed++
 			team.Stage = "formalize"
 			team.Reason = "Исправление по диагностике Lean."
 			return nil
@@ -842,6 +855,21 @@ func (s *Service) teamContext(d Data, a Attempt) any {
 	if parent := d.attempt(a.ParentAttempt); parent != nil && parent.Target == a.Target && parent.TargetRevision == a.TargetRevision {
 		if r, err := s.readResult(*parent); err == nil && repairableSkillFailure(r) && s.safeResultContent(*parent, r) {
 			out["format_repair"] = map[string]any{"attempt": parent.ID, "candidate": execution.Preview(r.Candidate, 32000), "checks": r.SkillChecks, "instruction": "Исправь форму ответа по обязательным проверкам навыка. Не считай предыдущий ответ доказанным результатом."}
+		}
+		if a.Role == "formalize" {
+			if v := d.verification(team.Verification); v != nil && v.Attempt == parent.ID && v.Target == a.Target && v.TargetRevision == a.TargetRevision && v.Status != "verified" {
+				repair := map[string]any{"attempt": parent.ID, "verification": v.ID, "status": v.Status, "instruction": "Исправь прежний кандидат по диагностике Lean. Верни новый кандидат для независимой проверки; прежний ответ не считается доказательством."}
+				if v.Report != nil {
+					repair["phase"] = v.Report.Phase
+					repair["diagnostics"] = execution.Preview(v.Report.Diagnostics, 4000)
+					repair["goal_sha256"] = v.Report.GoalSHA256
+					repair["source_sha256"] = v.Report.SourceSHA256
+				}
+				if r, err := s.readResult(*parent); err == nil && s.safeResultContent(*parent, r) {
+					repair["candidate"] = execution.Preview(r.Candidate, 32000)
+				}
+				out["lean_repair"] = repair
+			}
 		}
 	}
 	if e := d.entity(a.Target); e != nil {

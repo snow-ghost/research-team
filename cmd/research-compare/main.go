@@ -38,7 +38,14 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "validated_not_authorized", "version": c.Version, "cases": len(c.Cases), "model_calls": 0, "mathematical_verification": false}); err != nil {
+		maxRequests := 216
+		if c.Version == 4 {
+			maxRequests = 432
+		}
+		if c.MaxModelRequests > 0 {
+			maxRequests = c.MaxModelRequests
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "validated_not_authorized", "version": c.Version, "cases": len(c.Cases), "max_model_requests": maxRequests, "model_calls": 0, "mathematical_verification": false}); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

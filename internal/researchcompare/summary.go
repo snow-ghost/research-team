@@ -47,7 +47,14 @@ func Summarize(r Report) (ComparisonSummary, error) {
 			return s, err
 		}
 	}
-	if (r.Version != 2 && r.Version != 3 && r.Version != 4) || r.MaxRequests != maxRequests {
+	if r.Version != 2 && r.Version != 3 && r.Version != 4 {
+		return s, fmt.Errorf("summary requires controlled comparison")
+	}
+	if r.CustomBudget {
+		if r.MaxRequests < 1 || r.MaxRequests > maxRequests {
+			return s, fmt.Errorf("invalid custom comparison budget")
+		}
+	} else if r.MaxRequests != maxRequests {
 		return s, fmt.Errorf("summary requires controlled comparison")
 	}
 	third := "adaptive"
@@ -123,7 +130,7 @@ func Summarize(r Report) (ComparisonSummary, error) {
 		group := groups[key]
 		valid := len(group) == 4
 		for _, run := range group {
-			if run.Status == "running" || run.TimeIncomplete || strings.Contains(run.Error, "interrupted_request") {
+			if run.Status == "running" || run.Status == "not_started_budget" || run.TimeIncomplete || strings.Contains(run.Error, "interrupted_request") {
 				valid = false
 			}
 			for _, stage := range run.Stages {

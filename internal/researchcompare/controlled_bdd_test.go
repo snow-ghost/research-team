@@ -54,3 +54,60 @@ func TestControlledBDD_ThreeModesTwoRepetitionsAndNoModelBaseline(t *testing.T) 
 		t.Fatal("completed requests replayed", err, calls)
 	}
 }
+
+func TestControlledBDD_GlobalBudgetReservesBeforeModelCalls(t *testing.T) {
+	c := comparisonFixture(t)
+	c.Version = 2
+	c.MaxModelRequests = 6
+	for i := range c.Cases {
+		c.Cases[i].Class = fmt.Sprintf("class-%d", i)
+	}
+	calls := 0
+	runner := Runner{Build: func(p execution.Profile, _ func(string) (string, bool)) (execution.Executor, error) {
+		return executorFunc(func(_ context.Context, task execution.Task) (execution.Result, error) {
+			calls++
+			answer := `{"outcome":"proof","source":"import Goal\ntheorem Candidate : Statement := by trivial","evidence":"Direct proof"}`
+			if p.ID == "proof" {
+				answer = "Mathematical proof"
+			}
+			if p.ID == "counter" {
+				answer = `{"outcome":"inconclusive","source":"","evidence":"Checked boundary"}`
+			}
+			if p.ID == "review" {
+				answer = `{"summary":"Reviewed","findings":[]}`
+			}
+			return execution.Result{Candidate: answer, Events: []execution.Event{{Type: "model_requested"}}, Usage: &execution.Usage{InputTokens: 5, OutputTokens: 3}}, nil
+		}), nil
+	}, Checker: checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
+		return leancheck.Report{Status: "verified", GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source), AuditSHA256: leancheck.AuditDigest()}, nil
+	})}
+	report, err := RunControlledComparison(context.Background(), c, filepath.Join(t.TempDir(), "controlled"), runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || !report.CustomBudget || report.MaxRequests != 6 || len(report.Runs) != 48 {
+		t.Fatalf("global budget was not enforced: calls=%d report=%+v", calls, report)
+	}
+	budgetStops, native := 0, 0
+	for _, run := range report.Runs {
+		if run.Status == "not_started_budget" {
+			budgetStops++
+			if run.RequestUpperBound != 0 || run.MeasuredRequests != 0 {
+				t.Fatalf("budget-stopped run reserved requests: %+v", run)
+			}
+		}
+		if run.Mode == "lean" {
+			native++
+			if run.Status == "not_started_budget" || run.RequestUpperBound != 0 {
+				t.Fatalf("native baseline was blocked by model budget: %+v", run)
+			}
+		}
+	}
+	if budgetStops != 35 || native != 12 {
+		t.Fatalf("unexpected budget and native run counts: stops=%d native=%d", budgetStops, native)
+	}
+	summary, err := Summarize(report)
+	if err != nil || summary.PairedGroups != 0 {
+		t.Fatalf("budget-limited groups were treated as paired: %+v %v", summary, err)
+	}
+}

@@ -26,15 +26,16 @@ type Material struct {
 }
 
 type Config struct {
-	Version   int               `json:"version,omitempty"`
-	Cases     []Case            `json:"cases"`
-	Materials []Material        `json:"materials,omitempty"`
-	Universal execution.Profile `json:"universal"`
-	Proof     execution.Profile `json:"proof"`
-	Counter   execution.Profile `json:"counter"`
-	Formalize execution.Profile `json:"formalize"`
-	Reviewer  execution.Profile `json:"reviewer"`
-	Lean      leancheck.Config  `json:"lean"`
+	Version          int               `json:"version,omitempty"`
+	MaxModelRequests int               `json:"max_model_requests,omitempty"`
+	Cases            []Case            `json:"cases"`
+	Materials        []Material        `json:"materials,omitempty"`
+	Universal        execution.Profile `json:"universal"`
+	Proof            execution.Profile `json:"proof"`
+	Counter          execution.Profile `json:"counter"`
+	Formalize        execution.Profile `json:"formalize"`
+	Reviewer         execution.Profile `json:"reviewer"`
+	Lean             leancheck.Config  `json:"lean"`
 }
 type Outcome struct {
 	Outcome  string `json:"outcome"`
@@ -67,6 +68,7 @@ type Run struct {
 type Report struct {
 	EvaluationSet          *EvaluationSet          `json:"evaluation_set,omitempty"`
 	Simulation             bool                    `json:"simulation,omitempty"`
+	CustomBudget           bool                    `json:"custom_budget,omitempty"`
 	CaseSetSHA256          string                  `json:"case_set_sha256,omitempty"`
 	EnvironmentResolutions []EnvironmentResolution `json:"environment_resolutions,omitempty"`
 	PolicySHA256           string                  `json:"policy_sha256,omitempty"`
@@ -97,6 +99,13 @@ type EnvironmentResolution struct {
 func (c Config) Validate() error {
 	if c.Version < 0 || c.Version > 4 {
 		return errors.New("unsupported comparison version")
+	}
+	maxRequests := 216
+	if c.Version == 4 {
+		maxRequests = 432
+	}
+	if c.MaxModelRequests < 0 || c.Version < 2 && c.MaxModelRequests != 0 || c.MaxModelRequests > maxRequests {
+		return errors.New("invalid global model request budget")
 	}
 	if c.Version == 4 {
 		if _, err := PrepareEvaluation(EvaluationSet{Version: 1, Repetitions: 2, Cases: c.Cases}); err != nil {

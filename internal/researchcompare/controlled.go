@@ -49,6 +49,10 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 		report.PolicySHA256 = EvaluationPolicyDigest()
 		report.CaseSetSHA256 = leancheck.Digest(*report.EvaluationSet)
 	}
+	if c.MaxModelRequests > 0 {
+		report.CustomBudget = true
+		report.MaxRequests = c.MaxModelRequests
+	}
 	expectedRequests, expectedPolicy, expectedCases := report.MaxRequests, report.PolicySHA256, report.CaseSetSHA256
 	report.Simulation = r.Simulation
 	if r.Simulation && (r.Build == nil || r.Checker == nil) {
@@ -168,6 +172,20 @@ func RunControlledComparison(ctx context.Context, c Config, dir string, r Runner
 				}
 				if exists {
 					continue
+				}
+				if mode != "lean" {
+					charged := 0
+					for _, completed := range report.Runs {
+						charged += completed.RequestUpperBound
+					}
+					if charged+6 > report.MaxRequests {
+						run := Run{Case: item.ID, Class: item.Class, Repetition: repetition, Mode: mode, GoalSHA256: leancheck.Digest(item.Goal), Status: "not_started_budget", Error: "global model request budget exhausted", Profiles: map[string]string{}}
+						report.Runs = append(report.Runs, run)
+						if err := saveReport(dir, report); err != nil {
+							return report, err
+						}
+						continue
+					}
 				}
 				run := Run{Case: item.ID, Class: item.Class, Repetition: repetition, Mode: mode, GoalSHA256: leancheck.Digest(item.Goal), Status: "running", Profiles: map[string]string{}}
 				report.Runs = append(report.Runs, run)

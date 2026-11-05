@@ -62,3 +62,10 @@ func TestPortfolioBDD_RealLeanFindsPolynomialProofWithoutModel(t *testing.T) {
 		t.Fatal(r, err)
 	}
 }
+
+func TestDecisionDefinitionsExpandsUnderlyingDefinitions(t *testing.T) {
+	g := Goal{Source: "def Research209 : Prop := True\nnamespace ResearchRefutation\ndef Statement : Prop := Not (Research209)\nend ResearchRefutation\n", Declaration: "ResearchRefutation.Statement", Candidate: "ResearchRefutation.candidate"}
+	if names := decisionDefinitions(g); names != "ResearchRefutation.Statement Research209" {
+		t.Fatalf("unexpected definitions: %s", names)
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -21,15 +23,37 @@ type TacticResult struct {
 	Report Report      `json:"report"`
 }
 
+var definitionPattern = regexp.MustCompile(`(?m)^def\s+([A-Za-z_][A-Za-z0-9_.]*)`)
+
+func decisionDefinitions(g Goal) string {
+	names := []string{g.Declaration}
+	seen := map[string]bool{g.Declaration: true}
+	for _, match := range definitionPattern.FindAllStringSubmatch(g.Source, -1) {
+		name := match[1]
+		if seen[name] || strings.HasSuffix(g.Declaration, "."+name) {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+		if len(names) == 16 {
+			break
+		}
+	}
+	return strings.Join(names, " ")
+}
+
 func TacticTrials(g Goal) ([]TacticTrial, error) {
 	template, err := CandidateTemplate(g)
 	if err != nil {
 		return nil, err
 	}
 	out := []TacticTrial{}
-	for _, tactic := range []string{"simp_all", "omega", "ring", "norm_num", "aesop"} {
+	for _, tactic := range []string{"simp_all", "omega", "ring", "norm_num", "decide", "aesop"} {
 		// Each tactic has a fresh proof state. Partial simplification cannot mask later trials.
 		body := "  unfold " + g.Declaration + "\n  intros\n  " + tactic + "\n"
+		if tactic == "decide" {
+			body = "  unfold " + decisionDefinitions(g) + "\n  decide\n"
+		}
 		out = append(out, TacticTrial{ID: tactic, Source: template + body})
 	}
 	return out, nil

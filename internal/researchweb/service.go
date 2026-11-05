@@ -71,6 +71,17 @@ func NewService(o Options) (*Service, error) {
 	if o.Factory == nil {
 		o.Factory = execution.Build
 	}
+	if o.Config.LeanConfig != "" && o.Checker != nil && (o.Config.NativeFirst == nil || *o.Config.NativeFirst) {
+		factory := o.Factory
+		checker := o.Checker
+		o.Factory = func(profile execution.Profile, lookup func(string) (string, bool)) (execution.Executor, error) {
+			fallback, err := factory(profile, lookup)
+			if err != nil {
+				return nil, err
+			}
+			return execution.NewNativeFirstExecutor(profile, checker, fallback), nil
+		}
+	}
 	if o.Config.MaxParallel < 1 || o.Config.MaxParallel > 4 {
 		return nil, errors.New("invalid parallel limit")
 	}

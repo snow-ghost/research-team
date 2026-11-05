@@ -141,6 +141,7 @@ type Usage struct {
 
 type Result struct {
 	PrecheckStatus         string             `json:"precheck_status,omitempty"`
+	Native                 *NativeReport      `json:"native,omitempty"`
 	Preflight              *PreflightReport   `json:"preflight,omitempty"`
 	SkillChecks            []SkillResultCheck `json:"skill_checks,omitempty"`
 	Diagnostics            []Diagnostic       `json:"diagnostics,omitempty"`

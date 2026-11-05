@@ -34,6 +34,7 @@ type Config struct {
 	Workers                []WorkerConfig    `json:"workers,omitempty"`
 	Telegram               []TelegramChannel `json:"telegram,omitempty"`
 	LeanConfig             string            `json:"lean_config,omitempty"`
+	NativeFirst            *bool             `json:"native_first,omitempty"`
 	LeanServiceURL         string            `json:"lean_service_url,omitempty"`
 	LeanServiceTokenEnv    string            `json:"lean_service_token_env,omitempty"`
 	Database               DatabaseConfig    `json:"database,omitempty"`

@@ -123,13 +123,14 @@ func TestPlanningLibraryBDD_ObligationsArePricedAndPassedToPlanner(t *testing.T)
 	if !strings.Contains(modelInput, "library_search") {
 		t.Fatal("planner did not receive bounded library assessment", modelInput)
 	}
+	library := v.Data.Library[0]
+	v.Data.LemmaSignatures = append(v.Data.LemmaSignatures, LemmaSignature{Library: library.ID, GoalSHA256: leancheck.Digest(library.Goal), Native: &leancheck.SignatureReport{Status: "verified", Binders: []leancheck.Binder{{Name: "hn", Type: "10 ≤ n"}}}})
 	proofMaterial := s.planningLibraryMaterial(v.Data, Attempt{Target: target, TargetRevision: a.TargetRevision, Role: "proof"})
 	if proofMaterial == nil || len(proofMaterial.Matches) != 1 {
 		t.Fatal("proof executor did not inherit the current library search")
 	}
 	match := proofMaterial.Matches[0]
-	library := v.Data.Library[0]
-	if match.Theorem != library.Goal.Candidate || match.Declaration != library.Goal.Declaration || match.Module != library.Module || match.LibraryGoalSHA256 != leancheck.Digest(library.Goal) {
+	if match.Theorem != library.Goal.Candidate || match.Declaration != library.Goal.Declaration || match.Module != library.Module || match.LibraryGoalSHA256 != leancheck.Digest(library.Goal) || len(match.Binders) != 1 || match.Binders[0].Name != "hn" {
 		t.Fatalf("proof executor received incomplete lemma metadata: %+v", match)
 	}
 	if stale := s.planningLibraryMaterial(v.Data, Attempt{Target: target, TargetRevision: a.TargetRevision + 1, Role: "proof"}); stale != nil {

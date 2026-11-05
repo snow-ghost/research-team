@@ -38,12 +38,14 @@ type PlanningLibrarySearch struct {
 
 type PlanningLibraryMatch struct {
 	Bindings                 []leancheck.Argument        `json:"bindings,omitempty"`
+	Binders                  []leancheck.Binder          `json:"binders,omitempty"`
 	Missing                  []leancheck.MissingArgument `json:"missing,omitempty"`
 	ID                       string                      `json:"id"`
 	Library                  string                      `json:"library"`
 	Theorem                  string                      `json:"theorem"`
 	Declaration              string                      `json:"declaration"`
 	Module                   string                      `json:"module"`
+	Source                   string                      `json:"source,omitempty"`
 	LibraryGoalSHA256        string                      `json:"library_goal_sha256"`
 	Status                   string                      `json:"status"`
 	Application              string                      `json:"application,omitempty"`
@@ -204,13 +206,19 @@ func (s *Service) planningLibraryMaterial(d Data, a Attempt) *PlanningLibraryMat
 			if match.ID != id || !matchCurrent(&d, match) {
 				continue
 			}
-			item := PlanningLibraryMatch{ID: match.ID, Library: match.Library, Status: match.Report.Status, Application: match.Application, Bindings: []leancheck.Argument{}, Missing: []leancheck.MissingArgument{}}
+			item := PlanningLibraryMatch{ID: match.ID, Library: match.Library, Status: match.Report.Status, Application: match.Application, Source: match.Report.Source, Bindings: []leancheck.Argument{}, Missing: []leancheck.MissingArgument{}}
 			for _, library := range d.Library {
 				if library.ID == match.Library {
 					item.Theorem = library.Goal.Candidate
 					item.Declaration = library.Goal.Declaration
 					item.Module = library.Module
 					item.LibraryGoalSHA256 = leancheck.Digest(library.Goal)
+					break
+				}
+			}
+			for _, signature := range d.LemmaSignatures {
+				if signature.Library == match.Library && signature.GoalSHA256 == item.LibraryGoalSHA256 && signature.Native != nil && signature.Native.Status == "verified" {
+					item.Binders = append([]leancheck.Binder(nil), signature.Native.Binders...)
 					break
 				}
 			}

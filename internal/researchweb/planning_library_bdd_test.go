@@ -88,6 +88,47 @@ func TestPlanningLibraryBDD_VerifiedLemmaSkipsModelAndCreatesApplication(t *test
 	}
 }
 
+func TestNativeFirstAcceptedModuleCompletesVerification(t *testing.T) {
+	s, p := packageFixture(t)
+	s.Options.Lean = &leancheck.Config{}
+	target, _, _, goal := planningLibraryTarget(t, s, p)
+	s.Options.Matcher = moduleMatcherFunc(func(_ context.Context, g leancheck.Goal, _ string, m leancheck.ModuleReport, _, _ string) (leancheck.MatchReport, error) {
+		source := "import Goal\ntheorem PlanningCandidate : PlanningGoal := by trivial\n"
+		verification := &leancheck.Report{Status: "verified", AuditSHA256: leancheck.AuditDigest(), GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}
+		return leancheck.MatchReport{Status: "verified", GoalSHA256: leancheck.Digest(g), ArtifactSHA256: m.ArtifactSHA256, MatcherSHA256: leancheck.MatcherDigest(), Source: source, Verification: verification, Bindings: []leancheck.Argument{}, Missing: []leancheck.MissingArgument{}}, nil
+	})
+	searched, err := s.SearchCatalog(context.Background(), CatalogSearchRequest{ExpectedRevision: stateOf(t, s).Revision, RequestID: identifier("cmd"), Target: target, Limit: 1, TimeoutSeconds: 30, Confirm: true})
+	if err != nil || searched.Status != "verified" || len(searched.Matches) != 1 {
+		t.Fatalf("accepted module was not matched: %+v %v", searched, err)
+	}
+	v := stateOf(t, s)
+	if len(v.Applications) != 0 {
+		t.Fatal("catalog search unexpectedly created an application")
+	}
+	search := &PlanningLibrarySearch{Matches: []string{searched.Matches[0].ID}}
+	material := s.planningLibraryMaterial(v.Data, Attempt{Target: target, TargetRevision: v.entity(target).Revision, Role: "proof", LibrarySearch: search})
+	if material == nil || len(material.Matches) != 1 || material.Matches[0].Source == "" {
+		t.Fatalf("accepted module lost its verified source: %+v", material)
+	}
+	packet, _ := json.Marshal(map[string]any{
+		"entities":       []map[string]any{{"formal_goal": goal}},
+		"library_search": material, "team_materials": map[string]any{"role": "formalize"},
+	})
+	fallbackCalls := 0
+	fallback := planningExecutorFunc(func(_ context.Context, _ execution.Task) (execution.Result, error) {
+		fallbackCalls++
+		return execution.Result{Status: "candidate", Candidate: "model"}, nil
+	})
+	checker := checkerFunc(func(_ context.Context, g leancheck.Goal, source, _ string) (leancheck.Report, error) {
+		return leancheck.Report{Status: "verified", AuditSHA256: leancheck.AuditDigest(), GoalSHA256: leancheck.Digest(g), SourceSHA256: leancheck.Digest(source)}, nil
+	})
+	task := execution.Task{ID: "native-proof", AttemptID: "native-proof", Snapshot: "snapshot", LeaseEpoch: 1, Workspace: "/tmp", Objective: "prove", Context: string(packet)}
+	result, err := execution.NewNativeFirstExecutor(execution.Profile{ID: "native-test"}, checker, fallback).Run(context.Background(), task)
+	if err != nil || fallbackCalls != 0 || result.Native == nil || result.Native.LibraryApplications != 1 || result.Native.ModelFallback || result.Native.Verification.Status != "verified" {
+		t.Fatalf("accepted module did not complete the native path: %+v calls=%d err=%v", result, fallbackCalls, err)
+	}
+}
+
 func TestPlanningLibraryBDD_ObligationsArePricedAndPassedToPlanner(t *testing.T) {
 	s, p := packageFixture(t)
 	s.Options.Lean = &leancheck.Config{}
@@ -338,4 +379,10 @@ func TestPlanningLibraryBDD_PauseBlocksNativeSearchAndApplication(t *testing.T) 
 	if err == nil || calls != 0 || len(stateOf(t, s).Applications) != 0 {
 		t.Fatal("pause allowed native search or library application", err, calls)
 	}
+}
+
+type planningExecutorFunc func(context.Context, execution.Task) (execution.Result, error)
+
+func (f planningExecutorFunc) Run(ctx context.Context, task execution.Task) (execution.Result, error) {
+	return f(ctx, task)
 }

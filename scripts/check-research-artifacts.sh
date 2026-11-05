@@ -15,7 +15,7 @@ export LEAN_PATH="$BUILD_DIR"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/NearBinary.olean" "$ROOT/examples/research/wrapped4/NearBinary.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/NearBinaryFlip.olean" "$ROOT/examples/research/wrapped4/NearBinaryFlip.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4.olean" "$ROOT/examples/research/wrapped4/Wrapped4.lean"
-for id in 202 209 220; do
+for id in 202 209 220 221; do
   NATIVE_DIR="$BUILD_DIR/native-$id"
   mkdir -p "$NATIVE_DIR"
   LEAN_PATH="$NATIVE_DIR:$BUILD_DIR" "$LEAN_BIN" -o "$NATIVE_DIR/Goal.olean" "$ROOT/examples/research/native/Goal$id.lean"
@@ -63,7 +63,7 @@ python3 "$ROOT/scripts/near_binary_bfs.py" --generator "$BUILD_DIR/repeated-bfs-
 printf '%s\n' 'near-binary checks: r=1..5, n=8..16, states and r=1/r=2 formulas verified'
 python3 "$ROOT/scripts/near_binary_bfs.py" --generator "$BUILD_DIR/near-binary-bfs128" --r-values 2,3,4,5 --max-n 32 --output "$BUILD_DIR/near-binary-bfs128.json" --check
 printf '%s\n' '128-bit checks: r=2..5, n=8..32, computed diameter and flip formulas verified'
-for n in 10 11 12 13; do
+for n in 10 11 12 13 14; do
   python3 "$ROOT/scripts/near_binary_python_bfs.py" --n "$n" --generator "$BUILD_DIR/near-binary-bfs128"
 done
 bash "$ROOT/scripts/check-near-binary-witnesses.sh"

@@ -56,20 +56,25 @@ func TestNativeFirstSkipsModelOnlyAfterVerifiedNativeCandidate(t *testing.T) {
 
 func TestNativeFirstFallsBackWithoutHidingNativeFailure(t *testing.T) {
 	fallbackCalls, nativeCalls := 0, 0
-	fallback := nativeFirstExecutorFunc(func(_ context.Context, _ Task) (Result, error) {
+	var received Task
+	fallback := nativeFirstExecutorFunc(func(_ context.Context, task Task) (Result, error) {
 		fallbackCalls++
+		received = task
 		return Result{Status: "candidate", Candidate: "model", Usage: &Usage{InputTokens: 10}, Events: []Event{{Type: "model_requested"}}}, nil
 	})
 	checker := nativeFirstChecker(func(_ context.Context, goal leancheck.Goal, source, _ string) (leancheck.Report, error) {
 		nativeCalls++
-		return leancheck.Report{Status: "failed", AuditSHA256: leancheck.AuditDigest(), GoalSHA256: leancheck.Digest(goal), SourceSHA256: leancheck.Digest(source)}, nil
+		return leancheck.Report{Status: "failed", Phase: "compile", Diagnostics: "native failure detail", AuditSHA256: leancheck.AuditDigest(), GoalSHA256: leancheck.Digest(goal), SourceSHA256: leancheck.Digest(source)}, nil
 	})
 	result, err := NewNativeFirstExecutor(Profile{ID: "test"}, checker, fallback).Run(context.Background(), nativeFirstTask(t, "formalize"))
 	if err != nil || fallbackCalls != 1 || nativeCalls != 6 || result.Candidate != "model" {
 		t.Fatalf("fallback did not run exactly once: calls=%d/%d result=%+v err=%v", fallbackCalls, nativeCalls, result, err)
 	}
-	if result.Native == nil || !result.Native.ModelFallback || result.Native.Trials != 6 || result.Events[0].Type != "native_check" || result.Events[len(result.Events)-1].Type != "model_requested" {
+	if result.Native == nil || !result.Native.ModelFallback || result.Native.Trials != 6 || len(result.Native.Attempts) != 6 || result.Events[0].Type != "native_check" || result.Events[len(result.Events)-1].Type != "model_requested" {
 		t.Fatalf("native failure was hidden: %+v", result)
+	}
+	if !strings.Contains(received.Context, "native failure detail") || !strings.Contains(received.Context, "\"attempts\"") || !strings.Contains(received.Context, "\"native\"") {
+		t.Fatalf("fallback did not receive native diagnostics: %s", received.Context)
 	}
 }
 

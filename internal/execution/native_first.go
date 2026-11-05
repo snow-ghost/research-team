@@ -10,11 +10,22 @@ import (
 	"github.com/snow-ghost/research-team/internal/leancheck"
 )
 
+type NativeAttempt struct {
+	Kind         string `json:"kind"`
+	ID           string `json:"id"`
+	Source       string `json:"source"`
+	Status       string `json:"status"`
+	Phase        string `json:"phase"`
+	Diagnostics  string `json:"diagnostics,omitempty"`
+	SourceSHA256 string `json:"source_sha256"`
+}
+
 type NativeReport struct {
 	GoalSHA256          string           `json:"goal_sha256"`
 	SourceSHA256        string           `json:"source_sha256"`
 	Trials              int              `json:"trials"`
 	LibraryApplications int              `json:"library_applications"`
+	Attempts            []NativeAttempt  `json:"attempts,omitempty"`
 	Verification        leancheck.Report `json:"verification"`
 	ModelFallback       bool             `json:"model_fallback"`
 }
@@ -39,6 +50,25 @@ type nativeFirstExecutor struct {
 
 func NewNativeFirstExecutor(profile Profile, checker leancheck.Checker, fallback Executor) Executor {
 	return &nativeFirstExecutor{profile: profile, checker: checker, fallback: fallback}
+}
+
+func nativeAttempt(kind, id, source string, checked leancheck.Report) NativeAttempt {
+	return NativeAttempt{Kind: kind, ID: id, Source: Preview(source, 32000), Status: checked.Status,
+		Phase: checked.Phase, Diagnostics: Preview(checked.Diagnostics, 4000), SourceSHA256: checked.SourceSHA256}
+}
+
+func nativeFallbackTask(task Task, report *NativeReport) Task {
+	var packet map[string]any
+	if json.Unmarshal([]byte(task.Context), &packet) != nil {
+		return task
+	}
+	packet["native"] = report
+	encoded, err := json.Marshal(packet)
+	if err != nil {
+		return task
+	}
+	task.Context = string(encoded)
+	return task
 }
 
 func (e *nativeFirstExecutor) Run(ctx context.Context, task Task) (Result, error) {
@@ -118,6 +148,7 @@ func (e *nativeFirstExecutor) Run(ctx context.Context, task Task) (Result, error
 			report.LibraryApplications++
 			report.Verification = checked
 			report.SourceSHA256 = checked.SourceSHA256
+			report.Attempts = append(report.Attempts, nativeAttempt("library", match.Theorem, source, checked))
 			nativeEvents = append(nativeEvents, Event{Type: "native_library_check", Step: report.Trials, Status: checked.Status})
 			if checked.Status != "verified" || checked.GoalSHA256 != leancheck.Digest(goal) || checked.SourceSHA256 != leancheck.Digest(source) || checked.AuditSHA256 != leancheck.AuditDigest() {
 				continue
@@ -144,6 +175,7 @@ func (e *nativeFirstExecutor) Run(ctx context.Context, task Task) (Result, error
 		report.Trials++
 		report.Verification = checked
 		report.SourceSHA256 = checked.SourceSHA256
+		report.Attempts = append(report.Attempts, nativeAttempt("tactic", trial.ID, trial.Source, checked))
 		nativeEvents = append(nativeEvents, Event{Type: "native_check", Step: i + 1, Status: checked.Status})
 		if checked.Status != "verified" || checked.GoalSHA256 != leancheck.Digest(goal) || checked.SourceSHA256 != leancheck.Digest(trial.Source) || checked.AuditSHA256 != leancheck.AuditDigest() {
 			continue
@@ -160,7 +192,7 @@ func (e *nativeFirstExecutor) Run(ctx context.Context, task Task) (Result, error
 		base.Native = report
 		return base, nil
 	}
-	result, runErr := e.fallback.Run(ctx, task)
+	result, runErr := e.fallback.Run(ctx, nativeFallbackTask(task, report))
 	report.ModelFallback = true
 	result.Native = report
 	result.Events = append(nativeEvents, result.Events...)

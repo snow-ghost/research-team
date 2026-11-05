@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/snow-ghost/research-team/internal/execution"
+	"github.com/snow-ghost/research-team/internal/leancheck"
 	"github.com/snow-ghost/research-team/internal/researchweb"
 )
 
@@ -33,6 +34,8 @@ func run() error {
 	preflightTheorem := flag.String("preflight-theorem", "", "Required library theorem for preflight")
 	preflightOutcome := flag.String("preflight-outcome", "proof", "Required typed outcome: proof or refutation")
 	preflightRepair := flag.Bool("preflight-repair", false, "Allow one additional executor call with preflight diagnostics")
+	nativeFirst := flag.Bool("native-first", false, "Run native library and tactic search before the model")
+	nativeLeanConfig := flag.String("native-lean-config", "", "Pinned Lean checker configuration for -native-first")
 	taskPath := flag.String("task", "", "Task JSON")
 	execute := flag.Bool("execute", false, "Execute the task; may incur provider charges")
 	flag.Parse()
@@ -73,6 +76,18 @@ func run() error {
 	executor, err := execution.Build(profile, lookup)
 	if err != nil {
 		return err
+	}
+	if *nativeFirst {
+		if *nativeLeanConfig == "" {
+			return errors.New("-native-lean-config is required with -native-first")
+		}
+		var config leancheck.Config
+		if err := researchweb.ReadJSON(*nativeLeanConfig, &config); err != nil {
+			return err
+		}
+		executor = execution.NewNativeFirstExecutor(profile, leancheck.DockerChecker{Config: config}, executor)
+	} else if *nativeLeanConfig != "" {
+		return errors.New("-native-lean-config requires -native-first")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

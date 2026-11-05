@@ -91,6 +91,9 @@ func RunCandidatePreflight(ctx context.Context, executor Executor, task Task, ru
 	repaired.Events = append(result.Events, repaired.Events...)
 	repaired.Diagnostics = append(result.Diagnostics, repaired.Diagnostics...)
 	repaired.Usage = combinedUsage(result.Usage, repaired.Usage)
+	if repaired.Native == nil {
+		repaired.Native = result.Native
+	}
 	if repairValidationErr != nil {
 		repaired.Status = "failed"
 		repaired.Diagnostics = append(repaired.Diagnostics, Diagnostic{Source: "agent", Stage: "preflight", Kind: "preflight_rejected", Message: repairValidationErr.Error()})

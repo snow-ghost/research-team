@@ -64,12 +64,15 @@ func TestRunCandidatePreflightAllowsOnlyOneRepair(t *testing.T) {
 
 	t.Run("accepted after one repair", func(t *testing.T) {
 		executor := &preflightExecutor{results: []Result{
-			{Status: "candidate", Candidate: invalid, Usage: &Usage{InputTokens: 3, OutputTokens: 4}, Events: []Event{{Type: "first"}}},
+			{Status: "candidate", Candidate: invalid, Native: &NativeReport{Trials: 6}, Usage: &Usage{InputTokens: 3, OutputTokens: 4}, Events: []Event{{Type: "first"}}},
 			{Status: "candidate", Candidate: valid, Usage: &Usage{InputTokens: 5, OutputTokens: 6}, Events: []Event{{Type: "second"}}},
 		}}
 		result, err := RunCandidatePreflight(context.Background(), executor, task, rule, true)
 		if err != nil || result.Status != "candidate" || result.Candidate != valid {
 			t.Fatalf("repair did not preserve the valid candidate: %+v %v", result, err)
+		}
+		if result.Native == nil || result.Native.Trials != 6 {
+			t.Fatalf("native report was lost during repair: %+v", result.Native)
 		}
 		if len(executor.tasks) != 2 || executor.tasks[1].AttemptID != "attempt-preflight-repair" {
 			t.Fatalf("invalid repair call: %+v", executor.tasks)

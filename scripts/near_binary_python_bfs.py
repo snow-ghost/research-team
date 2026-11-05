@@ -59,9 +59,12 @@ def main():
         13: {"states": 1235520, "diameter": 11, "flip_distance": 11},
         14: {"states": 2162160, "diameter": 12, "flip_distance": 12},
         15: {"states": 3603600, "diameter": 13, "flip_distance": 12},
+        16: {"states": 5765760, "diameter": 14, "flip_distance": 13},
+        17: {"states": 8910720, "diameter": 15, "flip_distance": 14},
+        18: {"states": 13366080, "diameter": 16, "flip_distance": 14},
     }
     if args.n not in expected_by_n:
-        parser.error("the independent Python certificate currently requires n=10..15")
+        parser.error("the independent Python certificate currently requires n=10..18")
     result = exhaustive_bfs(args.n)
     expected = expected_by_n[args.n]
     if any(result[key] != value for key, value in expected.items()):

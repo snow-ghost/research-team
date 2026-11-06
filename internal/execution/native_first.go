@@ -57,12 +57,28 @@ func nativeAttempt(kind, id, source string, checked leancheck.Report) NativeAtte
 		Phase: checked.Phase, Diagnostics: Preview(checked.Diagnostics, 4000), SourceSHA256: checked.SourceSHA256}
 }
 
-func nativeFallbackTask(task Task, report *NativeReport) Task {
+func nativeFallbackTask(task Task, report *NativeReport, matches []nativeLibraryMatch) Task {
 	var packet map[string]any
 	if json.Unmarshal([]byte(task.Context), &packet) != nil {
 		return task
 	}
 	packet["native"] = report
+	hints := []map[string]any{}
+	for _, match := range matches {
+		if (match.Status != "verified" && match.Status != "obligations") || match.Theorem == "" {
+			continue
+		}
+		hints = append(hints, map[string]any{
+			"theorem": match.Theorem, "source": Preview(match.Source, 16000),
+			"binders": match.Binders, "bindings": match.Bindings,
+		})
+	}
+	if len(hints) > 0 {
+		packet["native_application_hint"] = map[string]any{
+			"matches":     hints,
+			"instruction": "Apply a library theorem using the listed binders and named arguments. Keep an equality as an equality; do not use it as a function.",
+		}
+	}
 	encoded, err := json.Marshal(packet)
 	if err != nil {
 		return task
@@ -192,7 +208,7 @@ func (e *nativeFirstExecutor) Run(ctx context.Context, task Task) (Result, error
 		base.Native = report
 		return base, nil
 	}
-	result, runErr := e.fallback.Run(ctx, nativeFallbackTask(task, report))
+	result, runErr := e.fallback.Run(ctx, nativeFallbackTask(task, report, packet.LibrarySearch.Matches))
 	report.ModelFallback = true
 	result.Native = report
 	result.Events = append(nativeEvents, result.Events...)

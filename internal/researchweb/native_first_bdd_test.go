@@ -45,6 +45,10 @@ func TestNativeFirstServiceSkipsModelAfterLeanVerification(t *testing.T) {
 	if a.Status != "candidate" || modelCalls.Load() != 0 {
 		t.Fatalf("native verification did not skip model: %+v calls=%d", a, modelCalls.Load())
 	}
+	v = stateOf(t, s)
+	if stored := v.attempt(a.ID); stored == nil || stored.Native == nil || stored.Native.Trials != 2 || stored.Native.Verification.Status != "verified" {
+		t.Fatalf("native metrics were not persisted: %+v", stored)
+	}
 	result, err := s.Result(a.ID)
 	if err != nil || result.Native == nil || result.Native.ModelFallback || result.Native.Trials != 2 || result.Native.Verification.Status != "verified" || !strings.Contains(result.Candidate, "omega") {
 		t.Fatalf("native report missing: %+v err=%v", result, err)

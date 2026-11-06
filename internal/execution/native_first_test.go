@@ -119,3 +119,30 @@ func TestNativeFirstBuildsVerifiedLibraryApplication(t *testing.T) {
 		t.Fatalf("library application was not built natively: calls=%d/%d result=%+v err=%v", fallbackCalls, nativeCalls, result, err)
 	}
 }
+
+func TestNativeFirstFallbackReceivesApplicationHints(t *testing.T) {
+	task := nativeFirstTask(t, "formalize")
+	var packet map[string]any
+	if err := json.Unmarshal([]byte(task.Context), &packet); err != nil {
+		t.Fatal(err)
+	}
+	packet["library_search"] = map[string]any{"matches": []map[string]any{{
+		"status": "obligations", "theorem": "Wrapped4.sixUniqueFarOps_length",
+		"binders":  []leancheck.Binder{{Name: "n", Type: "Nat"}, {Name: "hn", Type: "10 ≤ n"}},
+		"bindings": []leancheck.Argument{{Name: "n", Term: "n"}, {Name: "hn", Term: "hn"}},
+	}}}
+	encoded, _ := json.Marshal(packet)
+	task.Context = string(encoded)
+	var received Task
+	fallback := nativeFirstExecutorFunc(func(_ context.Context, fallbackTask Task) (Result, error) {
+		received = fallbackTask
+		return Result{Status: "candidate", Candidate: "model"}, nil
+	})
+	checker := nativeFirstChecker(func(_ context.Context, goal leancheck.Goal, source, _ string) (leancheck.Report, error) {
+		return leancheck.Report{Status: "failed", AuditSHA256: leancheck.AuditDigest(), GoalSHA256: leancheck.Digest(goal), SourceSHA256: leancheck.Digest(source)}, nil
+	})
+	_, err := NewNativeFirstExecutor(Profile{ID: "test"}, checker, fallback).Run(context.Background(), task)
+	if err != nil || !strings.Contains(received.Context, "native_application_hint") || !strings.Contains(received.Context, "Wrapped4.sixUniqueFarOps_length") || !strings.Contains(received.Context, "\"hn\"") {
+		t.Fatalf("fallback did not receive structured application hints: %+v %s", err, received.Context)
+	}
+}

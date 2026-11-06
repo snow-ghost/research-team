@@ -15,7 +15,7 @@ export LEAN_PATH="$BUILD_DIR"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/NearBinary.olean" "$ROOT/examples/research/wrapped4/NearBinary.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4/NearBinaryFlip.olean" "$ROOT/examples/research/wrapped4/NearBinaryFlip.lean"
 "$LEAN_BIN" -o "$BUILD_DIR/Wrapped4.olean" "$ROOT/examples/research/wrapped4/Wrapped4.lean"
-for id in 202 209 220 221; do
+for id in 202 209 220 221 222; do
   NATIVE_DIR="$BUILD_DIR/native-$id"
   mkdir -p "$NATIVE_DIR"
   LEAN_PATH="$NATIVE_DIR:$BUILD_DIR" "$LEAN_BIN" -o "$NATIVE_DIR/Goal.olean" "$ROOT/examples/research/native/Goal$id.lean"

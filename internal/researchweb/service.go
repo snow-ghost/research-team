@@ -601,6 +601,7 @@ func (s *Service) execute(ctx context.Context, a Attempt) {
 		}
 		current.FinishedAt = &now
 		current.RemoteOutcome = result.RemoteOutcome
+		current.Native = result.Native
 		recordProviderOutcome(d, *current, attemptProfile(s, *current), result)
 		task := d.task(a.TaskID)
 		task.State = result.Status
